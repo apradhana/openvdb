@@ -10,6 +10,7 @@
 #include <houdini_utils/ParmFactory.h>
 #include <openvdb_houdini/Utils.h>
 #include <openvdb_houdini/SOP_NodeVDB.h>
+#include <openvdb/tools/Interpolation.h>
 #include <openvdb/tools/FastSweeping.h>
 #include <stdexcept>
 #include <string>
@@ -37,6 +38,7 @@ public:
     private:
         template<typename GridT>
         bool process(hvdb::GridCPtr maskGrid,
+            openvdb::FloatGrid::ConstPtr functorGrid,
             hvdb::GU_PrimVDB* lsPrim,
             fpreal time);
     }; // class Cache
@@ -62,6 +64,15 @@ newSopOperator(OP_OperatorTable* table)
         .setDocumentation(
             "A subset of the input VDB level sets to be processed"
             " (see [specifying volumes|/model/volumes#group])"));
+
+    parms.add(hutil::ParmFactory(PRM_STRING, "gridfunctor", "Functor")
+        .setChoiceList(&hutil::PrimGroupMenuInput1)
+        .setTooltip("Select a subset of the input OpenVDB grids to be "
+                    " interpolated as Dirichlet boundary condition.")
+        .setDocumentation(
+            "A subset of the input VDB to be used as a functor defining"
+            " the Dirichlet boundary condition on the iso-surface"
+            " of the field to be extended." ));
 
     // Modes
     parms.add(hutil::ParmFactory(PRM_STRING, "mode", "Operation")
@@ -232,18 +243,36 @@ template <typename GridT>
 struct FastSweepMaskOp
 {
     FastSweepMaskOp(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
-        : inGrid(inGrid), ignoreActiveTiles(ignoreTiles), iter(iter) {}
+        : mInGrid(inGrid), mIgnoreActiveTiles(ignoreTiles), mIter(iter) {}
 
     template<typename MaskGridType>
     void operator()(const MaskGridType& mask)
     {
-        outGrid = openvdb::tools::maskSdf(*inGrid, mask, ignoreActiveTiles, iter);
+        mOutGrid = openvdb::tools::maskSdf(*mInGrid, mask, mIgnoreActiveTiles, mIter);
     }
 
-    typename GridT::ConstPtr inGrid;
-    const bool ignoreActiveTiles;
-    const int iter;
-    typename GridT::Ptr outGrid;
+    typename GridT::ConstPtr mInGrid;
+    const bool mIgnoreActiveTiles;
+    const int mIter;
+    typename GridT::Ptr mOutGrid;
+};
+
+struct SamplerOp
+{
+    using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
+
+    SamplerOp( openvdb::FloatGrid::ConstPtr functorGrid, SamplerT sampler)
+        : mFunctorGrid (functorGrid),
+          mSampler(sampler)
+    {}
+
+    float operator()(const openvdb::Vec3R& xyz)
+    {
+        return mSampler.wsSample(xyz);
+    }
+
+    openvdb::FloatGrid::ConstPtr mFunctorGrid;
+    SamplerT mSampler;
 };
 
 } // unnamed namespace
@@ -256,22 +285,25 @@ template<typename GridT>
 bool
 SOP_OpenVDB_Extrapolate::Cache::process(
     hvdb::GridCPtr maskGrid,
+    openvdb::FloatGrid::ConstPtr functorGrid,
     hvdb::GU_PrimVDB* lsPrim,
     fpreal time)
 {
+    using namespace openvdb::tools;
+    using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
+
     typename GridT::ConstPtr inGrid = openvdb::gridConstPtrCast<GridT>(lsPrim->getConstGridPtr());
     typename GridT::Ptr outGrid;
 
-    UT_String mode;
-    evalString(mode, "mode", 0, time);
     const int nSweeps = static_cast<int>(evalInt("sweeps", 0, time));
     const float isoValue = evalFloat("isovalue", 0, time);
+    UT_String mode;
+    evalString(mode, "mode", 0, time);
 
-    using namespace openvdb::tools;
     if (mode == "mask") {
         FastSweepMaskOp<GridT> op(inGrid, evalInt("ignoretiles", 0, time), nSweeps);
         UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
-        outGrid = op.outGrid;
+        outGrid = op.mOutGrid;
     } else if (mode == "dilate") {
         UT_String str;
         evalString(str, "pattern", 0, time);
@@ -284,19 +316,23 @@ SOP_OpenVDB_Extrapolate::Cache::process(
     } else if (mode == "correct") {
         outGrid = sdfToSdf(*inGrid, isoValue, nSweeps);
     } else if (mode == "fogext") {
-        // TODO: op
-        // outGrid = fogToExt(*inGrid, op, isoValue, nSweeps);
+        SamplerT sampler(*functorGrid);
+        SamplerOp op(functorGrid, sampler);
+        outGrid = fogToExt(*inGrid, op, isoValue, nSweeps);
     } else if (mode == "sdfext") {
-        // TODO: op
-        // outGrid = sdfToExt(*inGrid, op,i isoValue, nSweeps);
+        SamplerT sampler(*functorGrid);
+        SamplerOp op(functorGrid, sampler);
+        outGrid = sdfToExt(*inGrid, op, isoValue, nSweeps);
     } else if (mode == "fogsdfext") {
-        // TODO: op
+        SamplerT sampler(*functorGrid);
+        SamplerOp op(functorGrid, sampler);
         // std::array<typename GridT::Ptr, 2>
-        // fogToSdfAndExt(*inGrid, op, isoValue, nSweeps);
+        fogToSdfAndExt(*inGrid, op, isoValue, nSweeps);
     } else if (mode == "sdfsdfext") {
-        // TODO: op
+        SamplerT sampler(*functorGrid);
+        SamplerOp op(functorGrid, sampler);
         // std::array<typename GridT::Ptr, 2>
-        // sdfToSdfAndExt(*inGrid, op, isoValue, nSweeps);
+        sdfToSdfAndExt(*inGrid, op, isoValue, nSweeps);
     }
 
     // Replace the original VDB primitive with a new primitive that contains
@@ -315,6 +351,7 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
 
         const GU_Detail* maskGeo = inputGeo(1);
 
+        // get a mask grid if the mode is mask
         hvdb::GridCPtr maskGrid;
         if (evalStdString("mode", time) == "mask") {// selected to use a mask
             if (maskGeo) {// second input exists
@@ -335,11 +372,35 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
             }
         }
 
+        // Some modes require a grid that acts as a functor to define Dirichlet b.c.
+        UT_String mode;
+        evalString(mode, "mode", 0, time);
+
+        // TODO: Make it work beyond Float Grid
+        openvdb::FloatGrid::ConstPtr functorGrid = nullptr;
+        if (mode == "fogext" || mode == "sdfext" || mode == "fogsdfext" || mode == "sdfsdfext") {
+            const GA_PrimitiveGroup* functorGroup = matchGroup(*gdp, evalStdString("gridfunctor", time));
+
+            hvdb::VdbPrimCIterator functorIt(gdp, functorGroup);
+            if (functorIt) {
+                if (functorIt->getStorageType() != UT_VDB_FLOAT) {
+                    addError(SOP_MESSAGE, "Unsupported grid type for functor.");
+                    return UT_ERROR_ABORT;
+                }
+                functorGrid = hvdb::Grid::constGrid<openvdb::FloatGrid>(functorIt->getConstGridPtr());
+            }
+
+            if (!functorGrid) {
+                addError(SOP_MESSAGE, "Missing functor grid");
+                return UT_ERROR_ABORT;
+            }
+        }
+
         // Get the group of level sets to process.
         const GA_PrimitiveGroup* group = matchGroup(*gdp, evalStdString("group", time));
         for (hvdb::VdbPrimIterator it(gdp, group); it; ++it) {
-            if (!this->process<openvdb::FloatGrid >(maskGrid, *it, time) &&
-                !this->process<openvdb::DoubleGrid>(maskGrid, *it, time) ) {
+            if (!this->process<openvdb::FloatGrid >(maskGrid, functorGrid, *it, time) &&
+                !this->process<openvdb::DoubleGrid>(maskGrid, functorGrid, *it, time) ) {
                 std::string s = it.getPrimitiveNameOrIndex().toStdString();
                 s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
                 addWarning(SOP_MESSAGE, s.c_str());
