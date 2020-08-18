@@ -71,6 +71,7 @@ stringToDataType(const std::string& s)
 {
     DataType ret = TYPE_FLOAT;
     std::string str = s;
+    // TODO: Get rid of this
     //hboost::trim(str);
     //hboost::to_lower(str);
     if (str == dataTypeToString(TYPE_FLOAT)) {
@@ -114,9 +115,9 @@ struct FastSweepingParms {
 };
 
 template <typename GridT>
-struct FastSweepMaskOp
+struct FastSweepingMaskOp
 {
-    FastSweepMaskOp(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
+    FastSweepingMaskOp(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
         : mInGrid(inGrid), mIgnoreActiveTiles(ignoreTiles), mIter(iter) {}
 
     template<typename MaskGridType>
@@ -129,6 +130,38 @@ struct FastSweepMaskOp
     const bool mIgnoreActiveTiles;
     const int mIter;
     typename GridT::Ptr mOutGrid;
+};
+
+struct FastSweepingDilateOp
+{
+    using NearestNeighbors = openvdb::tools::NearestNeighbors;
+
+    FastSweepingDilateOp(const FastSweepingParms& parms)
+        : mOutGrid(nullptr), mParms(parms) {}
+
+    template<typename GridT>
+    void operator()(GridT& inGrid)
+    {
+        using namespace openvdb::tools;
+
+        mOutGrid.reset();
+        UT_VDBType inType = UTvdbGetGridType(inGrid);
+        const NearestNeighbors nn =
+            (mParms.mPattern == "NN18") ? NN_FACE_EDGE : ((mParms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
+        switch (inType) {
+            case UT_VDB_FLOAT: 
+                mOutGrid = dilateSdf(inGrid, mParms.mDilate, nn, mParms.mNSweeps);
+                break;
+            case UT_VDB_DOUBLE: 
+                mOutGrid = dilateSdf(inGrid, mParms.mDilate, nn, mParms.mNSweeps);
+                break;
+            default:
+                break;
+        }
+    }
+
+    hvdb::Grid::Ptr mOutGrid;
+    const FastSweepingParms& mParms;
 };
 
 struct SamplerOp
@@ -557,6 +590,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
     // typename GridT::ConstPtr inGrid = openvdb::gridConstPtrCast<GridT>(lsPrim->getConstGridPtr());
     // typename GridT::Ptr outGrid;
+    hvdb::Grid& inGrid = lsPrim->getGrid(); 
 
     if (parms.mNeedExt) {
         using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
@@ -581,8 +615,10 @@ SOP_OpenVDB_Extrapolate::Cache::process(
         //}
     } else {
         if (parms.mMode == "dilate") {
-            const NearestNeighbors nn =
-                (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
+            FastSweepingDilateOp op(parms);
+            hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            //GEOvdbProcessTypedGridScalar(*lsPrim, op);
+    //    UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
             //outGrid = dilateSdf(*inGrid, parms.mDilate, nn, nSweeps);
         } else if (parms.mMode == "convert") {
 
@@ -604,7 +640,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
     //const float isoValue = evalFloat("isovalue", 0, time);
 
     //if (parms.mMode == "mask") {
-    //    FastSweepMaskOp<GridT> op(inGrid, parms.mIgnoreTiles, parms.mNSweeps);
+    //    FastSweepingMaskOp<GridT> op(inGrid, parms.mIgnoreTiles, parms.mNSweeps);
     //    UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
     //    outGrid = op.mOutGrid;
     //} else if (mode == "dilate") {
@@ -668,7 +704,7 @@ SOP_OpenVDB_Extrapolate::Cache::processOld(
     evalString(mode, "mode", 0, time);
 
     if (mode == "mask") {
-        FastSweepMaskOp<GridT> op(inGrid, evalInt("ignoretiles", 0, time), nSweeps);
+        FastSweepingMaskOp<GridT> op(inGrid, evalInt("ignoretiles", 0, time), nSweeps);
         UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
         outGrid = op.mOutGrid;
     } else if (mode == "dilate") {
