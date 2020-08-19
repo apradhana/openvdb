@@ -698,6 +698,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
             // TODO: Do I need to enforce that the Grid Class to be LEVEL_SET?
             // FastSweepingCorrectOp op(parms);
             // hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            outGrid = sdfToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "mask") {
 
         }
