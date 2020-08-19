@@ -170,8 +170,8 @@ struct FastSweepingConvertOp
 {
     using ValueT = typename FSGridT::ValueType;
 
-    FastSweepingConvertOp(const FastSweepingParms& parms, ValueT fSIsoValue)
-        : mOutGrid(nullptr), mParms(parms), mFSIsoValue(fSIsoValue) {}
+    FastSweepingConvertOp(const FastSweepingParms& parms, ValueT fsIsoValue)
+        : mOutGrid(nullptr), mParms(parms), mFSIsoValue(fsIsoValue) {}
 
     template<typename GridT>
     void operator()(GridT& inGrid)
@@ -658,6 +658,8 @@ SOP_OpenVDB_Extrapolate::Cache::process(
     // typename GridT::ConstPtr inGrid = openvdb::gridConstPtrCast<GridT>(lsPrim->getConstGridPtr());
     // typename GridT::Ptr outGrid;
     hvdb::Grid& inGrid = lsPrim->getGrid(); 
+    hvdb::Grid::Ptr outGrid;
+    typename FSGridT::ConstPtr fsGrid = openvdb::gridConstPtrCast<FSGridT>(lsPrim->getConstGridPtr());
 
     if (parms.mNeedExt) {
         using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
@@ -688,8 +690,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
             hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
         } else if (parms.mMode == "convert") {
             // Float and Double
-            FastSweepingConvertOp<FSGridT> op(parms, fsIsoValue);
-            hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            // FastSweepingConvertOp<FSGridT> op(parms, fsIsoValue);
+            // hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            outGrid = fogToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
             lsPrim->setVisualization(GEO_VOLUMEVIS_ISO, lsPrim->getVisIso(), lsPrim->getVisDensity());
         } else if (parms.mMode == "correct") {
             // TODO: Do I need to enforce that the Grid Class to be LEVEL_SET?
@@ -941,16 +944,27 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
         } // parms.mNeedExt
         else {
             for (hvdb::VdbPrimIterator it(gdp, parms.mFSGroup); it; ++it) {
-                //std::cout << "float" << std::endl;
-                //std::cout << "processOld = " << this->processOld<openvdb::FloatGrid >(maskGrid, nullptr, *it, time) << std::endl;
-                //std::cout << "double" << std::endl;
-                //std::cout << "processOld = " << this->processOld<openvdb::DoubleGrid >(maskGrid, nullptr, *it, time) << std::endl;
-                if (!this->processOld<openvdb::FloatGrid >(maskGrid, nullptr, *it, time) &&
-                    !this->processOld<openvdb::DoubleGrid>(maskGrid, nullptr, *it, time) ) {
-                    std::string s = it.getPrimitiveNameOrIndex().toStdString();
-                    s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
-                    addWarning(SOP_MESSAGE, s.c_str());
-                    continue;
+                hvdb::Grid& inGrid = it->getGrid(); 
+                UT_VDBType inType = UTvdbGetGridType(inGrid);
+
+                switch (inType) {
+                    case UT_VDB_FLOAT:
+                    {
+                        float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
+                        process<openvdb::FloatGrid>(parms, *it, isoValue);
+                        break;
+                    }
+                    case UT_VDB_DOUBLE:
+                    {
+                        double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
+                        process<openvdb::DoubleGrid>(parms, *it, isoValue);
+                        break;
+                    }
+                    default:
+                        std::string s = it.getPrimitiveNameOrIndex().toStdString();
+                        s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
+                        addWarning(SOP_MESSAGE, s.c_str());
+                        break;
                 }
             }
         } // !parms.mNeedExt
