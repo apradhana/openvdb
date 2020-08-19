@@ -117,9 +117,9 @@ struct FastSweepingParms {
 };
 
 template <typename GridT>
-struct FastSweepingMaskOp
+struct FastSweepingMaskOpOld
 {
-    FastSweepingMaskOp(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
+    FastSweepingMaskOpOld(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
         : mInGrid(inGrid), mIgnoreActiveTiles(ignoreTiles), mIter(iter) {}
 
     template<typename MaskGridType>
@@ -132,6 +132,26 @@ struct FastSweepingMaskOp
     const bool mIgnoreActiveTiles;
     const int mIter;
     typename GridT::Ptr mOutGrid;
+};
+
+
+template <typename GridT>
+struct FastSweepingMaskOp
+{
+    FastSweepingMaskOp(const FastSweepingParms& parms, typename GridT::ConstPtr inGrid)
+        : mParms(parms), mInGrid(inGrid), mOutGrid(nullptr) {}
+
+    template<typename MaskGridType>
+    void operator()(const MaskGridType& mask)
+    {
+        mOutGrid = openvdb::tools::maskSdf(*mInGrid, mask, mParms.mIgnoreTiles, mParms.mNSweeps);
+    }
+
+    const FastSweepingParms& mParms;
+    typename GridT::ConstPtr mInGrid;
+    hvdb::Grid::Ptr mOutGrid;
+    // TODO: Get rid of this
+    // typename GridT::Ptr mOutGrid;
 };
 
 struct FastSweepingDilateOp
@@ -302,7 +322,8 @@ public:
         bool process(
             const FastSweepingParms& parms,
             hvdb::GU_PrimVDB* lsPrim,
-            typename FSGridT::ValueType fsIsoValue = 0);
+            typename FSGridT::ValueType fsIsoValue = 0,
+            hvdb::GU_PrimVDB* maskPrim = nullptr);
     }; // class Cache
 
 protected:
@@ -651,7 +672,8 @@ bool
 SOP_OpenVDB_Extrapolate::Cache::process(
     const FastSweepingParms& parms,
     hvdb::GU_PrimVDB* lsPrim,
-    typename FSGridT::ValueType fsIsoValue)
+    typename FSGridT::ValueType fsIsoValue,
+    hvdb::GU_PrimVDB* maskPrim)
 {
     using namespace openvdb::tools;
 
@@ -663,31 +685,34 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
     if (parms.mNeedExt) {
         using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
-        //if (parms.mMode == "fogext") {
+        if (parms.mMode == "fogext") {
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    outGrid = fogToExt(*inGrid, op, isoValue, parms.mNSweeps);
-        //} else if (parms.mMode == "sdfext") {
+        } else if (parms.mMode == "sdfext") {
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    outGrid = sdfToExt(*inGrid, op, isoValue, parms.mNSweeps);
-        //} else if (parms.mMode == "fogsdfext") {
+        } else if (parms.mMode == "fogsdfext") {
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    // std::array<typename GridT::Ptr, 2>
         //    fogToSdfAndExt(*inGrid, op, isoValue, parms.mNSweeps);
-        //} else if (parms.mMode == "sdfsdfext") {
+        } else if (parms.mMode == "sdfsdfext") {
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    // std::array<typename GridT::Ptr, 2>
         //    sdfToSdfAndExt(*inGrid, op, isoValue, parms.mNSweeps);
-        //}
+        }
     } else {
         if (parms.mMode == "dilate") {
             // TODO: Do I need to enforce that the Grid Class to be LEVEL_SET?
-            FastSweepingDilateOp op(parms);
+            //FastSweepingDilateOp op(parms);
             // Float and Double
-            hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            //hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            const NearestNeighbors nn =
+                (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
+            outGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps);
         } else if (parms.mMode == "convert") {
             // Float and Double
             // FastSweepingConvertOp<FSGridT> op(parms, fsIsoValue);
@@ -700,7 +725,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
             // hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
             outGrid = sdfToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "mask") {
-
+            FastSweepingMaskOp<FSGridT> op(parms, fsGrid);
+            hvdb::GEOvdbApply<hvdb::AllGridTypes>(*maskPrim, op);
+            outGrid = op.mOutGrid;
         }
     } // !parms.mNeedExt
 
@@ -757,7 +784,7 @@ SOP_OpenVDB_Extrapolate::Cache::processOld(
     evalString(mode, "mode", 0, time);
 
     if (mode == "mask") {
-        FastSweepingMaskOp<GridT> op(inGrid, evalInt("ignoretiles", 0, time), nSweeps);
+        FastSweepingMaskOpOld<GridT> op(inGrid, evalInt("ignoretiles", 0, time), nSweeps);
         UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
         outGrid = op.mOutGrid;
     } else if (mode == "dilate") {
