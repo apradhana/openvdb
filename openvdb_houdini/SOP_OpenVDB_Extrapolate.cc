@@ -989,11 +989,9 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
         FastSweepingParms parms;
         if (evalFastSweepingParms(context, parms) >= UT_ERROR_ABORT) return error();
 
+        // Get the mask primitive if the mode is mask
         const fpreal time = context.getTime();
-
         const GU_Detail* maskGeo = inputGeo(1);
-
-        // get a mask grid if the mode is mask
         const GU_PrimVDB* maskPrim = nullptr;
         if (parms.mMode == "mask") {// selected to use a mask
             if (maskGeo) {// second input exists
@@ -1028,122 +1026,39 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
             }
         }
 
-        // TODO: Finish this
-        // If needExt, pick the first element of the group and go through the list of 
-        // extensions
-        if (parms.mNeedExt) {
-            hvdb::VdbPrimCIterator vdbIter(gdp, parms.mFSGroup);
-            UT_String tmpStr;
+        // Go through the VDB primitives and process them
+        for (hvdb::VdbPrimIterator it(gdp, parms.mFSGroup); it;) {
+            hvdb::Grid& inGrid = it->getGrid(); 
+            UT_VDBType inType = UTvdbGetGridType(inGrid);
 
-            for (int i = 1; i <= parms.mExtGridNum; ++i) {
+            switch (inType) {
+                case UT_VDB_FLOAT:
+                {
+                    float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
+                    processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    break;
+                }
+                case UT_VDB_DOUBLE:
+                {
+                    double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
+                    processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    break;
+                }
+                default:
+                    std::string s = it.getPrimitiveNameOrIndex().toStdString();
+                    s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
+                    addWarning(SOP_MESSAGE, s.c_str());
+                    break;
+            }
 
-                evalStringInst("elementType#", &i, tmpStr, 0, time);
-                DataType eType = stringToDataType(tmpStr.toStdString());
-
-                switch(eType) {
-                    case TYPE_FLOAT:
-                    {
-                        float background = float(evalFloatInst("bgFloat#", &i, 0, time));
-
-                        // createNewGrid<cvdb::FloatGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass);
-                        break;
-                    } // TYPE_FLOAT
-                    case TYPE_DOUBLE:
-                    {
-                        double background = double(evalFloatInst("bgFloat#", &i, 0, time));
-                        // createNewGrid<cvdb::DoubleGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass);
-                        break;
-                    } // TYPE_DOUBLE
-                    case TYPE_INT:
-                    {
-                        int background = static_cast<int>(evalIntInst("bgInt#", &i, 0, time));
-                        // createNewGrid<cvdb::Int32Grid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass);
-                        break;
-                    } // TYPE_INT
-                    case TYPE_BOOL:
-                    {
-                        bool background = evalIntInst("bgBool#", &i, 0, time);
-                        // createNewGrid<cvdb::BoolGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass);
-                        break;
-                    } // TYPE_BOOL
-                    case TYPE_VEC3S:
-                    {
-                        openvdb::Vec3f background(
-                            float(evalFloatInst("bgVec3f#", &i, 0, time)),
-                            float(evalFloatInst("bgVec3f#", &i, 1, time)),
-                            float(evalFloatInst("bgVec3f#", &i, 2, time)));
-
-                        int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, time));
-
-                        // createNewGrid<cvdb::Vec3SGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass, vecType);
-                        break;
-                    } // TYPE_VEC3S
-                    case TYPE_VEC3D:
-                    {
-                        openvdb::Vec3d background(
-                            double(evalFloatInst("bgVec3f#", &i, 0, time)),
-                            double(evalFloatInst("bgVec3f#", &i, 1, time)),
-                            double(evalFloatInst("bgVec3f#", &i, 2, time)));
-
-                        int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, time));
-
-                        // createNewGrid<cvdb::Vec3DGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass, vecType);
-                        break;
-                    } // TYPE_VEC3D
-                    case TYPE_VEC3I:
-                    {
-                        openvdb::Vec3i background(
-                            static_cast<openvdb::Int32>(evalIntInst("bgVec3i#", &i, 0, time)),
-                            static_cast<openvdb::Int32>(evalIntInst("bgVec3i#", &i, 1, time)),
-                            static_cast<openvdb::Int32>(evalIntInst("bgVec3i#", &i, 2, time)));
-                        int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, time));
-                        // createNewGrid<cvdb::Vec3IGrid>(
-                        //     gridNameStr, background, transform, maskGrid, group, gridClass, vecType);
-                        break;
-                    } // TYPE_VEC3I
-                } // eType switch
-
-
-            } // end for
-
-            // Add warning if there are multiple fast sweeping grids
-            if (++vdbIter) {
+            // If we need extension, we only process the first grid
+            ++it;
+            if (parms.mNeedExt && it) {
                 addWarning(SOP_MESSAGE, "Multiple Fast Sweeping grids were found.\n"
                    "Using the first one for reference.");
+                break;
             }
-        } // parms.mNeedExt
-        else {
-            for (hvdb::VdbPrimIterator it(gdp, parms.mFSGroup); it; ++it) {
-                hvdb::Grid& inGrid = it->getGrid(); 
-                UT_VDBType inType = UTvdbGetGridType(inGrid);
-
-                switch (inType) {
-                    case UT_VDB_FLOAT:
-                    {
-                        float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
-                        processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
-                        break;
-                    }
-                    case UT_VDB_DOUBLE:
-                    {
-                        double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
-                        processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
-                        break;
-                    }
-                    default:
-                        std::string s = it.getPrimitiveNameOrIndex().toStdString();
-                        s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
-                        addWarning(SOP_MESSAGE, s.c_str());
-                        break;
-                }
-            }
-        } // !parms.mNeedExt
+        }
     } catch (std::exception& e) {
         addError(SOP_MESSAGE, e.what());
     }
