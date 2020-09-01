@@ -1006,12 +1006,12 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
                          "Please provide a mask VDB as a second input.");
                      return error();
                 }
+                if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
 
                 if (++maskIt) {
                     addWarning(SOP_MESSAGE, "Multiple Mask grids were found.\n"
                        "Using the first one for reference.");
                 }
-                if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
             } else {
               addError(SOP_MESSAGE, "Mask Geometry not found.\n"
                   "Please provide a mask VDB as a second input");
@@ -1048,14 +1048,14 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
                 case UT_VDB_FLOAT:
                 {
                     float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
-                    processOld(maskGrid, nullptr, *it, time);
+                    processOld<openvdb::FloatGrid>(maskGrid, nullptr, *it, time);
                     //processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
                     break;
                 }
                 case UT_VDB_DOUBLE:
                 {
                     double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
-                    processOld(maskGrid, nullptr, *it, time);
+                    processOld<openvdb::DoubleGrid>(maskGrid, nullptr, *it, time);
                     //processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
                     break;
                 }
