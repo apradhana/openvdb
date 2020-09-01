@@ -993,6 +993,7 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
         const fpreal time = context.getTime();
         const GU_Detail* maskGeo = inputGeo(1);
         const GU_PrimVDB* maskPrim = nullptr;
+        hvdb::GridCPtr maskGrid = nullptr;
         if (parms.mMode == "mask") {// selected to use a mask
             if (maskGeo) {// second input exists
                 const GA_PrimitiveGroup* maskGroup = parsePrimitiveGroups(
@@ -1010,15 +1011,7 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
                     addWarning(SOP_MESSAGE, "Multiple Mask grids were found.\n"
                        "Using the first one for reference.");
                 }
-
-                // hvdb::VdbPrimCIterator maskIt(maskGeo, maskGroup);
-
-                // if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
-
-                // if (!maskGrid) {
-                //     addError(SOP_MESSAGE, "mask VDB not found");
-                //     return error();
-                // }
+                if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
             } else {
               addError(SOP_MESSAGE, "Mask Geometry not found.\n"
                   "Please provide a mask VDB as a second input");
@@ -1031,17 +1024,39 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
             hvdb::Grid& inGrid = it->getGrid(); 
             UT_VDBType inType = UTvdbGetGridType(inGrid);
 
+            // switch (inType) {
+            //     case UT_VDB_FLOAT:
+            //     {
+            //         float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
+            //         processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
+            //         break;
+            //     }
+            //     case UT_VDB_DOUBLE:
+            //     {
+            //         double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
+            //         processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
+            //         break;
+            //     }
+            //     default:
+            //         std::string s = it.getPrimitiveNameOrIndex().toStdString();
+            //         s = "VDB primitive " + s + " was skipped because it is not a floating-point Grid.";
+            //         addWarning(SOP_MESSAGE, s.c_str());
+            //         break;
+            // }
+
             switch (inType) {
                 case UT_VDB_FLOAT:
                 {
                     float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
-                    processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    processOld(maskGrid, nullptr, *it, time);
+                    //processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
                     break;
                 }
                 case UT_VDB_DOUBLE:
                 {
                     double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
-                    processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    processOld(maskGrid, nullptr, *it, time);
+                    //processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
                     break;
                 }
                 default:
