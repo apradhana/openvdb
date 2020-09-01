@@ -258,9 +258,9 @@ struct SamplerOp
           mSampler(sampler)
     {}
 
-    float operator()(const openvdb::Vec3R& xyz)
+    float operator()(const openvdb::Vec3d& xyz) const
     {
-        return mSampler.wsSample(xyz);
+        return static_cast<float>(mSampler.wsSample(xyz));
     }
 
     openvdb::FloatGrid::ConstPtr mFunctorGrid;
@@ -281,9 +281,9 @@ struct DirichletSamplerOp
           mSampler(sampler)
     {}
 
-    ExtValueT operator()(const openvdb::Vec3R& xyz)
+    ExtValueT operator()(const openvdb::Vec3d& xyz) const
     {
-        return mSampler.wsSample(xyz);
+        return static_cast<ExtValueT>(mSampler.wsSample(xyz));
     }
 
     typename ExtGridT::ConstPtr mFunctorGrid;
@@ -327,17 +327,17 @@ public:
             hvdb::GU_PrimVDB* lsPrim,
             hvdb::GU_PrimVDB* exPrim,
             typename FSGridT::ValueType fsIsoValue = 0,
-            hvdb::GU_PrimVDB* maskPrim = nullptr);
+            const hvdb::GU_PrimVDB* maskPrim = nullptr);
 
         //template<typename FSGridT, typename ExtValueT = typename FSGridT::ValueT>
-        template<typename FSGridT, typename ExtValueT = typename FSGridT::ValueT>
+        template<typename FSGridT, typename ExtGridT = FSGridT>
         bool process(
             const FastSweepingParms& parms,
             hvdb::GU_PrimVDB* lsPrim,
             hvdb::GU_PrimVDB* exPrim,
-            const ExtValueT &background,
+            const typename ExtGridT::ValueType& background,
             typename FSGridT::ValueType fsIsoValue = 0,
-            hvdb::GU_PrimVDB* maskPrim = nullptr);
+            const hvdb::GU_PrimVDB* maskPrim = nullptr);
     }; // class Cache
 
 protected:
@@ -688,7 +688,7 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
     hvdb::GU_PrimVDB* lsPrim,
     hvdb::GU_PrimVDB* exPrim,
     typename FSGridT::ValueType fsIsoValue,
-    hvdb::GU_PrimVDB* maskPrim)
+    const hvdb::GU_PrimVDB* maskPrim)
 {
     using namespace openvdb;
     using namespace openvdb::tools;
@@ -705,25 +705,25 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                 case TYPE_FLOAT:
                 {
                     float background = static_cast<float>(evalFloatInst("bgFloat#", &i, 0, parms.mTime));
-                    process<FSGridT, float>(parms, lsPrim, exPrim, background, fsIsoValue);
+                    process<FSGridT, openvdb::FloatGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_FLOAT
                 case TYPE_DOUBLE:
                 {
                     double background = static_cast<double>(evalFloatInst("bgFloat#", &i, 0, parms.mTime));
-                    // process<FSGridT, double>(parms, lsPrim, exPrim, background, fsIsoValue);
+                    process<FSGridT, openvdb::DoubleGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_DOUBLE
                 case TYPE_INT:
                 {
                     int background = static_cast<int>(evalIntInst("bgInt#", &i, 0, parms.mTime));
-                    // process<FSGridT, int>(parms, lsPrim, exPrim, background, fsIsoValue);
+                     process<FSGridT, openvdb::Int32Grid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_INT
                 case TYPE_BOOL:
                 {
                     bool background = static_cast<bool>(evalIntInst("bgBool#", &i, 0, parms.mTime));
-                    // process<FSGridT, bool>(parms, lsPrim, exPrim, background, fsIsoValue);
+                    // process<FSGridT, openvdb::BoolGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_BOOL
                 case TYPE_VEC3S:
@@ -734,7 +734,7 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 2, parms.mTime)));
 
                     int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, parms.mTime));
-                    // process<FSGridT, Vec3f>(parms, lsPrim, exPrim, background, fsIsoValue);
+                     process<FSGridT, openvdb::Vec3fGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_VEC3S
                 case TYPE_VEC3D:
@@ -745,7 +745,7 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                         static_cast<double>(evalFloatInst("bgVec3f#", &i, 2, parms.mTime)));
 
                     int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, parms.mTime));
-                    // process<FSGridT, Vec3d>(parms, lsPrim, exPrim, background, fsIsoValue);
+                     process<FSGridT, openvdb::Vec3dGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_VEC3D
                 case TYPE_VEC3I:
@@ -756,13 +756,13 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                         static_cast<openvdb::Int32>(evalIntInst("bgVec3i#", &i, 2, parms.mTime)));
                     int vecType = static_cast<int>(evalIntInst("vecType#", &i, 0, parms.mTime));
 
-                    // process<FSGridT, Vec3i>(parms, lsPrim, exPrim, background, fsIsoValue);
+                     process<FSGridT, openvdb::Vec3IGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
                     break;
                 } // TYPE_VEC3I
             } // eType switch
         } // end for
     } else {
-        // process<FSGridT>(parms, lsPrim, exPrim, 0., fsIsoValue, maskPrim);
+        process<FSGridT>(parms, lsPrim, exPrim, 0., fsIsoValue, maskPrim);
 
         //    const FastSweepingParms& parms,
         //    hvdb::GU_PrimVDB* lsPrim,
@@ -798,38 +798,44 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
 ////////////////////////////////////////
 
 
-template<typename FSGridT, typename ExtValueT>
+//template<typename FSGridT, typename ExtValueT>
+template<typename FSGridT, typename ExtGridT = FSGridT>
 bool
 SOP_OpenVDB_Extrapolate::Cache::process(
     const FastSweepingParms& parms,
     hvdb::GU_PrimVDB* lsPrim,
     hvdb::GU_PrimVDB* exPrim,
-    const ExtValueT &background,
+    const typename ExtGridT::ValueType& background,
     typename FSGridT::ValueType fsIsoValue,
-    hvdb::GU_PrimVDB* maskPrim)
+    const hvdb::GU_PrimVDB* maskPrim)
 {
     using namespace openvdb::tools;
 
-    using ExtGridT = typename FSGridT::template ValueConverter<ExtValueT>::Type;
-    //using SamplerOpT = typename DirichletSamplerOp<ExtGridT>;
+    //using ExtGridT = typename FSGridT::template ValueConverter<ExtValueT>::Type;
     using SamplerT = openvdb::tools::GridSampler<ExtGridT, openvdb::tools::BoxSampler>;
+    using ExtValueT = typename ExtGridT::ValueType;
 
     // typename GridT::ConstPtr inGrid = openvdb::gridConstPtrCast<GridT>(lsPrim->getConstGridPtr());
     // typename GridT::Ptr outGrid;
     hvdb::Grid& inGrid = lsPrim->getGrid(); 
     hvdb::Grid::Ptr outGrid;
     typename FSGridT::ConstPtr fsGrid = openvdb::gridConstPtrCast<FSGridT>(lsPrim->getConstGridPtr());
-    typename ExtGridT::ConstPtr extGrid = openvdb::gridConstPtrCast<ExtGridT>(exPrim->getConstGridPtr());
 
     if (parms.mNeedExt) {
+        typename ExtGridT::ConstPtr extGrid = openvdb::gridConstPtrCast<ExtGridT>(exPrim->getConstGridPtr());
         SamplerT sampler(*extGrid);
         // SamplerOp op(extGrid, sampler);
-        // DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
+        DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
+        using OpT = DirichletSamplerOp<ExtGridT>;
 
         if (parms.mMode == "fogext") {
             // outGrid = fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+            fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "sdfext") {
-            // outGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+            // sdfToExt<FSGridT, OpT, ExtValueT>(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+            // static_assert(std::is_convertible<decltype(op(openvdb::Vec3d(0))), ExtValueT>::value, "Invalid return type of functor");
+            sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+            // sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    outGrid = sdfToExt(*inGrid, op, isoValue, parms.mNSweeps);
@@ -838,7 +844,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
         //    SamplerOp op(functorGrid, sampler);
         //    // std::array<typename GridT::Ptr, 2>
         //    fogToSdfAndExt(*inGrid, op, isoValue, parms.mNSweeps);
+            fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "sdfsdfext") {
+            sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         //    SamplerT sampler(*functorGrid);
         //    SamplerOp op(functorGrid, sampler);
         //    // std::array<typename GridT::Ptr, 2>
@@ -868,6 +876,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
             FastSweepingMaskOp<FSGridT> op(parms, fsGrid);
             hvdb::GEOvdbApply<hvdb::AllGridTypes>(*maskPrim, op);
             outGrid = op.mOutGrid;
+            //FastSweepingMaskOpOld<GridT> op(inGrid, parms.mIgnoreTiles, parms.mNSweeps);
+            //UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
+            //outGrid = op.mOutGrid;
         }
     } // !parms.mNeedExt
 
@@ -983,22 +994,36 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
         const GU_Detail* maskGeo = inputGeo(1);
 
         // get a mask grid if the mode is mask
-        hvdb::GridCPtr maskGrid;
+        const GU_PrimVDB* maskPrim = nullptr;
         if (parms.mMode == "mask") {// selected to use a mask
             if (maskGeo) {// second input exists
                 const GA_PrimitiveGroup* maskGroup = parsePrimitiveGroups(
                     evalStdString("mask", time).c_str(), GroupCreator(maskGeo));
 
                 hvdb::VdbPrimCIterator maskIt(maskGeo, maskGroup);
-
-                if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
-
-                if (!maskGrid) {
-                    addError(SOP_MESSAGE, "mask VDB not found");
-                    return error();
+                maskPrim = *maskIt;
+                if (!maskPrim) {
+                     addError(SOP_MESSAGE, "Mask Primitive not found.\n"
+                         "Please provide a mask VDB as a second input.");
+                     return error();
                 }
+
+                if (++maskIt) {
+                    addWarning(SOP_MESSAGE, "Multiple Mask grids were found.\n"
+                       "Using the first one for reference.");
+                }
+
+                // hvdb::VdbPrimCIterator maskIt(maskGeo, maskGroup);
+
+                // if (maskIt) maskGrid = maskIt->getConstGridPtr();// only use the first grid
+
+                // if (!maskGrid) {
+                //     addError(SOP_MESSAGE, "mask VDB not found");
+                //     return error();
+                // }
             } else {
-              addError(SOP_MESSAGE, "Please provide a mask VDB to the second input");
+              addError(SOP_MESSAGE, "Mask Geometry not found.\n"
+                  "Please provide a mask VDB as a second input");
               return error();
             }
         }
@@ -1102,13 +1127,13 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
                     case UT_VDB_FLOAT:
                     {
                         float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
-                        processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue);
+                        processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
                         break;
                     }
                     case UT_VDB_DOUBLE:
                     {
                         double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
-                        processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue);
+                        processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
                         break;
                     }
                     default:
