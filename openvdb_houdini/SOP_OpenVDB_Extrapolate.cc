@@ -152,8 +152,6 @@ struct FastSweepingMaskOp
     const FastSweepingParms& mParms;
     typename GridT::ConstPtr mInGrid;
     hvdb::Grid::Ptr mOutGrid;
-    // TODO: Get rid of this
-    // typename GridT::Ptr mOutGrid;
 };
 
 struct FastSweepingDilateOp
@@ -479,41 +477,6 @@ newSopOperator(OP_OperatorTable* table)
     // Dynamic grid menu
     hutil::ParmList gridParms;
     {
-// TODO: Get rid of this
-//         {   
-//             // // TODO: Get rid of this
-//             // // Grid class menu
-//             // std::vector<std::string> items;
-//             // for (int i = 0; i < openvdb::NUM_GRID_CLASSES; ++i) {
-//             //     openvdb::GridClass cls = openvdb::GridClass(i);
-//             //     items.push_back(openvdb::GridBase::gridClassToString(cls)); // token
-//             //     items.push_back(openvdb::GridBase::gridClassToMenuName(cls)); // label
-//             // }
-// 
-// // TODO: Get rid of this
-// //             gridParms.add(hutil::ParmFactory(PRM_STRING, "gridClass#", "Class")
-// //                 .setChoiceListItems(PRM_CHOICELIST_SINGLE, items)
-// //                 .setTooltip("Specify how voxel values should be interpreted.")
-// //                 .setDocumentation("\
-// // How voxel values should be interpreted\n\
-// // \n\
-// // Fog Volume:\n\
-// //     The volume represents a density field.  Values should be positive,\n\
-// //     with zero representing empty regions.\n\
-// // Level Set:\n\
-// //     The volume is treated as a narrow-band signed distance field level set.\n\
-// //     The voxels within a certain distance&mdash;the \"narrow band width\"&mdash;of\n\
-// //     an isosurface are expected to define positive (exterior) and negative (interior)\n\
-// //     distances to the surface.  Outside the narrow band, the distance value\n\
-// //     is constant and equal to the band width.\n\
-// // Staggered Vector Field:\n\
-// //     If the volume is vector-valued, the _x_, _y_ and _z_ vector components\n\
-// //     are to be treated as lying on the respective faces of voxels,\n\
-// //     not at their centers.\n\
-// // Other:\n\
-// //     No special meaning is assigned to the volume's data.\n"));
-//         }
-
         {   // Element type menu
             std::vector<std::string> items;
             for (int i = 0; i < NUM_DATA_TYPES; ++i) {
