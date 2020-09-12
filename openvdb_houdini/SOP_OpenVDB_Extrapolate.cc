@@ -71,9 +71,6 @@ stringToDataType(const std::string& s)
 {
     DataType ret = TYPE_FLOAT;
     std::string str = s;
-    // TODO: Get rid of this
-    //hboost::trim(str);
-    //hboost::to_lower(str);
     if (str == dataTypeToString(TYPE_FLOAT)) {
         ret = TYPE_FLOAT;
     } else if (str == dataTypeToString(TYPE_DOUBLE)) {
@@ -118,24 +115,6 @@ struct FastSweepingParms {
     int mDilate;
 };
 
-template <typename GridT>
-struct FastSweepingMaskOpOld
-{
-    FastSweepingMaskOpOld(typename GridT::ConstPtr inGrid, bool ignoreTiles, int iter)
-        : mInGrid(inGrid), mIgnoreActiveTiles(ignoreTiles), mIter(iter) {}
-
-    template<typename MaskGridType>
-    void operator()(const MaskGridType& mask)
-    {
-        mOutGrid = openvdb::tools::maskSdf(*mInGrid, mask, mIgnoreActiveTiles, mIter);
-    }
-
-    typename GridT::ConstPtr mInGrid;
-    const bool mIgnoreActiveTiles;
-    const int mIter;
-    typename GridT::Ptr mOutGrid;
-};
-
 
 template <typename GridT>
 struct FastSweepingMaskOp
@@ -154,120 +133,9 @@ struct FastSweepingMaskOp
     hvdb::Grid::Ptr mOutGrid;
 };
 
-struct FastSweepingDilateOp
-{
-    FastSweepingDilateOp(const FastSweepingParms& parms)
-        : mOutGrid(nullptr), mParms(parms) {}
 
-    template<typename GridT>
-    void operator()(GridT& inGrid)
-    {
-        using namespace openvdb::tools;
-
-        mOutGrid.reset();
-        UT_VDBType inType = UTvdbGetGridType(inGrid);
-        const NearestNeighbors nn =
-            (mParms.mPattern == "NN18") ? NN_FACE_EDGE : ((mParms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
-        switch (inType) {
-            case UT_VDB_FLOAT: 
-                mOutGrid = dilateSdf(inGrid, mParms.mDilate, nn, mParms.mNSweeps);
-                break;
-            case UT_VDB_DOUBLE: 
-                mOutGrid = dilateSdf(inGrid, mParms.mDilate, nn, mParms.mNSweeps);
-                break;
-            default:
-                break;
-        }
-    }
-
-    hvdb::Grid::Ptr mOutGrid;
-    const FastSweepingParms& mParms;
-};
-
-
-template <typename FSGridT>
-struct FastSweepingConvertOp
-{
-    using ValueT = typename FSGridT::ValueType;
-
-    FastSweepingConvertOp(const FastSweepingParms& parms, ValueT fsIsoValue)
-        : mOutGrid(nullptr), mParms(parms), mFSIsoValue(fsIsoValue) {}
-
-    template<typename GridT>
-    void operator()(GridT& inGrid)
-    {
-        using namespace openvdb::tools;
-        mOutGrid.reset();
-        UT_VDBType inType = UTvdbGetGridType(inGrid);
-        switch (inType) {
-            case UT_VDB_FLOAT: 
-                mOutGrid = fogToSdf(inGrid, mFSIsoValue, mParms.mNSweeps);
-                break;
-            case UT_VDB_DOUBLE:
-                mOutGrid = fogToSdf(inGrid, mFSIsoValue, mParms.mNSweeps);
-                break;
-            default:
-                break;
-        }
-    }
-
-    hvdb::Grid::Ptr mOutGrid;
-    const FastSweepingParms& mParms;
-    ValueT mFSIsoValue;
-};
-
-
-struct FastSweepingCorrectOp
-{
-    FastSweepingCorrectOp(const FastSweepingParms& parms)
-        : mOutGrid(nullptr), mParms(parms) {}
-
-    template<typename GridT>
-    void operator()(GridT& inGrid)
-    {
-        using namespace openvdb::tools;
-        mOutGrid.reset();
-        UT_VDBType inType = UTvdbGetGridType(inGrid);
-        switch (inType) {
-            case UT_VDB_FLOAT: 
-                // float isoValue = static_cast<float>(evalFloat("isovalue", 0, parms.mTime));
-                // mOutGrid = sdfToSdf(inGrid, isoValue, mParms.mNSweeps);
-                break;
-            case UT_VDB_DOUBLE:
-                // double isoValue = static_cast<double>(evalFloat("isovalue", 0, parms.mTime));
-                // mOutGrid = sdfToSdf(inGrid, isoValue, mParms.mNSweeps);
-                break;
-            default:
-                break;
-        }
-    }
-
-    hvdb::Grid::Ptr mOutGrid;
-    const FastSweepingParms& mParms;
-};
-
-
-struct SamplerOp
-{
-    using SamplerT = openvdb::tools::GridSampler<openvdb::FloatGrid, openvdb::tools::BoxSampler>;
-
-    SamplerOp( openvdb::FloatGrid::ConstPtr functorGrid, SamplerT sampler)
-        : mFunctorGrid (functorGrid),
-          mSampler(sampler)
-    {}
-
-    float operator()(const openvdb::Vec3d& xyz) const
-    {
-        return static_cast<float>(mSampler.wsSample(xyz));
-    }
-
-    openvdb::FloatGrid::ConstPtr mFunctorGrid;
-    SamplerT mSampler;
-};
-
-/// @brief Functor with signature [](const Vec3R &xyz)->ExtValueT that
-///        defines the Dirichlet boundary condition, on the iso-surface,
-///        of the field to be extended.
+/// @brief Sampler functor for the Dirichlet boundary condition on the 
+///        surface of the field to be extended. 
 template<typename ExtGridT>
 struct DirichletSamplerOp
 {
@@ -316,7 +184,6 @@ public:
         bool processHelper(
             FastSweepingParms& parms,
             hvdb::GU_PrimVDB* lsPrim,
-            hvdb::GU_PrimVDB* exPrim,
             typename FSGridT::ValueType fsIsoValue = 0,
             const hvdb::GU_PrimVDB* maskPrim = nullptr);
 
@@ -569,25 +436,8 @@ SOP_OpenVDB_Extrapolate::updateParmsFlags()
 
     bool needExt = mode == "fogext" || mode == "sdfext" || mode == "fogsdfext" || mode == "sdfsdfext";
     for (int i = 1, N = static_cast<int>(evalInt("extGridNum", 0, 0)); i <= N; ++i) {
-        // TODO: Get rid of this
-        // evalStringInst("gridClass#", &i, tmpStr, 0, 0);
-        // openvdb::GridClass gridClass = openvdb::GridBase::stringToGridClass(tmpStr.toStdString());
-
         evalStringInst("elementType#", &i, tmpStr, 0, 0);
         DataType eType = stringToDataType(tmpStr.toStdString());
-        // TODO: Get rid of this
-        // bool isLevelSet = false;
-
-        // TODO: Get rid of this
-        // Force a specific data type for some of the grid classes
-        // if (gridClass == openvdb::GRID_LEVEL_SET) {
-        //     eType = TYPE_FLOAT;
-        //     isLevelSet = true;
-        // } else if (gridClass == openvdb::GRID_FOG_VOLUME) {
-        //     eType = TYPE_FLOAT;
-        // } else if (gridClass == openvdb::GRID_STAGGERED) {
-        //     eType = TYPE_VEC3S;
-        // }
 
         // Disable unused bg value options
         changed |= enableParmInst("bgFloat#", &i, (eType == TYPE_FLOAT || eType == TYPE_DOUBLE) && needExt);
@@ -642,7 +492,6 @@ bool
 SOP_OpenVDB_Extrapolate::Cache::processHelper(
     FastSweepingParms& parms,
     hvdb::GU_PrimVDB* lsPrim,
-    hvdb::GU_PrimVDB* exPrim,
     typename FSGridT::ValueType fsIsoValue,
     const hvdb::GU_PrimVDB* maskPrim)
 {
@@ -767,12 +616,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 {
     using namespace openvdb::tools;
 
-    //using ExtGridT = typename FSGridT::template ValueConverter<ExtValueT>::Type;
     using SamplerT = openvdb::tools::GridSampler<ExtGridT, openvdb::tools::BoxSampler>;
     using ExtValueT = typename ExtGridT::ValueType;
 
-    // typename GridT::ConstPtr inGrid = openvdb::gridConstPtrCast<GridT>(lsPrim->getConstGridPtr());
-    // typename GridT::Ptr outGrid;
     hvdb::Grid& inGrid = lsPrim->getGrid(); 
     hvdb::Grid::Ptr outGrid;
     typename FSGridT::ConstPtr fsGrid = openvdb::gridConstPtrCast<FSGridT>(lsPrim->getConstGridPtr());
@@ -780,61 +626,37 @@ SOP_OpenVDB_Extrapolate::Cache::process(
     if (parms.mNeedExt) {
         typename ExtGridT::ConstPtr extGrid = openvdb::gridConstPtrCast<ExtGridT>(exPrim->getConstGridPtr());
         SamplerT sampler(*extGrid);
-        // SamplerOp op(extGrid, sampler);
         DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
         using OpT = DirichletSamplerOp<ExtGridT>;
 
         if (parms.mMode == "fogext") {
-            // outGrid = fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
-            fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+            outGrid = fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "sdfext") {
-            // sdfToExt<FSGridT, OpT, ExtValueT>(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
-            // static_assert(std::is_convertible<decltype(op(openvdb::Vec3d(0))), ExtValueT>::value, "Invalid return type of functor");
-            sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
-            // sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
-        //    SamplerT sampler(*functorGrid);
-        //    SamplerOp op(functorGrid, sampler);
-        //    outGrid = sdfToExt(*inGrid, op, isoValue, parms.mNSweeps);
+            outGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "fogsdfext") {
-        //    SamplerT sampler(*functorGrid);
-        //    SamplerOp op(functorGrid, sampler);
-        //    // std::array<typename GridT::Ptr, 2>
-        //    fogToSdfAndExt(*inGrid, op, isoValue, parms.mNSweeps);
             fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "sdfsdfext") {
             sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
-        //    SamplerT sampler(*functorGrid);
-        //    SamplerOp op(functorGrid, sampler);
-        //    // std::array<typename GridT::Ptr, 2>
-        //    sdfToSdfAndExt(*inGrid, op, isoValue, parms.mNSweeps);
         }
     } else {
         if (parms.mMode == "dilate") {
             // TODO: Do I need to enforce that the Grid Class to be LEVEL_SET?
-            //FastSweepingDilateOp op(parms);
-            // Float and Double
-            //hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
             const NearestNeighbors nn =
                 (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
             outGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps);
         } else if (parms.mMode == "convert") {
-            // Float and Double
-            // FastSweepingConvertOp<FSGridT> op(parms, fsIsoValue);
-            // hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
             outGrid = fogToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
             lsPrim->setVisualization(GEO_VOLUMEVIS_ISO, lsPrim->getVisIso(), lsPrim->getVisDensity());
+            outGrid->setGridClass(openvdb::GRID_LEVEL_SET);
         } else if (parms.mMode == "correct") {
-            // TODO: Do I need to enforce that the Grid Class to be LEVEL_SET?
-            // FastSweepingCorrectOp op(parms);
-            // hvdb::GEOvdbApply<hvdb::RealGridTypes>(*lsPrim, op);
+            if (fsGrid->getGridClass() != openvdb::GRID_LEVEL_SET) {
+                throw std::runtime_error("The input grid for sdf to sdf should be a level set."); 
+            }
             outGrid = sdfToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
         } else if (parms.mMode == "mask") {
             FastSweepingMaskOp<FSGridT> op(parms, fsGrid);
             hvdb::GEOvdbApply<hvdb::AllGridTypes>(*maskPrim, op);
             outGrid = op.mOutGrid;
-            //FastSweepingMaskOpOld<GridT> op(inGrid, parms.mIgnoreTiles, parms.mNSweeps);
-            //UTvdbProcessTypedGridTopology(UTvdbGetGridType(*maskGrid), *maskGrid, op);
-            //outGrid = op.mOutGrid;
         }
     } // !parms.mNeedExt
 
@@ -920,13 +742,13 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
                 case UT_VDB_FLOAT:
                 {
                     float isoValue = static_cast<float>(evalFloat("isovalue", 0, time));
-                    processHelper<openvdb::FloatGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    processHelper<openvdb::FloatGrid>(parms, *it, isoValue, maskPrim);
                     break;
                 }
                 case UT_VDB_DOUBLE:
                 {
                     double isoValue = static_cast<double>(evalFloat("isovalue", 0, time));
-                    processHelper<openvdb::DoubleGrid>(parms, *it, nullptr, isoValue, maskPrim);
+                    processHelper<openvdb::DoubleGrid>(parms, *it, isoValue, maskPrim);
                     break;
                 }
                 default:
