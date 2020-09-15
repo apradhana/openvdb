@@ -251,49 +251,49 @@ newSopOperator(OP_OperatorTable* table)
     // Modes
     parms.add(hutil::ParmFactory(PRM_STRING, "mode", "Operation")
         .setChoiceListItems(PRM_CHOICELIST_SINGLE, {
-            "dilate",    "Dilate SDF",
-            "mask",      "Extrapolate SDF Into Mask",
-            "convert",   "Convert Scalar VDB Into SDF", ///< @todo move to Convert SOP
-            "correct",   "Correct Approximate SDF", // by solving the Eikonal equation
-            "fogext",    "Extend Scalar VDB",
-            "sdfext",    "Extend SDF",
-            "fogsdfext", "Convert Scalar VDB Into SDF and Compute Extension",
-            "sdfsdfext", "Correct Approximate SDF and Compute Extension"
+            "dilate",      "Dilate",
+            "mask",        "Mask",
+            "convert",     "Convert Scalar VDB To SDF", ///< @todo move to Convert SOP
+            "renormalize", "Renormalize SDF", // by solving the Eikonal equation
+            "fogext",      "Extend Off Scalar VDB",
+            "sdfext",      "Extend Off SDF",
+            "fogsdfext",   "Convert Scalar VDB To SDF and Extend Field",
+            "sdfsdfext",   "Renormalize SDF and Extend Field"
         })
         .setDefault("dilate")
         .setDocumentation(
             "The operation to perform\n\n"
-            "Dilate SDF:\n"
+            "Dilate:\n"
             "    Dilates an existing signed distance filed by a specified \n"
             "    number of voxels.\n"
-            "Extrapolate SDF Into Mask:\n"
+            "Mask:\n"
             "    Expand/extrapolate an existing signed distance fild into\n"
             "    a mask.\n"
-            "Convert Scalar VDB Into SDF:\n"
+            "Convert Scalar VDB To SDF:\n"
             "    Converts a scalar fog volume into a signed distance\n"
             "    function. Active input voxels with scalar values above\n"
             "    the given isoValue will have NEGATIVE distance\n"
             "    values on output, i.e. they are assumed to be INSIDE\n"
             "    the iso-surface.\n"
-            "Correct Approximate SDF:\n"
+            "Renormalize SDF:\n"
             "    Given an existing approximate SDF it solves the Eikonal\n"
             "    equation for all its active voxels. Active input voxels\n"
             "    with a signed distance value above the given isoValue\n"
             "    will have POSITIVE distance values on output, i.e. they are\n"
             "    assumed to be OUTSIDE the iso-surface.\n"
-            "Extend Scalar VDB:\n"
+            "Extend Off Scalar VDB:\n"
             "     Computes the extension of a scalar field, defined by the\n"
             "     specified functor, off an iso-surface from an input\n"
             "     FOG volume.\n"
-            "Extend SDF:\n"
+            "Extend Off SDF:\n"
             "    Computes the extension of a scalar field, defined by the\n"
             "    specified functor, off an iso-surface from an input\n"
             "    SDF volume.\n"
-            "Convert Scalar VDB Into SDF and Compute Extension:\n"
+            "Convert Scalar VDB To SDF and Extend Field:\n"
             "    Computes the signed distance field and the extension of a\n"
             "    scalar field, defined by the specified functor, off an\n"
             "    iso-surface from an input FOG volume.\n"
-            "Correct Approximate SDF and Compute Extension:\n"
+            "Renormalize SDF and Extend Field:\n"
             "    Computes the signed distance field and the extension of a\n"
             "    scalar field, defined by the specified functor, off an\n"
             "    iso-surface from an input SDF volume."));
@@ -641,7 +641,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
             outGrid = fogToSdf(*fsGrid, fsIsoValue, parms.mNSweeps);
             lsPrim->setVisualization(GEO_VOLUMEVIS_ISO, lsPrim->getVisIso(), lsPrim->getVisDensity());
             outGrid->setGridClass(openvdb::GRID_LEVEL_SET);
-        } else if (parms.mMode == "correct") {
+        } else if (parms.mMode == "renormalize") {
             if (fsGrid->getGridClass() != openvdb::GRID_LEVEL_SET) {
                 throw std::runtime_error("The input grid for sdf to sdf should be a level set."); 
             }
