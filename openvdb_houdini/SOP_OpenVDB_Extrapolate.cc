@@ -27,7 +27,6 @@ enum DataType {
     TYPE_FLOAT = 0,
     TYPE_DOUBLE,
     TYPE_INT,
-    TYPE_BOOL,
     TYPE_VEC3S,
     TYPE_VEC3D,
     TYPE_VEC3I
@@ -43,7 +42,6 @@ dataTypeToString(DataType dts)
         case TYPE_FLOAT:  ret = "float"; break;
         case TYPE_DOUBLE: ret = "double"; break;
         case TYPE_INT:    ret = "int"; break;
-        case TYPE_BOOL:   ret = "bool"; break;
         case TYPE_VEC3S:  ret = "vec3s"; break;
         case TYPE_VEC3D:  ret = "vec3d"; break;
         case TYPE_VEC3I:  ret = "vec3i"; break;
@@ -59,7 +57,6 @@ dataTypeToMenuItems(DataType dts)
         case TYPE_FLOAT:  ret = "float"; break;
         case TYPE_DOUBLE: ret = "double"; break;
         case TYPE_INT:    ret = "int"; break;
-        case TYPE_BOOL:   ret = "bool"; break;
         case TYPE_VEC3S:  ret = "vec3s (float)"; break;
         case TYPE_VEC3D:  ret = "vec3d (double)"; break;
         case TYPE_VEC3I:  ret = "vec3i (int)"; break;
@@ -78,8 +75,6 @@ stringToDataType(const std::string& s)
         ret = TYPE_DOUBLE;
     } else if (str == dataTypeToString(TYPE_INT)) {
         ret = TYPE_INT;
-    } else if (str == dataTypeToString(TYPE_BOOL)) {
-        ret = TYPE_BOOL;
     } else if (str == dataTypeToString(TYPE_VEC3S)) {
         ret = TYPE_VEC3S;
     } else if (str == dataTypeToString(TYPE_VEC3D)) {
@@ -445,7 +440,7 @@ SOP_OpenVDB_Extrapolate::updateParmsFlags()
 
         // Disable unused bg value options
         changed |= enableParmInst("bgFloat#", &i, (eType == TYPE_FLOAT || eType == TYPE_DOUBLE) && needExt);
-        changed |= enableParmInst("bgInt#",   &i, (eType == TYPE_INT || eType == TYPE_BOOL) && needExt);
+        changed |= enableParmInst("bgInt#",   &i, (eType == TYPE_INT) && needExt);
         changed |= enableParmInst("bgVec3f#", &i, (eType == TYPE_VEC3S || eType == TYPE_VEC3D) && needExt);
         changed |= enableParmInst("bgVec3i#", &i, eType == TYPE_VEC3I && needExt);
         changed |= enableParmInst("vecType#", &i, eType >= TYPE_VEC3S && needExt);
@@ -453,7 +448,6 @@ SOP_OpenVDB_Extrapolate::updateParmsFlags()
         // Hide unused bg value options.
         changed |= setVisibleStateInst("bgFloat#", &i, eType == TYPE_FLOAT || eType == TYPE_DOUBLE);
         changed |= setVisibleStateInst("bgInt#",   &i, eType == TYPE_INT);
-        changed |= setVisibleStateInst("bgBool#",  &i, eType == TYPE_BOOL);
         changed |= setVisibleStateInst("bgVec3f#", &i, eType == TYPE_VEC3S || eType == TYPE_VEC3D);
         changed |= setVisibleStateInst("bgVec3i#", &i, eType == TYPE_VEC3I);
         changed |= setVisibleStateInst("vecType#", &i, eType >= TYPE_VEC3S);
@@ -535,19 +529,13 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                     process<FSGridT, openvdb::FloatGrid>(parms, lsPrim, fsIsoValue, nullptr /*=maskPrim*/, *extPrim, background);
                     break;
                 } // TYPE_INT
-                case TYPE_BOOL:
-                {
-                    bool background = static_cast<bool>(evalIntInst("bgBool#", &i, 0, parms.mTime));
-                    process<FSGridT, openvdb::BoolGrid>(parms, lsPrim, fsIsoValue, nullptr /*=maskPrim*/, *extPrim, background);
-                    // process<FSGridT, openvdb::BoolGrid>(parms, lsPrim, exPrim, background, fsIsoValue);
-                    break;
-                } // TYPE_BOOL
                 case TYPE_VEC3S:
                 {
                     openvdb::Vec3f background(
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 0, parms.mTime)),
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 1, parms.mTime)),
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 2, parms.mTime)));
+                    std::cout << "extPrim = " << *extPrim << std::endl; 
                     process<FSGridT, openvdb::Vec3SGrid>(parms, lsPrim, fsIsoValue, nullptr /*=maskPrim*/, *extPrim, background);
                     break;
                 } // TYPE_VEC3S
@@ -601,6 +589,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
     if (parms.mNeedExt) {
         typename ExtGridT::ConstPtr extGrid = openvdb::gridConstPtrCast<ExtGridT>(exPrim->getConstGridPtr());
+        std::cout << "extGrid = " << extGrid << std::endl;
         SamplerT sampler(*extGrid);
         DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
         using OpT = DirichletSamplerOp<ExtGridT>;
