@@ -373,11 +373,6 @@ newSopOperator(OP_OperatorTable* table)
             .setDefault(PRMoneDefaults)
             .setTooltip(bgHelpStr)
             .setDocumentation(nullptr));
-        gridParms.add(hutil::ParmFactory(PRM_INT_J, "bgBool#", "Background Value")
-            .setRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 1)
-            .setDefault(PRMoneDefaults)
-            .setTooltip(bgHelpStr)
-            .setDocumentation(nullptr));
         gridParms.add(hutil::ParmFactory(PRM_FLT_J, "bgVec3f#", "Background Value")
             .setVectorSize(3)
             .setTooltip(bgHelpStr)
@@ -535,7 +530,6 @@ SOP_OpenVDB_Extrapolate::Cache::processHelper(
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 0, parms.mTime)),
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 1, parms.mTime)),
                         static_cast<float>(evalFloatInst("bgVec3f#", &i, 2, parms.mTime)));
-                    std::cout << "extPrim = " << *extPrim << std::endl; 
                     process<FSGridT, openvdb::Vec3SGrid>(parms, lsPrim, fsIsoValue, nullptr /*=maskPrim*/, *extPrim, background);
                     break;
                 } // TYPE_VEC3S
@@ -589,7 +583,9 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
     if (parms.mNeedExt) {
         typename ExtGridT::ConstPtr extGrid = openvdb::gridConstPtrCast<ExtGridT>(exPrim->getConstGridPtr());
-        std::cout << "extGrid = " << extGrid << std::endl;
+        if (!extGrid) {
+                throw std::runtime_error("Extension grid does not match the explicit type specified."); 
+        }
         SamplerT sampler(*extGrid);
         DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
         using OpT = DirichletSamplerOp<ExtGridT>;
