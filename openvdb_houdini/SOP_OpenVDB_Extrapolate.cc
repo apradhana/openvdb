@@ -14,7 +14,6 @@
 #include <openvdb/tools/FastSweeping.h>
 #include <stdexcept>
 #include <string>
-#include <functional> // std::ref
 
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
