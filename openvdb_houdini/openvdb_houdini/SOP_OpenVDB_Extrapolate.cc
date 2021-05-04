@@ -188,7 +188,7 @@ newSopOperator(OP_OperatorTable* table)
         .setDocumentation("Arbitrary VDB fields picked up by this group\n"
             "will be extended off an iso-surface of a scalar VDB (fog/level set)\n"
             "as specified by the __Source Group__. The mode enables this\n"
-            "parameter is __Extend Field(s) Off Scalar VDB__."));
+            "parameter is __Extend Field(s) Off Fog VDB__ or __Extend Field(s) Off SDF__."));
 
     // Mask grid
     parms.add(hutil::ParmFactory(PRM_STRING, "mask", "Mask VDB")
@@ -214,16 +214,15 @@ newSopOperator(OP_OperatorTable* table)
             "renormalize", "Renormalize SDF", // by solving the Eikonal equation
             "fogext",      "Extend Field(s) Off Fog VDB",
             "sdfext",      "Extend Field(s) Off SDF",
-            // TODO: double check
-            //"scalarext",   "Extend Field(s) Off Scalar VDB",
         })
         .setDefault("dilate")
         .setTooltip("The mode __Expand SDF Narrowband__, __Expand SDF Into Mask SDF__,\n"
-            "__Convert Fog VDB To SDF__, and __Renormalize SDF__ will modify the scalar grid(s)\n"
-            "specified by the __Source Group__ parameter. The mode\n"
-            "__Extend Field(s) Off Scalar VDB__ will modify the grid(s) specified by the\n"
-            "__Extension Group__ parameter and possibly the scalar grid specified by the __Source Group__\n"
-            "if the toggle __Convert Fog To SDF or Renormalize SDF__ is checked.")
+            "__Convert Fog VDB To SDF__, and __Renormalize SDF__ will modify\n"
+            " the scalar grid(s) specified by the __Source Group__ parameter. The mode\n"
+            "__Extend Field(s) Off Fog VDB__ and __Extend Field(s) Off SDF__ will modify\n"
+            "the grid(s) specified by the __Extension Group__ parameter and possibly\n"
+            " the scalar grid specified by the __Source Group__ if the toggle\n"
+            "__Convert Fog To SDF or Renormalize SDF__ is checked.")
         .setDocumentation(
             "The operation to perform\n\n"
             "__Expand SDF Narrowband__:\n"
@@ -244,7 +243,6 @@ newSopOperator(OP_OperatorTable* table)
             "    with a signed distance value above the given isoValue\n"
             "    will have POSITIVE distance values on output, i.e. they are\n"
             "    assumed to be OUTSIDE the iso-surface.\n"
-            // TODO: double check
             "__Extend Field(s) Off Fog VDB__:\n"
             "     Computes the extension of several attributes off a Fog volume.\n"
             "     The attributes are defined by VDB grids that will be sampled\n"
@@ -564,7 +562,6 @@ SOP_OpenVDB_Extrapolate::Cache::process(
         SamplerT sampler(*extGrid);
         DirichletSamplerOp<ExtGridT> op(extGrid, sampler);
 
-        // TODO: double check
         if (parms.mMode == "fogext" || parms.mMode == "sdfext") {
             if (!parms.mConvertOrRenormalize) {
                 // there are 4 cases:
