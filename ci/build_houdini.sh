@@ -27,8 +27,8 @@ cmake \
     -DOPENVDB_BUILD_BINARIES=${EXTRAS} \
     -DOPENVDB_BUILD_PYTHON_MODULE=${EXTRAS} \
     -DOPENVDB_BUILD_UNITTESTS=${EXTRAS} \
-    -DOPENVDB_LIB=/rel/test/FX-10775/install/openvdb/lib64/libopenvdb.so.7.1.0 \
-    -DOPENVDB_HOUDINI_INSTALL_PREFIX=/rel/test/FX-10775/install/openvdb_houdini \
+    -DOPENVDB_LIB=/rel/test/FX-11111/install/openvdb/lib64/libopenvdb.so.7.1.0 \
+    -DOPENVDB_HOUDINI_INSTALL_PREFIX=/rel/test/FX-11111/install/openvdb_houdini \
  ..
 
 # Can only build using one thread with GCC due to memory constraints
