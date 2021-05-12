@@ -555,7 +555,7 @@ private:
     // Private member data of FastSweeping
     typename SdfGridT::Ptr mSdfGrid;
     typename ExtGridT::Ptr mExtGrid;
-    typename ExtGridT::Ptr mSdfGridInput;// optional: only used in unilateral sweeping 
+    typename SdfGridT::Ptr mSdfGridInput;// optional: only used in unilateral sweeping
     typename ExtGridT::Ptr mExtGridInput;// optional: only used in extending a field in one direction 
     SweepMaskTreeT mSweepMask; // mask tree containing all non-boundary active voxels
     std::vector<Coord> mSweepMaskLeafOrigins; // cache of leaf node origins for mask tree
@@ -1450,27 +1450,21 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                         if (update < absV) {
                             value = sign * update;
                             if (acc2) {
+                                // TOCHECK TODO
                                 ExtValueT updateExt = ExtValueT(0);
-                                if (flags == 1) {
-                                    updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk); // TOCHECK 
-                                    //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
-                                }
-                                else if (flags == 2) {
-                                    updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk); // TOCHECK 
-                                    //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
-                                }
+                                if (flags == 2) {
+                                    if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
+                                    else updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
+                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
+                                else if (flags == 4) {
+                                    if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
+                                    else updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
+                                } // SWEEP_LESS_THAN_ISOVALUE = 0x2
                                 else if (flags == 0){
-                                    updateExt = acc2->getValue(ijk);// TOCHECK 
+                                    updateExt = acc2->getValue(ijk);
                                 }
-                                
                                 acc2->setValue(ijk, updateExt);
 
-                                //if (flags == 1 && value >= SdfValueT(0))
-                                //    acc2->setValue(ijk, acc2->getValue(d1(ijk)));
-                                //else if (flags == 2 && value <= SdfValueT(0))
-                                //    acc2->setValue(ijk, acc2->getValue(d1(ijk)));
-                                //else if (flags == 0)
-                                //    acc2->setValue(ijk, acc2->getValue(d1(ijk)));
                             }//update ext?
                         }//update sdf?
                         continue;
@@ -1496,25 +1490,19 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                                     const ExtValueT extVal = twoNghbr(d1, d2, w, v1, v2);
 
                                     ExtValueT updateExt;
-                                    if (flags == 1) {
-                                        updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk); // TOCHECK 
-                                        //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
+                                    if (flags == 2) {
+                                        if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                        else updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                    } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
+                                    else if (flags == 4) {
+                                        if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                        else updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                    } // SWEEP_LESS_THAN_ISOVALUE = 0x2
+                                    else if (flags == 0) {
+                                        updateExt = extVal;
                                     }
-                                    else if (flags == 2) {
-                                        updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk); // TOCHECK 
-                                        //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
-                                    }
-                                    else if (flags == 0)
-                                        updateExt = extVal;// TOCHECK 
-
                                     acc2->setValue(ijk, updateExt);
 
-                                    //if (flags == 1 && value >= SdfValueT(0))
-                                    //    acc2->setValue(ijk, extVal);
-                                    //else if (flags == 2 && value <= SdfValueT(0))
-                                    //    acc2->setValue(ijk, extVal);
-                                    //else if (flags == 0)
-                                    //    acc2->setValue(ijk, extVal);
                                 }//update ext?
                             }//update sdf?
                             continue;
@@ -1543,26 +1531,20 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                                 const ExtValueT v3 = acc2->getValue(d3(ijk));
                                 const ExtValueT extVal = threeNghbr(d1, d2, d3, w, v1, v2, v3);
 
-
                                 ExtValueT updateExt;
-                                if (flags == 1)  {
-                                    updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk); // TOCHECK 
-                                    //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
+                                if (flags == 2) {
+                                    if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                    else updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
+                                else if (flags == 4) {
+                                    if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                    else updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
+                                } // SWEEP_LESS_THAN_ISOVALUE = 0x2
+                                else if (flags == 0) {
+                                    updateExt = extVal;
                                 }
-                                else if (flags == 2) {
-                                    updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk); // TOCHECK 
-                                    //std::cout << "acc3->getValue(ijk) = " << acc3->getValue(ijk) << std::endl;
-                                }
-                                else if (flags == 0)
-                                    updateExt = extVal;// TOCHECK 
-
                                 acc2->setValue(ijk, updateExt);
-                                //if (flags == 1 && value >= SdfValueT(0))
-                                //    acc2->setValue(ijk, extVal);
-                                //else if (flags == 2 && value <= SdfValueT(0))
-                                //    acc2->setValue(ijk, extVal);
-                                //else if (flags == 0)
-                                //    acc2->setValue(ijk, extVal);
+
                             }//update ext?
                         }//update sdf?
                     }//test for non-negative determinant
