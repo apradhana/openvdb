@@ -59,11 +59,10 @@ namespace tools {
 /// @brief Fast Sweeping flags 
 enum FastSweepingFlags {
     SWEEP_DEFAULT = 0x0,
-    SWEEP_UNSIGNED_DISTANCE = 0x1,
     /// Perform a sweep to update voxels that are greater than an isovalue 
-    SWEEP_GREATER_THAN_ISOVALUE = 0x2,
+    SWEEP_GREATER_THAN_ISOVALUE = 0x1,
     /// Perform a sweep to update voxels that are less than an isovalue 
-    SWEEP_LESS_THAN_ISOVALUE = 0x4
+    SWEEP_LESS_THAN_ISOVALUE = 0x2
 };
 
 /// @brief Converts a scalar fog volume into a signed distance function. Active input voxels
@@ -212,6 +211,7 @@ sdfToExt(const SdfGridT &sdfGrid,
          const ExtValueT &background,
          typename SdfGridT::ValueType isoValue = 0,
          int nIter = 1,
+         const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr,
          int flags = 0);
 
 /// @brief Computes the signed distance field and the extension of a scalar field,
@@ -254,7 +254,9 @@ fogToSdfAndExt(const FogGridT &fogGrid,
                const ExtOpT &op,
                const ExtValueT &background,
                typename FogGridT::ValueType isoValue,
-               int nIter = 1);
+               int nIter = 1,
+               const typename FogGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr,
+               int flags = 0);
 
 /// @brief Computes the signed distance field and the extension of a scalar field,
 ///        defined by the specified functor, off an iso-surface from an input SDF volume.
@@ -296,7 +298,9 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
                const ExtOpT &op,
                const ExtValueT &background,
                typename SdfGridT::ValueType isoValue = 0,
-               int nIter = 1);
+               int nIter = 1,
+               const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr,
+               int flags = 0);
 
 /// @brief Dilates an existing signed distance field by a specified number of voxels
 ///
@@ -619,7 +623,7 @@ bool FastSweeping<SdfGridT, ExtValueT>::initSdf(const SdfGridT &fogGrid, SdfValu
 {
     this->clear();
     mSdfGrid = fogGrid.deepCopy();//very fast
-    if (flags >= 2) mSdfGridInput = fogGrid.deepCopy();
+    if (flags >= 1) mSdfGridInput = fogGrid.deepCopy();
     InitSdf kernel(*this);
     kernel.run(isoValue, isInputSdf);
     return this->isValid();
@@ -629,13 +633,13 @@ template <typename SdfGridT, typename ExtValueT>
 template <typename OpT>
 bool FastSweeping<SdfGridT, ExtValueT>::initExt(const SdfGridT &fogGrid, const OpT &op, const ExtValueT &background, SdfValueT isoValue, bool isInputSdf, const typename ExtGridT::Ptr extGrid, int flags)
 {
-    if (flags >= 2 && !mExtGridInput) {
-        OPENVDB_THROW(RuntimeError, "FastSweeping::initExt Calling initExt with flags >=2 requires an extension grid.");
+    if (flags >= 1 && !mExtGridInput) {
+        OPENVDB_THROW(RuntimeError, "FastSweeping::initExt Calling initExt with flags >= 1 requires an extension grid.");
     }
     this->clear();
     mSdfGrid = fogGrid.deepCopy();//very fast
     mExtGrid = createGrid<ExtGridT>( background );
-    if (flags >= 2) {
+    if (flags >= 1) {
         mSdfGridInput = fogGrid.deepCopy();
         mExtGridInput = extGrid->deepCopy();
     }
@@ -695,8 +699,8 @@ void FastSweeping<SdfGridT, ExtValueT>::sweep(int nIter, bool finalize, bool isI
     if (!mSdfGrid) {
         OPENVDB_THROW(RuntimeError, "FastSweeping::sweep called before initialization");
     }
-    if (flags >= 2 && !mSdfGridInput) {
-        OPENVDB_THROW(RuntimeError, "FastSweeping: Need to call initialization with flags >= 2");
+    if (flags >= 1 && !mSdfGridInput) {
+        OPENVDB_THROW(RuntimeError, "FastSweeping: Need to call FastSweeping::initSdf with flags >= 1");
     }
     if (this->boundaryVoxelCount() == 0) {
         OPENVDB_THROW(RuntimeError, "FastSweeping: No boundary voxels found!");
@@ -1452,11 +1456,11 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                             if (acc2) {
                                 // TOCHECK TODO
                                 ExtValueT updateExt = ExtValueT(0);
-                                if (flags == 2) {
+                                if (flags == 1) {
                                     if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
                                     else updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
-                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
-                                else if (flags == 4) {
+                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x1
+                                else if (flags == 2) {
                                     if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
                                     else updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
                                 } // SWEEP_LESS_THAN_ISOVALUE = 0x2
@@ -1490,11 +1494,11 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                                     const ExtValueT extVal = twoNghbr(d1, d2, w, v1, v2);
 
                                     ExtValueT updateExt;
-                                    if (flags == 2) {
+                                    if (flags == 1) {
                                         if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                         else updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
-                                    } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
-                                    else if (flags == 4) {
+                                    } // SWEEP_GREATER_THAN_ISOVALUE = 0x1
+                                    else if (flags == 2) {
                                         if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                         else updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                     } // SWEEP_LESS_THAN_ISOVALUE = 0x2
@@ -1532,11 +1536,11 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                                 const ExtValueT extVal = threeNghbr(d1, d2, d3, w, v1, v2, v3);
 
                                 ExtValueT updateExt;
-                                if (flags == 2) {
+                                if (flags == 1) {
                                     if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                     else updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
-                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x2
-                                else if (flags == 4) {
+                                } // SWEEP_GREATER_THAN_ISOVALUE = 0x1
+                                else if (flags == 2) {
                                     if (isInputSdf) updateExt = (value <= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                     else updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                 } // SWEEP_LESS_THAN_ISOVALUE = 0x2
@@ -1636,10 +1640,11 @@ sdfToExt(const SdfGridT &sdfGrid,
          const ExtValueT &background,
          typename SdfGridT::ValueType isoValue,
          int nIter,
+         const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid,
          int flags)
 {
   FastSweeping<SdfGridT, ExtValueT> fs;
-  if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true))
+  if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true, extGrid, flags))
       fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/true, /*sweepDirection*/flags);
   return fs.extGrid();
 }
@@ -1650,10 +1655,13 @@ fogToSdfAndExt(const FogGridT &fogGrid,
                const ExtOpT &op,
                const ExtValueT &background,
                typename FogGridT::ValueType isoValue,
-               int nIter)
+               int nIter,
+               const typename FogGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid,
+               int flags)
 {
   FastSweeping<FogGridT, ExtValueT> fs;
-  if (fs.initExt(fogGrid, op, background, isoValue, /*isInputSdf*/false)) fs.sweep(nIter);
+  if (fs.initExt(fogGrid, op, background, isoValue, /*isInputSdf*/true, extGrid, flags))
+      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/true, /*sweepDirection*/flags);
   return std::make_pair(fs.sdfGrid(), fs.extGrid());
 }
 
@@ -1663,10 +1671,13 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
                const ExtOpT &op,
                const ExtValueT &background,
                typename SdfGridT::ValueType isoValue,
-               int nIter)
+               int nIter,
+               const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid,
+               int flags)
 {
   FastSweeping<SdfGridT, ExtValueT> fs;
-  if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true)) fs.sweep(nIter);
+  if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true, extGrid, flags))
+      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/true, /*sweepDirection*/flags);
   return std::make_pair(fs.sdfGrid(), fs.extGrid());
 }
 

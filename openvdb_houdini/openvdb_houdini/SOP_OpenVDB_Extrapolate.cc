@@ -601,7 +601,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 } else if (parms.mMode == "sdfext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " SDF grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    parms.mNewExtGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, parms.mSweepingDirection);
+                    parms.mNewExtGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid2, parms.mSweepingDirection);
                 } else {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is not a level set.\n"
                         "You may want to use __Extend Field(s) Off Fog VDB__.";
@@ -620,7 +620,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 if (parms.mMode == "fogext" && (fsGrid->getGridClass() != openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " Fog grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    outPair = fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+                    outPair = fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid2, parms.mSweepingDirection);
                 }
                 else if (parms.mMode == "fogext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is a level set.\n"
@@ -630,7 +630,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 } else if (parms.mMode == "sdfext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " SDF grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    outPair = sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps);
+                    outPair = sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid2, parms.mSweepingDirection);
                 } else {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is not a level set.\n"
                         "You may want to use __Extend Field(s) Off Fog VDB__.";
