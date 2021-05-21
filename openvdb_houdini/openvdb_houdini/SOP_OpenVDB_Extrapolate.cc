@@ -37,6 +37,7 @@ struct FastSweepingParms {
         mExtPrimName(""),
         mExtFieldProcessed(false),
         mSweepingDirection(0),
+        mSweepDirection(openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT),
         mNewFSGrid(nullptr),
         mNewExtGrid(nullptr)
     { }
@@ -55,6 +56,7 @@ struct FastSweepingParms {
     std::string mExtPrimName;
     bool mExtFieldProcessed;
     int mSweepingDirection;
+    openvdb::tools::FastSweepingDirection mSweepDirection;
 
     // updated fast sweeping grid placeholder
     hvdb::Grid::Ptr mNewFSGrid;
@@ -392,7 +394,7 @@ SOP_OpenVDB_Extrapolate::updateParmsFlags()
     changed |= enableParm("sdfisovalue", (mode == "renormalize" || mode == "sdfext")); // not mask & not dilate, but sdf
     changed |= enableParm("ignoretiles", mode == "mask");
     changed |= enableParm("convertorrenormalize", (mode == "fogext" || mode == "sdfext"));
-    changed |= enableParm("sweepdirection", (mode == "fogext" || mode == "sdfext")); // sweep direction only works for field extension
+    changed |= enableParm("sweepdirection", (mode == "fogext" || mode == "sdfext" || mode == "dilate"));
 
     return changed;
 }
@@ -664,7 +666,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
             const NearestNeighbors nn =
                 (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
-            parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps);
+            parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepDirection);
         } else if (parms.mMode == "convert") {
             if (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET) {
                 std::string msg = "VDB primitive " + parms.mFSPrimName + " was not converted to SDF because it is already a level set.";
@@ -739,6 +741,10 @@ SOP_OpenVDB_Extrapolate::Cache::evalFastSweepingParms(OP_Context& context, FastS
     if (sweepDirection == "alldirection") parms.mSweepingDirection = 0;
     else if (sweepDirection == "greaterthanisovalue") parms.mSweepingDirection = 1;
     else if (sweepDirection == "lessthanisovalue") parms.mSweepingDirection = 2;
+
+    if (sweepDirection == "alldirection") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT;
+    else if (sweepDirection == "greaterthanisovalue") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE;
+    else if (sweepDirection == "lessthanisovalue") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE;
 
     return error();
 }

@@ -56,16 +56,16 @@ OPENVDB_USE_VERSION_NAMESPACE
 namespace OPENVDB_VERSION_NAME {
 namespace tools {
 
-/// @brief Fast Sweeping update Mode. This is useful to determine
+/// @brief Fast Sweeping update mode. This is useful to determine
 ///        narrow-band extension or field extension in one side
 ///        of a signed distance field.
-enum class FastSweepingUpdateMode {
+enum class FastSweepingDirection {
     /// Update all voxels affected by the sweeping algorithm
-    SWEEP_DEFAULT = 0x0,
-    /// Update voxels corresponding to an sdf/fog values that are greater than a given isovalue
-    SWEEP_GREATER_THAN_ISOVALUE = 0x1,
-    /// Update voxels corresponding to an sdf/fog values that are less than a given isovalue
-    SWEEP_LESS_THAN_ISOVALUE = 0x2
+    SWEEP_DEFAULT,
+    // Update voxels corresponding to an sdf/fog values that are greater than a given isovalue
+    SWEEP_GREATER_THAN_ISOVALUE,
+    // Update voxels corresponding to an sdf/fog values that are less than a given isovalue
+    SWEEP_LESS_THAN_ISOVALUE
 };
 
 /// @brief Converts a scalar fog volume into a signed distance function. Active input voxels
@@ -318,6 +318,7 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
 /// @param nIter    Number of iterations of the fast sweeping algorithm.
 ///                 Each iteration performs 2^3 = 8 individual sweeps.
 ///
+/// TODO: add mode
 /// @details Topology will change as a result of this dilation. E.g. if
 ///          sdfGrid has a width of 3 and @a dilation = 6 then the grid
 ///          returned by this method is a narrow band signed distance field
@@ -327,7 +328,8 @@ typename GridT::Ptr
 dilateSdf(const GridT &sdfGrid,
           int dilation,
           NearestNeighbors nn = NN_FACE,
-          int nIter = 1);
+          int nIter = 1,
+          FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT);
 
 /// @brief Fills mask by extending an existing signed distance field into
 ///        the active values of this input ree of arbitrary value type.
@@ -487,12 +489,13 @@ public:
     ///
     /// @param nn       Stencil-pattern used for dilation
     ///
+    /// TODO: add parameter FastSweepingDirection, i.e. mode
     /// @details This, or any of ther other initilization methods, should be called
     ///          before any call to sweep(). Failure to do so will throw a RuntimeError.
     ///
     /// @warning Note, if this method fails, i.e. returns false, a subsequent call
     ///          to sweep will trow a RuntimeError. Instead call clear and try again.
-    bool initDilate(const SdfGridT &sdfGrid, int dilation, NearestNeighbors nn = NN_FACE);
+    bool initDilate(const SdfGridT &sdfGrid, int dilation, NearestNeighbors nn = NN_FACE, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT);
 
     /// @brief Initializer used for the extamnsion of an exsiting signed distance field
     ///        into the active values of an input mask of arbitrary value type.
@@ -650,14 +653,13 @@ bool FastSweeping<SdfGridT, ExtValueT>::initExt(const SdfGridT &fogGrid, const O
 }
 
 
-// TODO: dilate in one direction?
 template <typename SdfGridT, typename ExtValueT>
-bool FastSweeping<SdfGridT, ExtValueT>::initDilate(const SdfGridT &sdfGrid, int dilate, NearestNeighbors nn)
+bool FastSweeping<SdfGridT, ExtValueT>::initDilate(const SdfGridT &sdfGrid, int dilate, NearestNeighbors nn, FastSweepingDirection mode)
 {
     this->clear();
     mSdfGrid = sdfGrid.deepCopy();//very fast
     DilateKernel kernel(*this);
-    kernel.run(dilate, nn);
+    kernel.run(dilate, nn, mode);
     return this->isValid();
 }
 
@@ -806,7 +808,7 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
     DilateKernel(const DilateKernel &parent) = default;// for tbb::parallel_for
     DilateKernel& operator=(const DilateKernel&) = delete;
 
-    void run(int dilation, NearestNeighbors nn)
+    void run(int dilation, NearestNeighbors nn, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT)
     {
 #ifdef BENCHMARK_FAST_SWEEPING
         util::CpuTimer timer("Construct LeafManager");
@@ -851,7 +853,19 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
                 if (math::Abs(value) < background) {// disable boundary voxels from the mask tree
                     maskLeaf->setValueOff(voxelIter.pos());
                 } else {
-                    voxelIter.setValue(value > 0 ? Unknown : -Unknown);
+                    switch (mode) {
+                        case FastSweepingDirection::SWEEP_DEFAULT :
+                            voxelIter.setValue(value > 0 ? Unknown : -Unknown);
+                            break;
+                        case FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE :
+                            if (value > 0) voxelIter.setValue(Unknown);
+                            else voxelIter.setValueOff();
+                            break;
+                        case FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE :
+                            if (value < 0) voxelIter.setValue(-Unknown);
+                            else voxelIter.setValueOff();
+                            break;
+                    }
                 }
             }
         };
@@ -1675,10 +1689,11 @@ typename GridT::Ptr
 dilateSdf(const GridT &sdfGrid,
           int dilation,
           NearestNeighbors nn,
-          int nIter)
+          int nIter,
+          FastSweepingDirection mode)
 {
     FastSweeping<GridT> fs;
-    if (fs.initDilate(sdfGrid, dilation, nn)) fs.sweep(nIter);
+    if (fs.initDilate(sdfGrid, dilation, nn, mode)) fs.sweep(nIter);
     return fs.sdfGrid();
 }
 
