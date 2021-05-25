@@ -36,8 +36,7 @@ struct FastSweepingParms {
         mFSPrimName(""),
         mExtPrimName(""),
         mExtFieldProcessed(false),
-        mSweepingDirection(0),
-        mSweepDirection(openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT),
+        mSweepingDirection(openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT),
         mNewFSGrid(nullptr),
         mNewExtGrid(nullptr)
     { }
@@ -55,8 +54,7 @@ struct FastSweepingParms {
     std::string mFSPrimName;
     std::string mExtPrimName;
     bool mExtFieldProcessed;
-    int mSweepingDirection;
-    openvdb::tools::FastSweepingDirection mSweepDirection;
+    openvdb::tools::FastSweepingDirection mSweepingDirection;
 
     // updated fast sweeping grid placeholder
     hvdb::Grid::Ptr mNewFSGrid;
@@ -598,7 +596,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 if (parms.mMode == "fogext" && (fsGrid->getGridClass() != openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " Fog grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    parms.mNewExtGrid = fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid, parms.mSweepingDirection);
+                    parms.mNewExtGrid = fogToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, parms.mSweepingDirection, extGrid);
                 }
                 else if (parms.mMode == "fogext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is a level set.\n"
@@ -608,7 +606,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 } else if (parms.mMode == "sdfext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " SDF grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    parms.mNewExtGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid, parms.mSweepingDirection);
+                    parms.mNewExtGrid = sdfToExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, parms.mSweepingDirection, extGrid);
                 } else {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is not a level set.\n"
                         "You may want to use __Extend Field(s) Off Fog VDB__.";
@@ -627,7 +625,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 if (parms.mMode == "fogext" && (fsGrid->getGridClass() != openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " Fog grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    outPair = fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid, parms.mSweepingDirection);
+                    outPair = fogToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, parms.mSweepingDirection, extGrid);
                 }
                 else if (parms.mMode == "fogext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is a level set.\n"
@@ -637,7 +635,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
                 } else if (parms.mMode == "sdfext" && (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET)) {
                     std::string msg = "Extending " + extGrid->getName() + " grid using " + parms.mFSPrimName + " SDF grid.";
                     addMessage(SOP_MESSAGE, msg.c_str());
-                    outPair = sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, extGrid, parms.mSweepingDirection);
+                    outPair = sdfToSdfAndExt(*fsGrid, op, background, fsIsoValue, parms.mNSweeps, parms.mSweepingDirection, extGrid);
                 } else {
                     std::string msg = "VDB primitive " + parms.mFSPrimName + " is not a level set.\n"
                         "You may want to use __Extend Field(s) Off Fog VDB__.";
@@ -666,7 +664,7 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
             const NearestNeighbors nn =
                 (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
-            parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepDirection);
+            parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepingDirection);
         } else if (parms.mMode == "convert") {
             if (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET) {
                 std::string msg = "VDB primitive " + parms.mFSPrimName + " was not converted to SDF because it is already a level set.";
@@ -738,13 +736,12 @@ SOP_OpenVDB_Extrapolate::Cache::evalFastSweepingParms(OP_Context& context, FastS
 
     UT_String sweepDirection;
     evalString(sweepDirection, "sweepdirection", 0, time);
-    if (sweepDirection == "alldirection") parms.mSweepingDirection = 0;
-    else if (sweepDirection == "greaterthanisovalue") parms.mSweepingDirection = 1;
-    else if (sweepDirection == "lessthanisovalue") parms.mSweepingDirection = 2;
-
-    if (sweepDirection == "alldirection") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT;
-    else if (sweepDirection == "greaterthanisovalue") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE;
-    else if (sweepDirection == "lessthanisovalue") parms.mSweepDirection = openvdb::tools::FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE;
+    if (sweepDirection == "alldirection")
+        parms.mSweepingDirection = openvdb::tools::FastSweepingDirection::SWEEP_DEFAULT;
+    else if (sweepDirection == "greaterthanisovalue")
+        parms.mSweepingDirection = openvdb::tools::FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE;
+    else if (sweepDirection == "lessthanisovalue")
+        parms.mSweepingDirection = openvdb::tools::FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE;
 
     return error();
 }
