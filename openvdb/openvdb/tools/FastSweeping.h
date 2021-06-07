@@ -1857,6 +1857,8 @@ dilateSdf(const GridT &sdfGrid,
 
     std::cout << "dilateSdf::done with sweep" << std::endl;
 
+    openvdb::Int32Grid intGrid = createGrid(0);
+
     // TODO: helper
     //SweepMaskTreeT mSweepMask; // mask tree containing all non-boundary active voxels
     //openvdb::createGrid(fs.mSweepMask);
