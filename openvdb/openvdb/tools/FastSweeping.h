@@ -456,6 +456,7 @@ class FastSweeping
     using SdfValueT = typename SdfGridT::ValueType;
     using SdfTreeT = typename SdfGridT::TreeType;
     using SdfAccT  = tree::ValueAccessor<SdfTreeT, false>;//don't register accessors
+    using SdfConstAccT  = typename tree::ValueAccessor<const SdfTreeT, false>;//don't register accessors
 
     // define types related to the extension field
     using ExtGridT = typename SdfGridT::template ValueConverter<ExtValueT>::Type;
@@ -645,7 +646,7 @@ public:
                bool isInputSdf = true,
                FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT);
 
-    /// @brief Clears all the grids and counters so initializtion can be called again.
+    /// @brief Clears all the grids and counters so initialization can be called again.
     void clear();
 
     /// @brief Return the number of voxels that will be solved for.
@@ -669,6 +670,7 @@ private:
     struct InitExt;
     struct InitSdf;
     struct DilateKernel;// initialization to dilate a SDF
+    struct PruneDilation;// pruning dilation // TODO
     struct MinMaxKernel;
     struct SweepingKernel;// performs the actual concurrent sparse fast sweeping
 
@@ -919,11 +921,135 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
 {
     using LeafRange = typename tree::LeafManager<SdfTreeT>::LeafRange;
     DilateKernel(FastSweeping &parent)
-        : mParent(&parent), mBackground(parent.mSdfGrid->background())
+        : mParent(&parent),
+          mBackground(parent.mSdfGrid->background())
     {
+        mSdfGridInput = mParent->mSdfGrid->deepCopy();
     }
     DilateKernel(const DilateKernel &parent) = default;// for tbb::parallel_for
     DilateKernel& operator=(const DilateKernel&) = delete;
+
+    void run(int dilation, NearestNeighbors nn, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT)
+    {
+#ifdef BENCHMARK_FAST_SWEEPING
+        util::CpuTimer timer("Construct LeafManager");
+#endif
+        tree::LeafManager<SdfTreeT> mgr(mParent->mSdfGrid->tree());// super fast
+
+#ifdef BENCHMARK_FAST_SWEEPING
+        timer.restart("Changing background value");
+#endif
+        static const SdfValueT Unknown = std::numeric_limits<SdfValueT>::max();
+        changeLevelSetBackground(mgr, Unknown);//multi-threaded
+
+ #ifdef BENCHMARK_FAST_SWEEPING
+        timer.restart("Dilating and updating mgr (parallel)");
+        //timer.restart("Dilating and updating mgr (serial)");
+#endif
+
+        const int delta = 5;
+        for (int i=0, d = dilation/delta; i<d; ++i) dilateActiveValues(mgr, delta, nn, IGNORE_TILES);
+        dilateActiveValues(mgr, dilation % delta, nn, IGNORE_TILES);
+        //for (int i=0, n=5, d=dilation/n; i<d; ++i) dilateActiveValues(mgr, n, nn, IGNORE_TILES);
+        //dilateVoxels(mgr, dilation, nn);
+
+        // TODO: For figuring out what's going on
+        const math::Transform& xform = mParent->mSdfGrid->transform();
+        CoordBBox bbox = mParent->mSdfGrid->evalActiveVoxelBoundingBox();
+        std::cout << "bbox.min() = " << bbox.min() << "\tbbox.max() = " << bbox.max() << std::endl;
+        Vec3d center = xform.indexToWorld(bbox.getCenter());
+        std::cout << "bbox.center = " << center << std::endl;
+
+#ifdef BENCHMARK_FAST_SWEEPING
+        timer.restart("Initializing grid and sweep mask");
+#endif
+
+        mParent->mSweepMask.clear();
+        mParent->mSweepMask.topologyUnion(mParent->mSdfGrid->constTree());
+
+        using LeafManagerT = tree::LeafManager<typename SdfGridT::TreeType>;
+        using LeafT = typename SdfGridT::TreeType::LeafNodeType;
+        LeafManagerT leafManager(mParent->mSdfGrid->tree());
+
+        auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
+            static const SdfValueT Unknown = std::numeric_limits<SdfValueT>::max();
+            const SdfValueT background = mBackground;//local copy
+            auto* maskLeaf = mParent->mSweepMask.probeLeaf(leaf.origin());
+            SdfConstAccT sdfInputAcc(mSdfGridInput->tree());
+            //TODO:
+            //const auto* sdfInputLeaf = mSdfGridInput->tree().probeConstLeaf(leaf.origin());
+            assert(maskLeaf);
+            //TODO:
+            //assert(sdfInputLeaf);
+            for (auto voxelIter = leaf.beginValueOn(); voxelIter; ++voxelIter) {
+                const SdfValueT value = *voxelIter;
+                // TODO: delete:
+                const Coord ijk = voxelIter.getCoord();
+                //const Vec3d iii = voxelIter.pos();
+                //const Vec3R jjj(static_cast<SdfValueT>(iii[0]), static_cast<SdfValueT>(iii[1]), static_cast<SdfValueT>(iii[2]));
+                const Vec3d xyz = xform.indexToWorld(ijk);
+
+                if (math::Abs(value) < background) {// disable boundary voxels from the mask tree
+                    maskLeaf->setValueOff(voxelIter.pos());
+                } else {
+                    switch (mode) {
+                        case FastSweepingDirection::SWEEP_DEFAULT :
+                            voxelIter.setValue(value > 0 ? Unknown : -Unknown);
+                            break;
+                        case FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE :
+                            if (value > 0) voxelIter.setValue(Unknown);
+                            else {
+                                maskLeaf->setValueOff(voxelIter.pos());
+                                // TODOif (!sdfInputLeaf->isValueOn(voxelIter.pos())) voxelIter.setValueOff();
+                                if (!sdfInputAcc.isValueOn(voxelIter.getCoord())) voxelIter.setValueOff();
+                            }
+                            break;
+                        case FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE :
+                            if (value < 0) voxelIter.setValue(-Unknown);
+                            else {
+                                maskLeaf->setValueOff(voxelIter.pos());
+                                //TODOif (!sdfInputLeaf->isValueOn(voxelIter.pos())) voxelIter.setValueOff();
+                                if (!sdfInputAcc.isValueOn(voxelIter.getCoord())) voxelIter.setValueOff();
+                            }
+                            break;
+                    }
+                }
+            }
+        };
+
+        leafManager.foreach( kernel );
+        // TODO:
+        std::cout << "maskLeaf->activeVoxelCount() = " << mParent->mSweepMask.activeVoxelCount() << std::endl;
+        mParent->mSweepMask.prune();
+
+        // cache the leaf node origins for fast lookup in the sweeping kernels
+
+        mParent->computeSweepMaskLeafOrigins();
+
+#ifdef BENCHMARK_FAST_SWEEPING
+        timer.stop();
+#endif
+    }// FastSweeping::DilateKernel::run
+
+    // Private member data of DilateKernel
+    FastSweeping                *mParent;
+    const SdfValueT             mBackground;
+    typename SdfGridT::ConstPtr mSdfGridInput;
+};// FastSweeping::DilateKernel
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Private class of FastSweeping to perform multi-threaded initialization
+template <typename SdfGridT, typename ExtValueT>
+struct FastSweeping<SdfGridT, ExtValueT>::PruneDilation
+{
+    using LeafRange = typename tree::LeafManager<SdfTreeT>::LeafRange;
+    PruneDilation(FastSweeping &parent)
+        : mParent(&parent), mBackground(parent.mSdfGrid->background())
+    {
+    }
+    PruneDilation(const PruneDilation &parent) = default;// for tbb::parallel_for
+    PruneDilation& operator=(const PruneDilation&) = delete;
 
     void run(int dilation, NearestNeighbors nn, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT)
     {
@@ -1015,12 +1141,12 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
 #ifdef BENCHMARK_FAST_SWEEPING
         timer.stop();
 #endif
-    }// FastSweeping::DilateKernel::run
+    }// FastSweeping::PruneDilation::run
 
-    // Private member data of DilateKernel
+    // Private member data of PruneDilation
     FastSweeping   *mParent;
     const SdfValueT  mBackground;
-};// FastSweeping::DilateKernel
+};// FastSweeping::PruneDilation
 
 ////////////////////////////////////////////////////////////////////////////////
 template <typename SdfGridT, typename ExtValueT>
@@ -1711,10 +1837,28 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
             voxelSliceIndex = mVoxelSliceKeys[i-1];
             tbb::parallel_for(tbb::blocked_range<size_t>(0, mVoxelSliceMap[voxelSliceIndex].size()), kernel);
         }
+        std::cout << "end of sweep()" << std::endl;
 
 #ifdef BENCHMARK_FAST_SWEEPING
         timer.stop();
 #endif
+    // TODO: check
+    {
+    using LeafManagerT = tree::LeafManager<SdfTreeT>;
+    using LeafT = typename SdfTreeT::LeafNodeType;
+    
+    LeafManagerT leafManager(mParent->mSdfGrid->tree());
+    
+    auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
+        static const SdfValueT max = std::abs(std::numeric_limits<SdfValueT>::max());
+        for (auto voxelIter = leaf.beginValueOn(); voxelIter; ++voxelIter) {
+            const SdfValueT value = *voxelIter;
+            assert(std::abs(value) < max);
+        }
+    };
+    
+    leafManager.foreach( kernel );
+    }
     }// FastSweeping::SweepingKernel::sweep
 
 private:
@@ -1837,6 +1981,8 @@ dilateSdf(const GridT &sdfGrid,
     // initDilate handles setting off the active values of the sdfGrid, i.e. no need
     // to pass the mode argument to sweep.
     if (fs.initDilate(sdfGrid, dilation, nn, mode)) fs.sweep(nIter);
+
+    std::cout << "dilateSdf::done with sweep" << std::endl;
 
     // TODO: helper
     //SweepMaskTreeT mSweepMask; // mask tree containing all non-boundary active voxels
