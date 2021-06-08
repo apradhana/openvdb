@@ -664,7 +664,12 @@ SOP_OpenVDB_Extrapolate::Cache::process(
 
             const NearestNeighbors nn =
                 (parms.mPattern == "NN18") ? NN_FACE_EDGE : ((parms.mPattern == "NN26") ? NN_FACE_EDGE_VERTEX : NN_FACE);
-            parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepingDirection);
+            //TODO: uncomment
+            //parms.mNewFSGrid = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepingDirection);
+            std::pair<hvdb::Grid::Ptr, hvdb::Grid::Ptr> outPair;
+            outPair = dilateSdf(*fsGrid, parms.mDilate, nn, parms.mNSweeps, parms.mSweepingDirection);
+            parms.mNewFSGrid = outPair.first;
+            parms.mNewExtGrid = outPair.second;
         } else if (parms.mMode == "convert") {
             if (fsGrid->getGridClass() == openvdb::GRID_LEVEL_SET) {
                 std::string msg = "VDB primitive " + parms.mFSPrimName + " was not converted to SDF because it is already a level set.";
@@ -839,6 +844,9 @@ SOP_OpenVDB_Extrapolate::Cache::cookVDBSop(OP_Context& context)
 
             // Update the fast sweeping grid
             if (parms.mNewFSGrid) it->setGrid(*parms.mNewFSGrid);
+
+            // TODO: kill this
+            if (parms.mMode == "dilate") hvdb::createVdbPrimitive(*gdp, parms.mNewExtGrid, "int123");
 
             // If we need extension, we only process the first grid
             if (parms.mNeedExt && parms.mExtFieldProcessed) {
