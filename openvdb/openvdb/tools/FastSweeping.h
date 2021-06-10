@@ -403,8 +403,7 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
 ///          returned by this method is a narrow band signed distance field
 ///          with a total vidth of 9 units.
 template<typename GridT>
-//typename GridT::Ptr
-std::pair<typename GridT::Ptr, typename openvdb::Int32Grid::Ptr>
+typename GridT::Ptr
 dilateSdf(const GridT &sdfGrid,
           int dilation,
           NearestNeighbors nn = NN_FACE,
@@ -490,9 +489,6 @@ public:
     ///          method).
     typename SdfGridT::Ptr sdfGrid() { return mSdfGrid; }
 
-    // TODO: for double checking
-    openvdb::Int32Grid::Ptr intGrid() { return mIntGrid; }
-
     /// @brief Returns a shared pointer to the extension field computed
     ///        by this class.
     ///
@@ -500,6 +496,15 @@ public:
     ///          initialize (by one of the init methods) or computed (by the sweep
     ///          method).
     typename ExtGridT::Ptr extGrid() { return mExtGrid; }
+
+
+    /// @brief Returns a shared pointer to the extension grid input. This is non-NULL
+    ///        if this class is used to extend a field with a non-default sweep direction.
+    ///
+    /// @warning This shared pointer might point to NULL. This is non-NULL
+    ///        if this class is used to extend a field with a non-default sweep direction,
+    ///        i.e. SWEEP_LESS_THAN_ISOVALUE or SWEEP_GREATER_THAN_ISOVALUE.
+    typename ExtGridT::Ptr extGridInput() { return mExtGridInput; }
 
     /// @brief Initializer for input grids that are either a signed distance
     ///        field or a scalar fog volume.
@@ -634,21 +639,11 @@ public:
     ///                 resulting signed distance field are properly set. Unless you're
     ///                 an expert this should remain true!
     ///
-    /// @param mode     Determines the mode of updating the extension field. SWEEP_DEFAULT
-    ///                 will update all voxels of the extension field affected by the
-    ///                 fast sweeping algorithm. SWEEP_GREATER_THAN_ISOVALUE will update
-    ///                 all voxels corresponding to fog values that are greater than a given
-    ///                 isovalue. SWEEP_LESS_THAN_ISOVALUE will update all voxels corresponding
-    ///                 to fog values that are less than a given isovalue. If a mode other
-    ///                 than SWEEP_DEFAULT is chosen, a user needs to supply @a extGrid.
-    ///
     /// @throw RuntimeError if sweepingVoxelCount() or boundaryVoxelCount() return zero.
     ///        This might happen if none of the initialization methods above were called
     ///        or if that initialization failed.
     void sweep(int nIter = 1,
-               bool finalize = true,
-               bool isInputSdf = true,
-               FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT);
+               bool finalize = true);
 
     /// @brief Clears all the grids and counters so initialization can be called again.
     void clear();
@@ -661,6 +656,17 @@ public:
 
     /// @brief Return true if there are voxels and boundaries to solve for
     bool isValid() const { return mSweepingVoxelCount > 0 && mBoundaryVoxelCount > 0; }
+
+    /// @brief Return whether the sweep update is in all direction (SWEEP_DEFAULT),
+    ///        greater than isovalue (SWEEP_GREATER_THAN_ISOVALUE), or less than isovalue
+    ///        (SWEEP_LESS_THAN_ISOVALUE).
+    ///
+    /// @note SWEEP_GREATER_THAN_ISOVALUE and SWEEP_LESS_THAN_ISOVALUE modes are used
+    ///       in dilating the narrow-band of a levelset or in extending a field.
+    FastSweepingDirection sweepDirection() const { return mSweepDirection; }
+
+    /// @brief Return whether the fast-sweeping input grid a signed distance function or not (fog).
+    bool isInputSdf() { return mIsInputSdf; }
 
 private:
 
@@ -683,11 +689,12 @@ private:
     // Private member data of FastSweeping
     typename SdfGridT::Ptr mSdfGrid;
     typename ExtGridT::Ptr mExtGrid;
-    typename ExtGridT::Ptr mExtGridInput; // optional: only used in extending a field in one direction 
-    SweepMaskTreeT mSweepMask; // mask tree containing all non-boundary active voxels
-    openvdb::Int32Grid::Ptr mIntGrid;
+    typename ExtGridT::Ptr mExtGridInput; // optional: only used in extending a field in one direction
+    SweepMaskTreeT mSweepMask; // mask tree containing all non-boundary active voxels, in the case of dilation, does not include active voxel
     std::vector<Coord> mSweepMaskLeafOrigins; // cache of leaf node origins for mask tree
     size_t mSweepingVoxelCount, mBoundaryVoxelCount;
+    FastSweepingDirection mSweepDirection; // only used in dilate and extending a field
+    bool mIsInputSdf;
 };// FastSweeping
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -700,7 +707,7 @@ const Coord FastSweeping<SdfGridT, ExtValueT>::mOffset[6] = {{-1,0,0},{1,0,0},
 
 template <typename SdfGridT, typename ExtValueT>
 FastSweeping<SdfGridT, ExtValueT>::FastSweeping()
-    : mSdfGrid(nullptr), mExtGrid(nullptr), mSweepingVoxelCount(0), mBoundaryVoxelCount(0)
+    : mSdfGrid(nullptr), mExtGrid(nullptr), mSweepingVoxelCount(0), mBoundaryVoxelCount(0), mSweepDirection(FastSweepingDirection::SWEEP_DEFAULT), mIsInputSdf(true)
 {
 }
 
@@ -712,6 +719,8 @@ void FastSweeping<SdfGridT, ExtValueT>::clear()
     mSweepMask.clear();
     if (mExtGridInput) mExtGridInput.reset();
     mSweepingVoxelCount = mBoundaryVoxelCount = 0;
+    mSweepDirection = FastSweepingDirection::SWEEP_DEFAULT;
+    mIsInputSdf = true;
 }
 
 template <typename SdfGridT, typename ExtValueT>
@@ -748,8 +757,9 @@ bool FastSweeping<SdfGridT, ExtValueT>::initSdf(const SdfGridT &fogGrid, SdfValu
 {
     this->clear();
     mSdfGrid = fogGrid.deepCopy();//very fast
+    mIsInputSdf = isInputSdf;
     InitSdf kernel(*this);
-    kernel.run(isoValue, isInputSdf);
+    kernel.run(isoValue);
     return this->isValid();
 }
 
@@ -765,10 +775,12 @@ bool FastSweeping<SdfGridT, ExtValueT>::initExt(const SdfGridT &fogGrid, const O
     mExtGrid = createGrid<ExtGridT>( background );
     if (mode != FastSweepingDirection::SWEEP_DEFAULT) {
         mExtGridInput = extGrid->deepCopy();
+        mSweepDirection = mode;
     }
     mExtGrid->topologyUnion( *mSdfGrid );//very fast
+    mIsInputSdf = isInputSdf;
     InitExt<OpT> kernel(*this);
-    kernel.run(isoValue, op, isInputSdf);
+    kernel.run(isoValue, op);
     return this->isValid();
 }
 
@@ -778,8 +790,9 @@ bool FastSweeping<SdfGridT, ExtValueT>::initDilate(const SdfGridT &sdfGrid, int 
 {
     this->clear();
     mSdfGrid = sdfGrid.deepCopy();//very fast
+    mSweepDirection = mode;
     DilateKernel kernel(*this);
-    kernel.run(dilate, nn, mode);
+    kernel.run(dilate, nn);
     return this->isValid();
 }
 
@@ -816,12 +829,12 @@ bool FastSweeping<SdfGridT, ExtValueT>::initMask(const SdfGridT &sdfGrid, const 
 }// FastSweeping::initMask
 
 template <typename SdfGridT, typename ExtValueT>
-void FastSweeping<SdfGridT, ExtValueT>::sweep(int nIter, bool finalize, bool isInputSdf, FastSweepingDirection mode)
+void FastSweeping<SdfGridT, ExtValueT>::sweep(int nIter, bool finalize)
 {
     if (!mSdfGrid) {
         OPENVDB_THROW(RuntimeError, "FastSweeping::sweep called before initialization!");
     }
-    if (mode != FastSweepingDirection::SWEEP_DEFAULT && !mExtGridInput) {
+    if (mExtGrid && mSweepDirection != FastSweepingDirection::SWEEP_DEFAULT && !mExtGridInput) {
         OPENVDB_THROW(RuntimeError, "FastSweeping: Need to call initExt with the correct FastSweepingDirection mode!");
     }
     if (this->boundaryVoxelCount() == 0) {
@@ -854,7 +867,7 @@ void FastSweeping<SdfGridT, ExtValueT>::sweep(int nIter, bool finalize, bool isI
 
     // perform nIter iterations of bi-directional sweeping in all directions
     for (int i = 0; i < nIter; ++i) {
-        for (SweepingKernel& kernel : kernels) kernel.sweep(isInputSdf, mode);
+        for (SweepingKernel& kernel : kernels) kernel.sweep();
     }
 
     if (finalize) {
@@ -930,7 +943,7 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
     DilateKernel(const DilateKernel &parent) = default;// for tbb::parallel_for
     DilateKernel& operator=(const DilateKernel&) = delete;
 
-    void run(int dilation, NearestNeighbors nn, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT)
+    void run(int dilation, NearestNeighbors nn)
     {
 #ifdef BENCHMARK_FAST_SWEEPING
         util::CpuTimer timer("Construct LeafManager");
@@ -963,6 +976,9 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
 
         using LeafManagerT = tree::LeafManager<typename SdfGridT::TreeType>;
         using LeafT = typename SdfGridT::TreeType::LeafNodeType;
+
+        const FastSweepingDirection mode = mParent->mSweepDirection;
+
         LeafManagerT leafManager(mParent->mSdfGrid->tree());
 
         auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
@@ -989,7 +1005,7 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
                                 maskLeaf->setValueOff(voxelIter.pos());
                                 bool isInputOn = sdfInputAcc.probeValue(ijk, inputValue);
                                 if ( !isInputOn ) voxelIter.setValueOff();
-                                else voxelIter.setValue(inputValue); 
+                                else voxelIter.setValue(inputValue);
                             }
                             break;
                         case FastSweepingDirection::SWEEP_LESS_THAN_ISOVALUE :
@@ -1007,31 +1023,9 @@ struct FastSweeping<SdfGridT, ExtValueT>::DilateKernel
         };
 
         leafManager.foreach( kernel );
-        
+
         // cache the leaf node origins for fast lookup in the sweeping kernels
         mParent->computeSweepMaskLeafOrigins();
-
-        // TODO: for double checking
-        {
-            using IntTreeT = typename openvdb::Int32Grid::TreeType;
-            using LeafManagerT = tree::LeafManager<IntTreeT>;
-            using LeafT = typename IntTreeT::LeafNodeType;
-
-            mParent->mIntGrid = createGrid<openvdb::Int32Grid>(0);
-            mParent->mIntGrid->tree().topologyUnion( mParent->mSweepMask );//very fast
-            mParent->mIntGrid->setTransform(mParent->mSdfGrid->transform().copy());
-            
-            LeafManagerT leafManager(mParent->mIntGrid->tree());
-    
-            auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
-                for (auto voxelIter = leaf.beginValueOn(); voxelIter; ++voxelIter) {
-                    voxelIter.setValue(123);
-                }
-            };
-    
-            leafManager.foreach( kernel );
-            
-        }
 
 #ifdef BENCHMARK_FAST_SWEEPING
         timer.stop();
@@ -1055,14 +1049,14 @@ struct FastSweeping<SdfGridT, ExtValueT>::InitSdf
     InitSdf(const InitSdf&) = default;// for tbb::parallel_for
     InitSdf& operator=(const InitSdf&) = delete;
 
-    void run(SdfValueT isoValue, bool isInputSdf)
+    void run(SdfValueT isoValue)
     {
         mIsoValue   = isoValue;
-        mAboveSign  = isInputSdf ? SdfValueT(1) : SdfValueT(-1);
+        mAboveSign  = mParent->mIsInputSdf ? SdfValueT(1) : SdfValueT(-1);
         SdfTreeT &tree = mSdfGrid->tree();//sdf
         const bool hasActiveTiles = tree.hasActiveTiles();
 
-        if (isInputSdf && hasActiveTiles) {
+        if (mParent->mIsInputSdf && hasActiveTiles) {
           OPENVDB_THROW(RuntimeError, "FastSweeping: A SDF should not have active tiles!");
         }
 
@@ -1166,20 +1160,20 @@ struct FastSweeping<SdfGridT, ExtValueT>::InitExt
       mExtGrid(parent.mExtGrid.get()), mIsoValue(0), mAboveSign(0) {}
     InitExt(const InitExt&) = default;// for tbb::parallel_for
     InitExt& operator=(const InitExt&) = delete;
-    void run(SdfValueT isoValue, const OpT &opPrototype, bool isInputSdf)
+    void run(SdfValueT isoValue, const OpT &opPrototype)
     {
         static_assert(std::is_convertible<decltype(opPrototype(Vec3d(0))),ExtValueT>::value, "Invalid return type of functor");
         if (!mExtGrid) {
           OPENVDB_THROW(RuntimeError, "FastSweeping::InitExt expected an extension grid!");
         }
 
-        mAboveSign  = isInputSdf ? SdfValueT(1) : SdfValueT(-1);
+        mAboveSign  = mParent->mIsInputSdf ? SdfValueT(1) : SdfValueT(-1);
         mIsoValue = isoValue;
         auto &tree1 = mSdfGrid->tree();
         auto &tree2 = mExtGrid->tree();
         const bool hasActiveTiles = tree1.hasActiveTiles();//very fast
 
-        if (isInputSdf && hasActiveTiles) {
+        if (mParent->mIsInputSdf && hasActiveTiles) {
           OPENVDB_THROW(RuntimeError, "FastSweeping: A SDF should not have active tiles!");
         }
 
@@ -1554,13 +1548,15 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
         return ExtT(w*(d1.v*v1 + d2.v*v2 + d3.v*v3));
     }// non-int implementation
 
-    void sweep(bool isInputSdf, FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT)
+    void sweep()
     {
         typename ExtGridT::TreeType *tree2 = mParent->mExtGrid ? &mParent->mExtGrid->tree() : nullptr;
         typename ExtGridT::TreeType *tree3 = mParent->mExtGridInput ? &mParent->mExtGridInput->tree() : nullptr;
 
         const SdfValueT h = static_cast<SdfValueT>(mParent->mSdfGrid->voxelSize()[0]);
         const SdfValueT sqrt2h = math::Sqrt(SdfValueT(2))*h;
+        const FastSweepingDirection mode = mParent->mSweepDirection;
+        const bool isInputSdf = mParent->mIsInputSdf;
 
         const std::vector<Coord>& leafNodeOrigins = mParent->mSweepMaskLeafOrigins;
 
@@ -1738,24 +1734,6 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
 #ifdef BENCHMARK_FAST_SWEEPING
         timer.stop();
 #endif
-    // TODO: check
-    {
-    using LeafManagerT = tree::LeafManager<SdfTreeT>;
-    using LeafT = typename SdfTreeT::LeafNodeType;
-    
-    LeafManagerT leafManager(mParent->mSdfGrid->tree());
-    
-    auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
-        static const SdfValueT max = std::abs(std::numeric_limits<SdfValueT>::max());
-        for (auto voxelIter = leaf.beginValueOn(); voxelIter; ++voxelIter) {
-            const SdfValueT value = *voxelIter;
-            assert(std::abs(value) < max);
-        }
-    };
-    
-    leafManager.foreach( kernel );
-    }
-
     }// FastSweeping::SweepingKernel::sweep
 
 private:
@@ -1809,7 +1787,7 @@ fogToExt(const FogGridT &fogGrid,
 {
   FastSweeping<FogGridT, ExtValueT> fs;
   if (fs.initExt(fogGrid, op, background, isoValue, /*isInputSdf*/false, mode, extGrid))
-      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/false, /*sweepDirection*/mode);
+      fs.sweep(nIter, /*finalize*/true);
   return fs.extGrid();
 }
 
@@ -1825,7 +1803,7 @@ sdfToExt(const SdfGridT &sdfGrid,
 {
   FastSweeping<SdfGridT, ExtValueT> fs;
   if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true, mode, extGrid))
-      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/true, /*sweepDirection*/mode);
+      fs.sweep(nIter, /*finalize*/true);
   return fs.extGrid();
 }
 
@@ -1841,7 +1819,7 @@ fogToSdfAndExt(const FogGridT &fogGrid,
 {
   FastSweeping<FogGridT, ExtValueT> fs;
   if (fs.initExt(fogGrid, op, background, isoValue, /*isInputSdf*/false, mode, extGrid))
-      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/false, /*sweepDirection*/mode);
+      fs.sweep(nIter, /*finalize*/true);
   return std::make_pair(fs.sdfGrid(), fs.extGrid());
 }
 
@@ -1857,14 +1835,12 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
 {
   FastSweeping<SdfGridT, ExtValueT> fs;
   if (fs.initExt(sdfGrid, op, background, isoValue, /*isInputSdf*/true, mode, extGrid))
-      fs.sweep(nIter, /*finalize*/true, /*isInputSdf*/true, /*sweepDirection*/mode);
+      fs.sweep(nIter, /*finalize*/true);
   return std::make_pair(fs.sdfGrid(), fs.extGrid());
 }
 
 template<typename GridT>
-// TODO: for double checking
-//typename GridT::Ptr
-std::pair<typename GridT::Ptr, typename openvdb::Int32Grid::Ptr>
+typename GridT::Ptr
 dilateSdf(const GridT &sdfGrid,
           int dilation,
           NearestNeighbors nn,
@@ -1872,40 +1848,8 @@ dilateSdf(const GridT &sdfGrid,
           FastSweepingDirection mode)
 {
     FastSweeping<GridT> fs;
-    // In the case of SWEEP_GREATER_THAN_ISOVALUE or SWEEP_LESS_THAN_ISOVALUE mode,
-    // initDilate handles setting off the active values of the sdfGrid, i.e. no need
-    // to pass the mode argument to sweep.
-    if (fs.initDilate(sdfGrid, dilation, nn, mode)) fs.sweep(nIter);
-
-    // TODO: delete : check for values agreement
-    {
-        using SdfValueT = typename GridT::ValueType;
-        using SdfTreeT = typename GridT::TreeType;
-        using SdfAccT  = tree::ValueAccessor<SdfTreeT, false>;//don't register accessors
-        using SdfConstAccT  = typename tree::ValueAccessor<const SdfTreeT, false>;//don't register accessors
-        using LeafManagerT = tree::LeafManager<SdfTreeT>;
-        using LeafT = typename SdfTreeT::LeafNodeType;
-
-        static const SdfValueT Unknown = std::abs(std::numeric_limits<SdfValueT>::max());
-
-        LeafManagerT leafManager(fs.sdfGrid()->tree());
-        SdfConstAccT sdfInputAcc(sdfGrid.tree());
-    
-        auto kernel = [&](LeafT& leaf, size_t /*leafIdx*/) {
-            SdfValueT inputValue;
-            for (auto voxelIter = leaf.beginValueOn(); voxelIter; ++voxelIter) {
-                const Coord ijk = voxelIter.getCoord();
-                bool isInputOn = sdfInputAcc.probeValue(ijk, inputValue);
-                assert( std::abs(*voxelIter) < Unknown ); 
-                // std::cout << "*voxelIter - inputValue" << (*voxelIter - inputValue) << std::endl;
-            }
-        };
-    
-        leafManager.foreach( kernel );
-        
-    }
-
-    return std::make_pair(fs.sdfGrid(), fs.intGrid());
+    if (fs.initDilate(sdfGrid, dilation, nn, /*sweep direction*/ mode)) fs.sweep(nIter);
+    return fs.sdfGrid();
 }
 
 template<typename GridT, typename MaskTreeT>
