@@ -193,7 +193,7 @@ fogToExt(const FogGridT &fogGrid,
          typename FogGridT::ValueType isoValue,
          int nIter = 1,
          FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT,
-         const typename FogGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr);
+         const typename FogGridT::template ValueConverter<ExtValueT>::Type::ConstPtr extGrid = nullptr);
 
 /// @brief Computes the extension of a field (scalar, vector, or int are supported), defined
 ///        by the specified functor, off an iso-surface from an input SDF volume.
@@ -251,7 +251,7 @@ sdfToExt(const SdfGridT &sdfGrid,
          typename SdfGridT::ValueType isoValue = 0,
          int nIter = 1,
          FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT,
-         const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr);
+         const typename SdfGridT::template ValueConverter<ExtValueT>::Type::ConstPtr extGrid = nullptr);
 
 /// @brief Computes the signed distance field and the extension of a field (scalar, vector, or
 ///        int are supported), defined by the specified functor, off an iso-surface from an input
@@ -314,7 +314,7 @@ fogToSdfAndExt(const FogGridT &fogGrid,
                typename FogGridT::ValueType isoValue,
                int nIter = 1,
                FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT,
-               const typename FogGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr);
+               const typename FogGridT::template ValueConverter<ExtValueT>::Type::ConstPtr extGrid = nullptr);
 
 /// @brief Computes the signed distance field and the extension of a field (scalar, vector, or
 ///        int are supported), defined by the specified functor, off an iso-surface from an input
@@ -377,7 +377,7 @@ sdfToSdfAndExt(const SdfGridT &sdfGrid,
                typename SdfGridT::ValueType isoValue = 0,
                int nIter = 1,
                FastSweepingDirection mode = FastSweepingDirection::SWEEP_DEFAULT,
-               const typename SdfGridT::template ValueConverter<ExtValueT>::Type::Ptr extGrid = nullptr);
+               const typename SdfGridT::template ValueConverter<ExtValueT>::Type::ConstPtr extGrid = nullptr);
 
 /// @brief Dilates an existing signed distance field by a specified number of voxels
 ///
