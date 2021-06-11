@@ -835,7 +835,8 @@ void FastSweeping<SdfGridT, ExtValueT>::sweep(int nIter, bool finalize)
         OPENVDB_THROW(RuntimeError, "FastSweeping::sweep called before initialization!");
     }
     if (mExtGrid && mSweepDirection != FastSweepingDirection::SWEEP_DEFAULT && !mExtGridInput) {
-        OPENVDB_THROW(RuntimeError, "FastSweeping: Need to call initExt with the correct FastSweepingDirection mode!");
+        OPENVDB_THROW(RuntimeError, "FastSweeping: Trying to extend a field in one direction needs"
+                                     " a non-null reference extension grid input.");
     }
     if (this->boundaryVoxelCount() == 0) {
         OPENVDB_THROW(RuntimeError, "FastSweeping: No boundary voxels found!");
@@ -1558,6 +1559,11 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
         const FastSweepingDirection mode = mParent->mSweepDirection;
         const bool isInputSdf = mParent->mIsInputSdf;
 
+        // If we are using an extension in one direction, we need a reference grid
+        // for the default value of the extension for the voxels that are not
+        // intended to be updated by the sweeping algorithm.
+        if (tree2 && mode != FastSweepingDirection::SWEEP_DEFAULT) assert(tree3);
+
         const std::vector<Coord>& leafNodeOrigins = mParent->mSweepMaskLeafOrigins;
 
         int64_t voxelSliceIndex(0);
@@ -1623,8 +1629,8 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                         if (update < absV) {
                             value = sign * update;
                             if (acc2) {
-                                // Already checked mExtGridInput exists if mode != FastSweepingDirection::SWEEP_DEFAULT
-                                ExtValueT updateExt = acc2->getValue(ijk);
+                                // There is an assert upstream to check if mExtGridInput exists if mode != SWEEP_DEFAULT
+                                ExtValueT updateExt = acc2->getValue(d1(ijk));
                                 if (mode == FastSweepingDirection::SWEEP_GREATER_THAN_ISOVALUE) {
                                     if (isInputSdf) updateExt = (value >= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
                                     else updateExt = (value <= SdfValueT(0)) ? acc2->getValue(d1(ijk)) : acc3->getValue(ijk);
@@ -1706,7 +1712,6 @@ struct FastSweeping<SdfGridT, ExtValueT>::SweepingKernel
                                     else updateExt = (value >= SdfValueT(0)) ? extVal : acc3->getValue(ijk);
                                 } // SWEEP_LESS_THAN_ISOVALUE
                                 acc2->setValue(ijk, updateExt);
-
                             }//update ext?
                         }//update sdf?
                     }//test for non-negative determinant
