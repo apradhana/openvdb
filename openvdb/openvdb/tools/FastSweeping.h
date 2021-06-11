@@ -497,13 +497,12 @@ public:
     ///          method).
     typename ExtGridT::Ptr extGrid() { return mExtGrid; }
 
-
     /// @brief Returns a shared pointer to the extension grid input. This is non-NULL
     ///        if this class is used to extend a field with a non-default sweep direction.
     ///
     /// @warning This shared pointer might point to NULL. This is non-NULL
-    ///        if this class is used to extend a field with a non-default sweep direction,
-    ///        i.e. SWEEP_LESS_THAN_ISOVALUE or SWEEP_GREATER_THAN_ISOVALUE.
+    ///          if this class is used to extend a field with a non-default sweep direction,
+    ///          i.e. SWEEP_LESS_THAN_ISOVALUE or SWEEP_GREATER_THAN_ISOVALUE.
     typename ExtGridT::Ptr extGridInput() { return mExtGridInput; }
 
     /// @brief Initializer for input grids that are either a signed distance
@@ -773,12 +772,12 @@ bool FastSweeping<SdfGridT, ExtValueT>::initExt(const SdfGridT &fogGrid, const O
     this->clear();
     mSdfGrid = fogGrid.deepCopy();//very fast
     mExtGrid = createGrid<ExtGridT>( background );
-    if (mode != FastSweepingDirection::SWEEP_DEFAULT) {
+    mSweepDirection = mode;
+    mIsInputSdf = isInputSdf;
+    if (mSweepDirection != FastSweepingDirection::SWEEP_DEFAULT) {
         mExtGridInput = extGrid->deepCopy();
-        mSweepDirection = mode;
     }
     mExtGrid->topologyUnion( *mSdfGrid );//very fast
-    mIsInputSdf = isInputSdf;
     InitExt<OpT> kernel(*this);
     kernel.run(isoValue, op);
     return this->isValid();
