@@ -28,7 +28,7 @@ add_library(vdb_tool_common INTERFACE)
 # Optional components
 option(BUILD_TEST "Build unit tests" OFF)
 
-option(VDB_TOOL_USE_NANO "Compile with NanoVDB support" ON)
+option(VDB_TOOL_USE_NANO "Compile with NanoVDB support" OFF)
 option(VDB_TOOL_NANO_USE_ZIP "Compile NanoVDB with zip compression support. Requires VDB_TOOL_USE_NANO=ON to have effect" ON)
 option(VDB_TOOL_NANO_USE_BLOSC "Compile NanoVDB with Blosc compression support. Requires VDB_TOOL_USE_NANO=ON to have effect" ON)
 option(VDB_TOOL_USE_PNG "Compile with PNG support" OFF)
@@ -56,9 +56,18 @@ if(VDB_TOOL_USE_NANO)
     find_package(Blosc REQUIRED)
     target_link_libraries(vdb_tool_common INTERFACE blosc)
   endif()
-  if(OPENVDB_BUILD_NANOVDB)
-    target_include_directories(vdb_tool_common INTERFACE ../../nanovdb/)
+  if(NOT OPENVDB_BUILD_CORE)
+    # @note  Could also use the openvdb_je target here, but we just opt to
+    # handle the value of CONCURRENT_MALLOC outside of this branching for
+    # both cases
+    find_package(OpenVDB)
+    set(NANOVDB_LIB OpenVDB::nanovdb)
+  elseif(OPENVDB_BUILD_NANOVDB)
+    set(NANOVDB_LIB nanovdb)
+  else()
+    message("Please pass -DUSE_NANOVDB=ON as a cmake argument.")
   endif()
+  target_link_libraries(vdb_tool_common INTERFACE ${NANOVDB_LIB})
 endif()
 
 if(VDB_TOOL_USE_PNG)
