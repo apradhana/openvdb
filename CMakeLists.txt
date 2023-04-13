@@ -76,7 +76,7 @@ option(OPENVDB_BUILD_HOUDINI_ABITESTS "Build the Houdini ABI tests" OFF)
 option(OPENVDB_BUILD_AX "Build the OpenVDB AX library. Turns ON if USE_AX is ON." ${USE_AX})
 option(OPENVDB_BUILD_AX_UNITTESTS "Build the OpenVDB AX unit tests" OFF)
 
-option(OPENVDB_BUILD_NANOVDB "Build the NanoVDB library. Turns ON if USE_NANOVDB is ON." ${USE_NANOVDB})
+option(OPENVDB_BUILD_NANOVDB "Build the NanoVDB library. Turns ON if USE_NANOVDB is ON." ON)
 
 option(OPENVDB_BUILD_MAYA_PLUGIN "Build the Maya plugin" OFF)
 option(OPENVDB_USE_DELAYED_LOADING "Build the core OpenVDB library with delayed-loading." ON)
@@ -143,7 +143,7 @@ cmake_dependent_option(USE_PKGCONFIG "Use pkg-config to search for dependent lib
 
 option(USE_EXPLICIT_INSTANTIATION "Use explicit instantiation for all supported classes and methods against a
 pre-defined list of OpenVDB trees. This makes the core library larger and slower to compile, but speeds up
-the compilation of all dependent code by bypassing the expensive template instantation." ON)
+the compilation of all dependent code by bypassing the expensive template instantation." OFF)
 
 set(SYSTEM_LIBRARY_PATHS "" CACHE STRING [=[
 A global list of library paths to additionally use into when searching for dependencies.]=])

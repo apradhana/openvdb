@@ -28,7 +28,7 @@ add_library(vdb_tool_common INTERFACE)
 # Optional components
 option(BUILD_TEST "Build unit tests" OFF)
 
-option(OPENVDB_TOOL_USE_NANO "Compile with NanoVDB support" OFF)
+option(OPENVDB_TOOL_USE_NANO "Compile with NanoVDB support" ON)
 option(OPENVDB_TOOL_NANO_USE_ZIP "Compile NanoVDB with zip compression support. Requires OPENVDB_TOOL_USE_NANO=ON to have effect" ON)
 option(OPENVDB_TOOL_NANO_USE_BLOSC "Compile NanoVDB with Blosc compression support. Requires OPENVDB_TOOL_USE_NANO=ON to have effect" ON)
 option(OPENVDB_TOOL_USE_PNG "Compile with PNG support" OFF)
