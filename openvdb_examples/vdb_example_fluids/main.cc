@@ -16,12 +16,12 @@ class FluidSolver {
     protected:
     FluidSolver(float voxelSize)
         : mVoxelSize(voxelSize)
-    { 
+    {
         std::cout << "Fluid solver constructor" << std::endl;
     }
 
     ~FluidSolver()
-    { std::cout << "FluidSolver destructor" << std::endl;}
+    { std::cout << "FluidSolver destructor" << std::endl; }
 
     virtual void advanceOneSubstep(float const dt) = 0;
 
@@ -45,7 +45,7 @@ class FlipSolver : public FluidSolver {
     }
 
     ~FlipSolver()
-    { std::cout << "FlipSolver destructor" << std::endl;}
+    { std::cout << "FlipSolver destructor" << std::endl; }
 
     void advanceOneSubstep(float const dt) override {
         std::cout << "FlipSolver::advanceOneSubstep dt = " << dt << std::endl;
@@ -100,16 +100,16 @@ main(int argc, char *argv[])
 
     {
         FlipSolver solver(voxelSize);
-    
+
         for (int i = 0; i < numFrames; i++) {
             solver.advanceOneSubstep(dt);
             solver.writeState();
         }
     }
 
-    { 
+    {
         SmokeSolver solver(voxelSize);
-    
+
         for (int i = 0; i < numFrames; i++) {
             solver.advanceOneSubstep(dt);
             solver.writeState();
