@@ -10,42 +10,79 @@
 
 namespace openvdb_example_fluids {
 class FluidSolver {
-    void initialize() {}
-    public:
-    void advanceOneSubstep(float const dt) {
-        std::cout << "FluidSolver::advanceOneSubstep dt = " << dt << std::endl;
+    private:
+    virtual void initialize() = 0;
+
+    protected:
+    FluidSolver(float voxelSize)
+        : mVoxelSize(voxelSize)
+    { 
+        std::cout << "Fluid solver constructor" << std::endl;
     }
 
-    void writeState() {
-        std::cout << "FluidSolver::writeState" << std::endl;
-    }
+    ~FluidSolver()
+    { std::cout << "FluidSolver destructor" << std::endl;}
+
+    virtual void advanceOneSubstep(float const dt) = 0;
+
+    virtual void writeState() = 0;
+
+    protected:
+        float mVoxelSize = 0.1f;
+        // std::vector<openvdb::FloatGrid::Ptr> mColliders;
 };
 
 
-class FlipSolver {
+class FlipSolver : public FluidSolver {
     void initialize() {}
+
     public:
-    void advanceOneSubstep(float const dt) {
+
+    FlipSolver(float const voxelSize)
+        : FluidSolver{voxelSize}
+    {
+        std::cout << "FlipSolver constructor" << std::endl;
+    }
+
+    ~FlipSolver()
+    { std::cout << "FlipSolver destructor" << std::endl;}
+
+    void advanceOneSubstep(float const dt) override {
         std::cout << "FlipSolver::advanceOneSubstep dt = " << dt << std::endl;
     }
 
-    void writeState() {
+    void writeState() override {
         std::cout << "FlipSolver::writeState" << std::endl;
     }
+
+    private:
 
 };
 
 
-class SmokeSolver {
+class SmokeSolver : public FluidSolver {
     void initialize() {}
+
     public:
-    void advanceOneSubstep(float const dt) {
+
+    SmokeSolver(float const voxelSize)
+        : FluidSolver{voxelSize}
+    {
+        std::cout << "Smoke solver constructor" << std::endl;
+    }
+
+    ~SmokeSolver()
+    { std::cout << "Smoke Solver destructor" << std::endl; }
+
+    void advanceOneSubstep(float const dt) override {
         std::cout << "SmokeSolver::advanceOneSubstep dt = " << dt << std::endl;
     }
 
-    void writeState() {
+    void writeState() override {
         std::cout << "SmokeSolver::writeState" << std::endl;
     }
+
+    private:
 };
 
 } // namespace openvdb_example_fluids
@@ -54,10 +91,15 @@ int
 main(int argc, char *argv[])
 {
     using namespace openvdb_example_fluids;
+
+    openvdb::initialize();
+
     float const dt = 1.f / 24.f;
     int const numFrames = 30;
+    float const voxelSize = 0.02;
+
     {
-        FlipSolver solver;
+        FlipSolver solver(voxelSize);
     
         for (int i = 0; i < numFrames; i++) {
             solver.advanceOneSubstep(dt);
@@ -66,14 +108,11 @@ main(int argc, char *argv[])
     }
 
     { 
-        SmokeSolver solver;
+        SmokeSolver solver(voxelSize);
     
         for (int i = 0; i < numFrames; i++) {
             solver.advanceOneSubstep(dt);
             solver.writeState();
         }
     }
-
-
-    std::cout << "Hello world!" << std::endl;
 }
