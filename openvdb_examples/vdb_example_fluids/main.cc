@@ -18,16 +18,7 @@ public:
     Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 };
 
-// TO BUILD:
-// mkdir build
-// cd build
-// cmake -DOPENVDB_BUILD_EXAMPLES=ON -DOPENVDB_BUILD_VDB_EXAMPLE_FLUIDS=ON ../
-// make -j 8
-int
-main(int argc, char *argv[])
-{
-    openvdb::initialize();
-
+void openvdb_points_for_houndstooth() {
     std::vector<std::string> vdb_names = {"waterfall_100k.vdb",
 	                                  "waterfall_1mil.vdb",
 					  "waterfall_10mil.vdb"};
@@ -112,5 +103,39 @@ main(int argc, char *argv[])
         }
 	std::cout << "i = " << i << " vector length = " << vectorList.size() << std::endl;
     }
+}
 
+void foobar() {
+    // Create a VDB file object.
+    //
+    // dirichlet_bc_vdb_0.vdb
+    // source.vdb
+    openvdb::io::File file("/home/andre/dev/openvdb_aswf/_build_fluids/openvdb_examples/vdb_example_fluids/c_skin_mid.vdb");
+    // Open the file.  This reads the file header, but not any grids.
+    file.open();
+    // Loop over all grids in the file and retrieve a shared pointer
+    // to the one named "LevelSetSphere".  (This can also be done
+    // more simply by calling file.readGrid("LevelSetSphere").)
+    openvdb::GridBase::Ptr baseGrid;
+    openvdb::io::File::NameIterator nameIter = file.beginName();
+    baseGrid = file.readGrid(nameIter.gridName());
+    file.close();
+    openvdb::FloatGrid::Ptr grid = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+    std::cout << "grid->activeVoxelCount() = " << grid->activeVoxelCount() << std::endl;
+    auto xform = grid->transform();
+    xform.print();
+}
+
+// TO BUILD:
+// mkdir build
+// cd build
+// cmake -DOPENVDB_BUILD_EXAMPLES=ON -DOPENVDB_BUILD_VDB_EXAMPLE_FLUIDS=ON ../
+// make -j 8
+
+int
+main(int argc, char *argv[])
+{
+    openvdb::initialize();
+
+    foobar();
 }
