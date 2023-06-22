@@ -10,6 +10,7 @@
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
 #include <openvdb/util/logging.h>
+#include <openvdb/tree/NodeManager.h> // for post processing bool grid 
 
 class Vector3 {
 public:
@@ -105,25 +106,88 @@ void openvdb_points_for_houndstooth() {
     }
 }
 
-void foobar() {
-    // Create a VDB file object.
-    //
-    // dirichlet_bc_vdb_0.vdb
-    // source.vdb
+// https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tools/FastSweeping.h
+// struct TrueNearZeroKernel {
+//     TrueNearZeroKernel(float epsilon) : mEpsilon(epsilon) {}
+// 
+//     // Root node
+//     void operator()(typename openvdb::FloatTree::RootNodeType& node, size_t = 1) const {
+//         for (auto iter = node.beginValueAll(); iter; ++iter) {
+//             if (std::abs(*iter) < mEpsilon) {
+//                 iter.
+//             }
+//         }
+//     }
+// 
+//     // Internal nodes
+//     template<typename NodeT>
+//     void operator()(NodeT& node, size_t = 1) const
+//     {
+//         for (auto iter = node.beginValueAll(); iter; ++iter) {
+//             if (*iter == -std::numeric_limits<SdfValueT>::max()) {
+//                 iter.setValue(mMin);
+//             }
+//             if (*iter == std::numeric_limits<SdfValueT>::max()) {
+//                 iter.setValue(mMax);
+//             }
+//         }
+//     }
+// 
+//     // Leaf nodes
+//     void operator()(typename SdfTreeT::LeafNodeType& leaf, size_t = 1) const
+//     {
+//         for (auto iter = leaf.beginValueOn(); iter; ++iter) {
+//             if (*iter == -std::numeric_limits<SdfValueT>::max()) {
+//                 iter.setValue(mMin);
+//             }
+//             if (*iter == std::numeric_limits<SdfValueT>::max()) {
+//                 iter.setValue(mMax);
+//             }
+//         }
+//     }
+//   float mEpsilon;
+// };// FastSweeping::TrueNearZeroKernel
+
+
+void convertToBool() {
     openvdb::io::File file("/home/andre/dev/openvdb_aswf/_build_fluids/openvdb_examples/vdb_example_fluids/c_skin_mid.vdb");
-    // Open the file.  This reads the file header, but not any grids.
     file.open();
-    // Loop over all grids in the file and retrieve a shared pointer
-    // to the one named "LevelSetSphere".  (This can also be done
-    // more simply by calling file.readGrid("LevelSetSphere").)
     openvdb::GridBase::Ptr baseGrid;
     openvdb::io::File::NameIterator nameIter = file.beginName();
     baseGrid = file.readGrid(nameIter.gridName());
     file.close();
-    openvdb::FloatGrid::Ptr grid = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
-    std::cout << "grid->activeVoxelCount() = " << grid->activeVoxelCount() << std::endl;
-    auto xform = grid->transform();
+    openvdb::FloatGrid::Ptr sdf = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+
+    openvdb::BoolTree bTree(sdf->tree(), false, openvdb::TopologyCopy());
+
+    std::cout << "sdf->activeVoxelCount() = " << sdf->activeVoxelCount() << std::endl;
+    auto xform = sdf->transform();
     xform.print();
+}
+
+void foobar() {
+    using TreeType = typename openvdb::FloatGrid::TreeType;
+    using RootNodeType = typename TreeType::RootNodeType;
+    using NodeChainType = typename RootNodeType::NodeChainType;
+    using InternalUpperNodeType = typename NodeChainType::template Get<2>; // Upper internal node
+    using InternalLowerNodeType = typename NodeChainType::template Get<1>; // Lower internal node
+    using LeafNodeType = typename NodeChainType::template Get<0>; // Leaf node
+
+    openvdb::FloatGrid::Ptr grid = openvdb::FloatGrid::create(10.0);
+    openvdb::FloatGrid::Accessor accessor = grid->getAccessor();
+    openvdb::Coord xyz(0, 0, 0);
+    accessor.setValue(xyz, 1.0);
+
+    std::vector<const InternalLowerNodeType *> lowerNodes;
+    std::vector<const InternalUpperNodeType *> upperNodes;
+    std::vector<const LeafNodeType *> leafNodes;
+    (grid->tree()).getNodes(upperNodes);
+    (grid->tree()).getNodes(lowerNodes);
+    (grid->tree()).getNodes(leafNodes);
+    std::cout << "upperNodes.size() = " << upperNodes.size() << "\tupperNodes[0]->LOG2DIM = " << upperNodes[0]->LOG2DIM << std::endl;
+    std::cout << "lowerNodes.size() = " << lowerNodes.size() << "\tlowerNodes[0]->LOG2DIM = " << lowerNodes[0]->LOG2DIM << std::endl;
+    std::cout << "leafNodes.size() = " << leafNodes.size() << "\tleafNodes[0]->LOG2DIM = " << leafNodes[0]->LOG2DIM << std::endl;
+
 }
 
 // TO BUILD:
