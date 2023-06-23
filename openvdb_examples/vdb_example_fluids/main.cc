@@ -107,65 +107,57 @@ void openvdb_points_for_houndstooth() {
 }
 
 // https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tools/FastSweeping.h
-// struct TrueNearZeroKernel {
-//     TrueNearZeroKernel(float epsilon) : mEpsilon(epsilon) {}
-// 
-//     // Root node
-//     void operator()(typename openvdb::FloatTree::RootNodeType& node, size_t = 1) const {
-//         for (auto iter = node.beginValueAll(); iter; ++iter) {
-//             if (std::abs(*iter) < mEpsilon) {
-//                 iter.
-//             }
-//         }
-//     }
-// 
-//     // Internal nodes
-//     template<typename NodeT>
-//     void operator()(NodeT& node, size_t = 1) const
-//     {
-//         for (auto iter = node.beginValueAll(); iter; ++iter) {
-//             if (*iter == -std::numeric_limits<SdfValueT>::max()) {
-//                 iter.setValue(mMin);
-//             }
-//             if (*iter == std::numeric_limits<SdfValueT>::max()) {
-//                 iter.setValue(mMax);
-//             }
-//         }
-//     }
-// 
-//     // Leaf nodes
-//     void operator()(typename SdfTreeT::LeafNodeType& leaf, size_t = 1) const
-//     {
-//         for (auto iter = leaf.beginValueOn(); iter; ++iter) {
-//             if (*iter == -std::numeric_limits<SdfValueT>::max()) {
-//                 iter.setValue(mMin);
-//             }
-//             if (*iter == std::numeric_limits<SdfValueT>::max()) {
-//                 iter.setValue(mMax);
-//             }
-//         }
-//     }
-//   float mEpsilon;
-// };// FastSweeping::TrueNearZeroKernel
+struct TrueNearZeroKernel {
+    TrueNearZeroKernel(float epsilon, openvdb::FloatGrid::Ptr sdf) : mEpsilon(epsilon), mSdf(sdf) {}
 
+    // Root node, internal nodes, and leaf nodes
+    template<typename NodeT>
+    void operator()(NodeT& node, size_t = 1) const
+    {
+        openvdb::FloatGrid::Accessor acc = mSdf->getAccessor();
+        for (auto iter = node.beginValueAll(); iter; ++iter) {
+            auto const ijk = iter.getCoord();
+            if (std::abs(acc.getValue(ijk)) < mEpsilon) {
+                iter.setValue(true);
+            } else {
+                iter.setValue(false);
+            }
+        }
+    }
+
+  float mEpsilon;
+  openvdb::FloatGrid::Ptr mSdf;
+};// TrueNearZeroKernel
 
 void convertToBool() {
-    openvdb::io::File file("/home/andre/dev/openvdb_aswf/_build_fluids/openvdb_examples/vdb_example_fluids/c_skin_mid.vdb");
-    file.open();
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_build_fluids/openvdb_examples/vdb_example_fluids/c_skin_mid_vs1.vdb");
+    fileSrc.open();
     openvdb::GridBase::Ptr baseGrid;
-    openvdb::io::File::NameIterator nameIter = file.beginName();
-    baseGrid = file.readGrid(nameIter.gridName());
-    file.close();
+    openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
     openvdb::FloatGrid::Ptr sdf = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
 
-    openvdb::BoolTree bTree(sdf->tree(), false, openvdb::TopologyCopy());
+    auto voxelSize = sdf->voxelSize();
 
-    std::cout << "sdf->activeVoxelCount() = " << sdf->activeVoxelCount() << std::endl;
-    auto xform = sdf->transform();
-    xform.print();
+    // Create a boolgrid that is true near the zero iso-contour of the level-set
+    openvdb::BoolGrid::Ptr bGrid = openvdb::BoolGrid::create(false);
+    bGrid->tree().topologyUnion(sdf->tree());// = bTree; 
+    std::cout << "bTree.activeVoxelCount() = " << bGrid->tree().activeVoxelCount() << std::endl;
+    openvdb::tree::NodeManager<openvdb::BoolTree> nodeManager(bGrid->tree());
+    TrueNearZeroKernel op(voxelSize.length(), sdf);
+    nodeManager.foreachTopDown(op, true /* = threaded*/, 1 /* = grainSize*/);
+    bGrid->setTransform(sdf->transform().copy());
+
+    // Write boolgrid to a file 
+    openvdb::io::File file("boolgrid.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(bGrid);
+    file.write(grids);
+    file.close();
 }
 
-void foobar() {
+void simpleGettingNodes() {
     using TreeType = typename openvdb::FloatGrid::TreeType;
     using RootNodeType = typename TreeType::RootNodeType;
     using NodeChainType = typename RootNodeType::NodeChainType;
@@ -187,7 +179,12 @@ void foobar() {
     std::cout << "upperNodes.size() = " << upperNodes.size() << "\tupperNodes[0]->LOG2DIM = " << upperNodes[0]->LOG2DIM << std::endl;
     std::cout << "lowerNodes.size() = " << lowerNodes.size() << "\tlowerNodes[0]->LOG2DIM = " << lowerNodes[0]->LOG2DIM << std::endl;
     std::cout << "leafNodes.size() = " << leafNodes.size() << "\tleafNodes[0]->LOG2DIM = " << leafNodes[0]->LOG2DIM << std::endl;
+}
 
+void foobar() {
+    std::cout << "foobar begins" << std::endl;
+
+    std::cout << "foobar ends" << std::endl;
 }
 
 // TO BUILD:
@@ -201,5 +198,5 @@ main(int argc, char *argv[])
 {
     openvdb::initialize();
 
-    foobar();
+    convertToBool();
 }
