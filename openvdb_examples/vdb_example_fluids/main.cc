@@ -107,8 +107,8 @@ void openvdb_points_for_houndstooth() {
 }
 
 // https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tools/FastSweeping.h
-struct TrueNearZeroKernel {
-    TrueNearZeroKernel(float epsilon, openvdb::FloatGrid::Ptr sdf) : mEpsilon(epsilon), mSdf(sdf) {}
+struct SetTrueNearNarrowBandKernel {
+    SetTrueNearNarrowBandKernel(float epsilon, openvdb::FloatGrid::Ptr sdf) : mEpsilon(epsilon), mSdf(sdf) {}
 
     // Root node, internal nodes, and leaf nodes
     template<typename NodeT>
@@ -127,10 +127,10 @@ struct TrueNearZeroKernel {
 
   float mEpsilon;
   openvdb::FloatGrid::Ptr mSdf;
-};// TrueNearZeroKernel
+};// SetTrueNearNarrowBandKernel
 
 void convertToBool() {
-    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_build_fluids/openvdb_examples/vdb_example_fluids/c_skin_mid_vs1.vdb");
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny.vdb");
     fileSrc.open();
     openvdb::GridBase::Ptr baseGrid;
     openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
@@ -142,10 +142,9 @@ void convertToBool() {
 
     // Create a boolgrid that is true near the zero iso-contour of the level-set
     openvdb::BoolGrid::Ptr bGrid = openvdb::BoolGrid::create(false);
-    bGrid->tree().topologyUnion(sdf->tree());// = bTree; 
-    std::cout << "bTree.activeVoxelCount() = " << bGrid->tree().activeVoxelCount() << std::endl;
+    bGrid->tree().topologyUnion(sdf->tree()); 
     openvdb::tree::NodeManager<openvdb::BoolTree> nodeManager(bGrid->tree());
-    TrueNearZeroKernel op(voxelSize.length(), sdf);
+    SetTrueNearNarrowBandKernel op(voxelSize.length(), sdf);
     nodeManager.foreachTopDown(op, true /* = threaded*/, 1 /* = grainSize*/);
     bGrid->setTransform(sdf->transform().copy());
 
