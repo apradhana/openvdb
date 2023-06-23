@@ -10,7 +10,7 @@
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
 #include <openvdb/util/logging.h>
-#include <openvdb/tree/NodeManager.h> // for post processing bool grid 
+#include <openvdb/tree/NodeManager.h> // for post processing bool grid
 
 class Vector3 {
 public:
@@ -41,7 +41,7 @@ void openvdb_points_for_houndstooth() {
 	std::cout << "Writing " << vdb_name << std::endl;
 
         std::ofstream outputFile(output_name.c_str());
-    
+
         openvdb::io::File file(vdb_name.c_str());
         // Open the file. This reads the file header, but not any grids.
         file.open();
@@ -77,7 +77,6 @@ void openvdb_points_for_houndstooth() {
         outputFile.close();
     } // LENGTH
 
-    
     for (int i = 0; i < LENGTH; ++i) {
 	std::string file_name = output_names[i];
         std::ifstream inputFile(file_name.c_str());
@@ -142,13 +141,13 @@ void convertToBool() {
 
     // Create a boolgrid that is true near the zero iso-contour of the level-set
     openvdb::BoolGrid::Ptr bGrid = openvdb::BoolGrid::create(false);
-    bGrid->tree().topologyUnion(sdf->tree()); 
+    bGrid->tree().topologyUnion(sdf->tree());
     openvdb::tree::NodeManager<openvdb::BoolTree> nodeManager(bGrid->tree());
     SetTrueNearNarrowBandKernel op(voxelSize.length(), sdf);
     nodeManager.foreachTopDown(op, true /* = threaded*/, 1 /* = grainSize*/);
     bGrid->setTransform(sdf->transform().copy());
 
-    // Write boolgrid to a file 
+    // Write boolgrid to a file
     openvdb::io::File file("boolgrid.vdb");
     openvdb::GridPtrVec grids;
     grids.push_back(bGrid);
