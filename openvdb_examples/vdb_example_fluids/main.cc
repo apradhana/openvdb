@@ -4,13 +4,18 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <string>
 #include <vector>
+
 #include <openvdb/openvdb.h>
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
 #include <openvdb/util/logging.h>
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
+
+
+using namespace openvdb;
 
 class Vector3 {
 public:
@@ -21,12 +26,12 @@ public:
 
 void openvdb_points_for_houndstooth() {
     std::vector<std::string> vdb_names = {"waterfall_100k.vdb",
-	                                  "waterfall_1mil.vdb",
-					  "waterfall_10mil.vdb"};
+                                          "waterfall_1mil.vdb",
+                                          "waterfall_10mil.vdb"};
 
     std::vector<std::string> output_names = {"waterfall_100k.txt",
-	                                     "waterfall_1mil.txt",
-					     "waterfall_10mil.txt"};
+                                             "waterfall_1mil.txt",
+                                             "waterfall_10mil.txt"};
 
     std::vector<int> point_numbers = {100000, 1000000, 10000000};
 
@@ -35,10 +40,10 @@ void openvdb_points_for_houndstooth() {
     // WRITE TO FILES
     for (int i = 0; i < LENGTH; ++i) {
 
-	auto const vdb_name = vdb_names[i];
-	auto const output_name = output_names[i];
+        auto const vdb_name = vdb_names[i];
+        auto const output_name = output_names[i];
 
-	std::cout << "Writing " << vdb_name << std::endl;
+        std::cout << "Writing " << vdb_name << std::endl;
 
         std::ofstream outputFile(output_name.c_str());
 
@@ -71,14 +76,14 @@ void openvdb_points_for_houndstooth() {
                 openvdb::Vec3f worldPosition =
                     grid->transform().indexToWorld(voxelPosition + xyz);
                 // Verify the index and world-space position of the point
-		outputFile << worldPosition[0] << "," << worldPosition[1] << "," << worldPosition[2] << "\n";
+                outputFile << worldPosition[0] << "," << worldPosition[1] << "," << worldPosition[2] << "\n";
             }
         } // leafIter
         outputFile.close();
     } // LENGTH
 
     for (int i = 0; i < LENGTH; ++i) {
-	std::string file_name = output_names[i];
+        std::string file_name = output_names[i];
         std::ifstream inputFile(file_name.c_str());
         std::string line;
         std::vector<Vector3> vectorList;
@@ -101,7 +106,7 @@ void openvdb_points_for_houndstooth() {
 
             inputFile.close();
         }
-	std::cout << "i = " << i << " vector length = " << vectorList.size() << std::endl;
+        std::cout << "i = " << i << " vector length = " << vectorList.size() << std::endl;
     }
 }
 
@@ -179,9 +184,136 @@ void simpleGettingNodes() {
     std::cout << "leafNodes.size() = " << leafNodes.size() << "\tleafNodes[0]->LOG2DIM = " << leafNodes[0]->LOG2DIM << std::endl;
 }
 
+void createUnitBox() {
+    using std::sin;
+    float const voxelSize = 0.05;
+    openvdb::math::Transform::Ptr xform = openvdb::math::Transform::createLinearTransform(voxelSize);
+    Vec3f const minWorld(0.0, 0.0, 0.0);
+    Vec3f const maxWorld(1.0, 1.0, 1.0);
+    Coord minIndex = xform->worldToIndexCellCentered(minWorld);
+    Coord maxIndex = xform->worldToIndexCellCentered(maxWorld);
+
+    FloatGrid::Ptr floatGrid = FloatGrid::create(/*bg = */0.0);
+    floatGrid->denseFill(CoordBBox(minIndex, maxIndex), /*value = */ 1.0, /*active = */ true);
+    floatGrid->setTransform(xform->copy());
+    floatGrid->setName("grid");
+
+    auto acc = floatGrid->getAccessor();
+    for (auto iter = floatGrid->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto p = xform->indexToWorld(ijk);
+        auto x = p[0]; auto y = p[1]; auto z = p[2];
+
+        std::cout << "worldspace = " << xform->indexToWorld(ijk) << std::endl;
+    }
+
+    // Write boolgrid to a file
+    openvdb::io::File file("floatgrid.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(floatGrid);
+    file.write(grids);
+    file.close();
+}
+
+// Wrapper class for creating a all the VDBs needed for the input of
+// using the Heat Method.
+struct HeatMethod {
+    using Coord = openvdb::Coord;
+    using Int32Grid = openvdb::Int32Grid;
+    using Transform = openvdb::math::Transform;
+    using File = openvdb::io::File;
+    using GridPtrVec = openvdb::GridPtrVec;
+
+    HeatMethod(float voxelSize) :
+        mVoxelSize(voxelSize)
+    {}
+
+    // Returns an int grid for the flags.
+    // Also write the grid to a file.
+    // Dirichlet = 4
+    // Interior = 1
+    // Neumann = 0
+    openvdb::Int32Grid::Ptr createFlags()
+    {
+        Transform::Ptr xform = openvdb::math::Transform::createLinearTransform(mVoxelSize);
+        Coord minIndex = xform->worldToIndexCellCentered(mMinBBox);
+        Coord maxIndex = xform->worldToIndexCellCentered(mMaxBBox);
+
+        Int32Grid::Ptr grid = Int32Grid::create(/*bg = */0.0);
+        grid->denseFill(CoordBBox(minIndex, maxIndex), /*value = interior = */ 1, /*active = */ true);
+        for (auto iter = grid->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            auto p = xform->indexToWorld(ijk);
+            auto x = p[0]; auto y = p[1]; auto z = p[2];
+
+            if (std::abs(x) < mEps || std::abs(1 - x) < mEps
+                || std::abs(y) < mEps || std::abs(1 - y) < mEps
+                || std::abs(z) < mEps || std::abs(1 - z) < mEps) {
+                    iter.setValue(4);
+            }
+        }
+
+        grid->setTransform(xform->copy());
+        grid->setName("flags");
+
+        // Write boolgrid to a file
+        openvdb::io::File file("flagsHeat.vdb");
+        openvdb::GridPtrVec grids;
+        grids.push_back(grid);
+        file.write(grids);
+        file.close();
+
+        return grid;
+    }
+
+    // Returns a float grid with the boundary condition.
+    openvdb::FloatGrid::Ptr createDirichletBC()
+    {
+        using std::sin;
+
+        openvdb::math::Transform::Ptr xform = openvdb::math::Transform::createLinearTransform(mVoxelSize);
+        Coord minIndex = xform->worldToIndexCellCentered(mMinBBox);
+        Coord maxIndex = xform->worldToIndexCellCentered(mMaxBBox);
+
+        FloatGrid::Ptr grid = FloatGrid::create(/*bg = */0.0);
+        grid->denseFill(CoordBBox(minIndex, maxIndex), /*value = */ 0, /*active = */ true);
+        grid->setTransform(xform->copy());
+        grid->setName("dirichlet_bc");
+
+        for (auto iter = grid->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            auto p = xform->indexToWorld(ijk);
+            auto x = p[0]; auto y = p[1]; auto z = p[2];
+
+            if (std::abs(x) < mEps || std::abs(1 - x) < mEps
+                || std::abs(y) < mEps || std::abs(1 - y) < mEps
+                || std::abs(z) < mEps || std::abs(1 - z) < mEps) {
+                    float const val = sin(M_PI * (x + y + z) / 3.0) + x * y * z;
+                    iter.setValue(val);
+            }
+        }
+        // Write boolgrid to a file
+        openvdb::io::File file("dirichletBCHeat.vdb");
+        openvdb::GridPtrVec grids;
+        grids.push_back(grid);
+        file.write(grids);
+        file.close();
+
+        return grid;
+    }
+
+    float mVoxelSize = 0.05;
+    float mEps = 1.0e-5;
+    Vec3f mMinBBox = Vec3f(0.0, 0.0, 0.0);
+    Vec3f mMaxBBox = Vec3f(1.0, 1.0, 1.0);
+}; // HeatMethod
+
+
 void foobar() {
     std::cout << "foobar begins" << std::endl;
-
+    HeatMethod hm(0.1f);
+    hm.createFlags();
+    hm.createDirichletBC();
     std::cout << "foobar ends" << std::endl;
 }
 
@@ -190,11 +322,11 @@ void foobar() {
 // cd build
 // cmake -DOPENVDB_BUILD_EXAMPLES=ON -DOPENVDB_BUILD_VDB_EXAMPLE_FLUIDS=ON ../
 // make -j 8
-
 int
 main(int argc, char *argv[])
 {
     openvdb::initialize();
 
-    convertToBool();
+    //createUnitBox();
+    foobar();
 }
