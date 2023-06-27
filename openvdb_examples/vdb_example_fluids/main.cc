@@ -196,6 +196,29 @@ struct SetTrueNearNarrowBandKernel {
   openvdb::FloatGrid::Ptr mSdf;
 };// SetTrueNearNarrowBandKernel
 
+
+struct SetZeroNearNarrowBandKernel {
+    SetZeroNearNarrowBandKernel(float epsilon, openvdb::FloatGrid::Ptr sdf) : mEpsilon(epsilon), mSdf(sdf) {}
+
+    // Root node, internal nodes, and leaf nodes
+    template<typename NodeT>
+    void operator()(NodeT& node, size_t = 1) const
+    {
+        openvdb::FloatGrid::Accessor acc = mSdf->getAccessor();
+        for (auto iter = node.beginValueAll(); iter; ++iter) {
+            auto const ijk = iter.getCoord();
+            if (std::abs(acc.getValue(ijk)) < mEpsilon) {
+                iter.setValue(0.0f);
+            } else {
+                iter.setValue(1.0);
+            }
+        }
+    }
+
+  float mEpsilon;
+  openvdb::FloatGrid::Ptr mSdf;
+};// SetZeroNearNarrowBandKernel
+
 void convertToBool() {
     openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny.vdb");
     fileSrc.open();
@@ -219,6 +242,34 @@ void convertToBool() {
     openvdb::io::File file("boolgrid.vdb");
     openvdb::GridPtrVec grids;
     grids.push_back(bGrid);
+    file.write(grids);
+    file.close();
+}
+
+
+void convertToOnesAndZeros() {
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny.vdb");
+    fileSrc.open();
+    openvdb::GridBase::Ptr baseGrid;
+    openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
+    openvdb::FloatGrid::Ptr sdf = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+
+    auto voxelSize = sdf->voxelSize();
+
+    // Create a boolgrid that is true near the zero iso-contour of the level-set
+    openvdb::FloatGrid::Ptr grid = openvdb::FloatGrid::create(1.0f);
+    grid->tree().topologyUnion(sdf->tree());
+    openvdb::tree::NodeManager<openvdb::FloatTree> nodeManager(grid->tree());
+    SetZeroNearNarrowBandKernel op(voxelSize.length(), sdf);
+    nodeManager.foreachTopDown(op, true /* = threaded*/, 1 /* = grainSize*/);
+    grid->setTransform(sdf->transform().copy());
+
+    // Write boolgrid to a file
+    openvdb::io::File file("zero_one_grid.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(grid);
     file.write(grids);
     file.close();
 }
@@ -380,8 +431,9 @@ void foobar() {
     std::cout << "foobar ends" << std::endl;
 }
 
-void bla() {
-    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny_cloud.vdb");
+void testFogToSdf() {
+    // openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny_cloud.vdb");
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_build_google_groups/openvdb_examples/vdb_example_fluids/fog_test.vdb");
     fileSrc.open();
     openvdb::GridBase::Ptr baseGrid;
     openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
@@ -390,11 +442,12 @@ void bla() {
     openvdb::FloatGrid::Ptr fog = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
     
     auto voxelSize = fog->voxelSize();
-    auto sdf = openvdb::tools::fogToSdf(*fog, 0.5 /* = isoValue */, 10 /* = iter */);
+    auto sdf = openvdb::tools::fogToSdf(*fog, 0.5 /* = isoValue */, 500 /* = iter */);
     sdf->setTransform(fog->transform().copy());
     sdf->setName("sdf");
 
-    openvdb::io::File file("bunny_sdf.vdb");
+
+    openvdb::io::File file("bunny_sdf_3.vdb");
     openvdb::GridPtrVec grids;
     grids.push_back(sdf);
     file.write(grids);
@@ -413,5 +466,5 @@ main(int argc, char *argv[])
 
     //createUnitBox();
     //foobar();
-    bla();
+    convertToOnesAndZeros();
 }
