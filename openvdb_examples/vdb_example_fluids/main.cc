@@ -25,6 +25,68 @@ public:
     Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 };
 
+class SmokeSolver {
+    SmokeSolver();
+
+    void initialize();
+
+    void substep(float const dt);
+
+    void render();
+
+    void updateEmitters();
+
+    void pressureProjection();
+
+    void advectVelocity();
+
+    void advectDensity();
+
+    void vorticityConfinement();
+
+private:
+    openvdb::FloatGrid::Ptr mDensity;
+    std::vector<openvdb::FloatGrid::Ptr> mColliders;
+    openvdb::Vec3SGrid::Ptr vCurr;
+    openvdb::Vec3SGrid::Ptr vNext;
+};
+
+SmokeSolver::SmokeSolver() {}
+
+void
+SmokeSolver::initialize() {
+}
+
+void
+SmokeSolver::updateEmitters() {
+}
+
+void
+SmokeSolver::pressureProjection() {
+}
+
+void
+SmokeSolver::vorticityConfinement() {
+
+}
+
+void
+SmokeSolver::substep(float const dt) {
+    this->updateEmitters();
+    this->pressureProjection();
+    this->pressureCorrection();
+    this->advect();
+    this->vorticityConfinement();
+}
+
+void
+SmokeSolver::render() {
+    float const dt = 1.0e-3;
+    for (int i = 0; i < 100; ++i) {
+        substep(dt);
+    }
+}
+
 void openvdb_points_for_houndstooth() {
     std::vector<std::string> vdb_names = {"waterfall_100k.vdb",
                                           "waterfall_1mil.vdb",
