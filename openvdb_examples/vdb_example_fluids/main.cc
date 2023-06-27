@@ -12,6 +12,7 @@
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
 #include <openvdb/util/logging.h>
+#include <openvdb/tools/FastSweeping.h>
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
 
 
@@ -317,6 +318,27 @@ void foobar() {
     std::cout << "foobar ends" << std::endl;
 }
 
+void bla() {
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/bunny_cloud.vdb");
+    fileSrc.open();
+    openvdb::GridBase::Ptr baseGrid;
+    openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
+    openvdb::FloatGrid::Ptr fog = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+    
+    auto voxelSize = fog->voxelSize();
+    auto sdf = openvdb::tools::fogToSdf(*fog, 0.5 /* = isoValue */, 10 /* = iter */);
+    sdf->setTransform(fog->transform().copy());
+    sdf->setName("sdf");
+
+    openvdb::io::File file("bunny_sdf.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(sdf);
+    file.write(grids);
+    file.close();
+}
+
 // TO BUILD:
 // mkdir build
 // cd build
@@ -328,5 +350,6 @@ main(int argc, char *argv[])
     openvdb::initialize();
 
     //createUnitBox();
-    foobar();
+    //foobar();
+    bla();
 }
