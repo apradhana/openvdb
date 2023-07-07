@@ -26,6 +26,7 @@ public:
 };
 
 class SmokeSolver {
+public:
     SmokeSolver();
 
     void initialize();
@@ -44,17 +45,30 @@ class SmokeSolver {
 
     void vorticityConfinement();
 
+    void writeVDBs(int const frame);
+    void writeSubstep(int const subframe);
+
 private:
     openvdb::FloatGrid::Ptr mDensity;
     std::vector<openvdb::FloatGrid::Ptr> mColliders;
-    openvdb::Vec3SGrid::Ptr vCurr;
-    openvdb::Vec3SGrid::Ptr vNext;
+    openvdb::Vec3SGrid::Ptr mVCurr;
+    openvdb::Vec3SGrid::Ptr mVNext;
 };
 
-SmokeSolver::SmokeSolver() {}
+SmokeSolver::SmokeSolver() {
+    this->initialize();
+}
 
 void
 SmokeSolver::initialize() {
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/sphere_fog.vdb");
+    fileSrc.open();
+    openvdb::GridBase::Ptr baseGrid;
+    openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
+    mDensity = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+    mDensity->setName("density");
 }
 
 void
@@ -66,6 +80,16 @@ SmokeSolver::pressureProjection() {
 }
 
 void
+SmokeSolver::advectDensity() {
+
+}
+
+void
+SmokeSolver::advectVelocity() {
+
+}
+
+void
 SmokeSolver::vorticityConfinement() {
 
 }
@@ -74,17 +98,36 @@ void
 SmokeSolver::substep(float const dt) {
     this->updateEmitters();
     this->pressureProjection();
-    this->pressureCorrection();
-    this->advect();
+    this->advectVelocity();
+    this->advectDensity();
     this->vorticityConfinement();
 }
 
 void
 SmokeSolver::render() {
     float const dt = 1.0e-3;
-    for (int i = 0; i < 100; ++i) {
+    for (int frame = 0; frame < 100; ++frame) {
         substep(dt);
+        this->writeVDBs(frame);
     }
+}
+
+void
+SmokeSolver::writeVDBs(int const frame) {
+    std::ostringstream ss;
+    ss << "smoke_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    std::string fileName(ss.str());
+    openvdb::io::File file(fileName.c_str());
+
+    openvdb::GridPtrVec grids;
+    grids.push_back(mDensity);
+    grids.push_back(mVCurr);
+    file.write(grids);
+    file.close();
+}
+
+void
+SmokeSolver::writeSubstep(int const frame) {
 }
 
 void openvdb_points_for_houndstooth() {
@@ -467,4 +510,6 @@ main(int argc, char *argv[])
     //createUnitBox();
     //foobar();
     convertToOnesAndZeros();
+    SmokeSolver solver;
+    solver.render();
 }
