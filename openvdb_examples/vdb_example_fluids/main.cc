@@ -64,11 +64,27 @@ SmokeSolver::initialize() {
     openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/sphere_fog.vdb");
     fileSrc.open();
     openvdb::GridBase::Ptr baseGrid;
-    openvdb::io::File::NameIterator nameIter = fileSrc.beginName();
+    auto nameIter = fileSrc.beginName();
     baseGrid = fileSrc.readGrid(nameIter.gridName());
     fileSrc.close();
     mDensity = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
     mDensity->setName("density");
+
+    openvdb::io::File fileBB("/home/andre/dev/openvdb_aswf/_data/bounding_box.vdb");
+    fileBB.open();
+    openvdb::GridBase::Ptr bbBaseGrid;
+    auto bbNameIter = fileBB.beginName();
+    bbBaseGrid = fileBB.readGrid(bbNameIter.gridName());
+    fileBB.close();
+    openvdb::FloatGrid::Ptr fogBB = openvdb::gridPtrCast<openvdb::FloatGrid>(bbBaseGrid);
+    mVCurr = openvdb::Vec3SGrid::create(openvdb::Vec3s(0.f, 1.f, 0.f));
+    mVCurr->setTransform(mDensity->transform().copy());
+    mVCurr->tree().topologyUnion(fogBB->tree());
+    auto acc = mVCurr->getAccessor();
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        acc.setValue(iter.getCoord(), openvdb::Vec3s(0, 1, 0));
+    }
+    mVCurr->setName("velocity");
 }
 
 void
