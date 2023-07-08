@@ -14,8 +14,8 @@
 #include <openvdb/util/logging.h>
 #include <openvdb/tools/FastSweeping.h>
 #include <openvdb/tools/Composite.h> // for tools::compMax
+#include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
-
 
 using namespace openvdb;
 
@@ -106,7 +106,24 @@ SmokeSolver::pressureProjection() {
 
 void
 SmokeSolver::advectDensity() {
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid>;
+    using SamplerT = openvdb::tools::Sampler<1>;
 
+    AdvT advection(*mVCurr);
+    advection.setIntegrator(tools::Scheme::MAC);
+
+    auto const& xform = mDensity->transform();
+    auto const minCoord = xform.worldToIndexCellCentered(Vec3f(-.5f, 0.f, -.5f));
+    auto const maxCoord = xform.worldToIndexCellCentered(Vec3f(.5f, 3.f, .5f));
+    BoolGrid::Ptr mask = BoolGrid::create(false);
+    mask->fill(CoordBBox(minCoord, maxCoord), true);
+    mask->setTransform(mDensity->transform().copy());
+
+    for (int i = 1; i <= 240; ++i)
+    {
+        auto newDensity = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensity, *mask, .1f);
+        mDensity = newDensity;
+    }
 }
 
 void
@@ -132,6 +149,7 @@ void
 SmokeSolver::render() {
     float const dt = 1.0e-3;
     for (int frame = 0; frame < 100; ++frame) {
+        std::cout << "frame = " << frame << "\n";
         substep(dt);
         this->writeVDBs(frame);
     }
