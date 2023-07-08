@@ -13,6 +13,7 @@
 #include <openvdb/points/PointCount.h>
 #include <openvdb/util/logging.h>
 #include <openvdb/tools/FastSweeping.h>
+#include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
 
 
@@ -89,6 +90,14 @@ SmokeSolver::initialize() {
 
 void
 SmokeSolver::updateEmitters() {
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/sphere_fog.vdb");
+    fileSrc.open();
+    openvdb::GridBase::Ptr baseGrid;
+    auto nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
+    openvdb::FloatGrid::Ptr densitySrc = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+    openvdb::tools::compMax(*mDensity /* result grid */, *densitySrc);
 }
 
 void
