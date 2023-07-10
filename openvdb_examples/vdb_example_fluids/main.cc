@@ -40,14 +40,13 @@ public:
 
     void pressureProjection();
 
-    void advectVelocity();
+    void advectVelocity(float const dt);
 
-    void advectDensity();
+    void advectDensity(float const dt);
 
     void vorticityConfinement();
 
     void writeVDBs(int const frame);
-    void writeSubstep(int const subframe);
 
 private:
     openvdb::FloatGrid::Ptr mDensity;
@@ -105,7 +104,7 @@ SmokeSolver::pressureProjection() {
 }
 
 void
-SmokeSolver::advectDensity() {
+SmokeSolver::advectDensity(float const dt) {
     using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid>;
     using SamplerT = openvdb::tools::Sampler<1>;
 
@@ -119,15 +118,12 @@ SmokeSolver::advectDensity() {
     mask->fill(CoordBBox(minCoord, maxCoord), true);
     mask->setTransform(mDensity->transform().copy());
 
-    for (int i = 1; i <= 240; ++i)
-    {
-        auto newDensity = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensity, *mask, .1f);
-        mDensity = newDensity;
-    }
+    auto newDensity = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensity, *mask, dt);
+    mDensity = newDensity;
 }
 
 void
-SmokeSolver::advectVelocity() {
+SmokeSolver::advectVelocity(float const dt) {
 
 }
 
@@ -140,14 +136,14 @@ void
 SmokeSolver::substep(float const dt) {
     this->updateEmitters();
     this->pressureProjection();
-    this->advectVelocity();
-    this->advectDensity();
+    this->advectVelocity(dt);
+    this->advectDensity(dt);
     this->vorticityConfinement();
 }
 
 void
 SmokeSolver::render() {
-    float const dt = 1.0e-3;
+    float const dt = 0.1f;
     for (int frame = 0; frame < 100; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
@@ -167,10 +163,6 @@ SmokeSolver::writeVDBs(int const frame) {
     grids.push_back(mVCurr);
     file.write(grids);
     file.close();
-}
-
-void
-SmokeSolver::writeSubstep(int const frame) {
 }
 
 void openvdb_points_for_houndstooth() {
