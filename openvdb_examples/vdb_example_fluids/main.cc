@@ -518,7 +518,7 @@ void testFogToSdf() {
     baseGrid = fileSrc.readGrid(nameIter.gridName());
     fileSrc.close();
     openvdb::FloatGrid::Ptr fog = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
-    
+
     auto voxelSize = fog->voxelSize();
     auto sdf = openvdb::tools::fogToSdf(*fog, 0.5 /* = isoValue */, 500 /* = iter */);
     sdf->setTransform(fog->transform().copy());
