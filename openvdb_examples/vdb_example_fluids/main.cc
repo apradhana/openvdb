@@ -15,6 +15,7 @@
 #include <openvdb/tools/FastSweeping.h>
 #include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
+#include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
 
 using namespace openvdb;
@@ -48,6 +49,20 @@ public:
 
     void writeVDBs(int const frame);
 
+ 
+    struct BoundaryOp {
+        void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
+            double& source, double& diagonal) const
+        {
+            if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
+                // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
+                const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
+                if (dy > 0) source -= 1.0;
+                else diagonal -= 1.0;
+            }
+        }
+    };
+
 private:
     openvdb::FloatGrid::Ptr mDensity;
     std::vector<openvdb::FloatGrid::Ptr> mColliders;
@@ -58,6 +73,61 @@ private:
 SmokeSolver::SmokeSolver() {
     this->initialize();
 }
+
+struct BoundaryOp {
+    void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
+        double& source, double& diagonal) const
+    {
+        // Boundary conditions:
+        // (-X) - Dirichlet, sin(y/5)
+        // (+X) - Dirichlet, -sin(y/5)
+        // (-Y, +Y, -Z, +Z) - Neumann, dp/d* = 0
+        //
+        // There's nothing to do for zero Neumann
+        //
+        // This is the -X face of the domain:
+        if (neighbor.x() + 1 == ijk.x()) { 
+            const double bc = sin(ijk.y() * 0.2);
+            source -= bc;
+            diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
+        }
+
+        // This is the +X face of the domain:
+        if (neighbor.x() - 1 == ijk.x()) {
+            const double bc = -sin(ijk.y() * 0.2);
+
+            source -= bc;
+            diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
+        }
+    }
+};
+
+void
+testPoissonSolve() {
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+
+    const int N = 62;
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+    TreeType source(/*background=*/zero);
+    source.fill(CoordBBox(Coord(-N, -N/2, -N/2), Coord(N, N/2-1, N/2-1)), /*value=*/zero);
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100;
+    state.relativeError = state.absoluteError = epsilon;
+    util::NullInterrupter interrupter;
+    typename TreeType::Ptr solution = tools::poisson::solveWithBoundaryConditions(
+        source, BoundaryOp(), state, interrupter, /*staggered=*/true);
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    auto grid = Grid<TreeType>::create(solution);
+    grid->setTransform(math::Transform::createLinearTransform(10.0/N));
+    io::File file("poisson.vdb");
+    file.write({grid});
+    file.close();
+}   
 
 void
 SmokeSolver::initialize() {
@@ -547,4 +617,5 @@ main(int argc, char *argv[])
     convertToOnesAndZeros();
     SmokeSolver solver;
     solver.render();
+    testPoissonSolve();
 }
