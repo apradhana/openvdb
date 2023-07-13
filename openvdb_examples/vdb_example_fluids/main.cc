@@ -32,6 +32,7 @@ public:
     SmokeSolver();
 
     void initialize();
+    void foobar();
 
     void substep(float const dt);
 
@@ -49,7 +50,7 @@ public:
 
     void writeVDBs(int const frame);
 
-    struct BoundaryOp {
+    struct BoundaryFoobarOp {
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
         {
@@ -190,9 +191,11 @@ SmokeSolver::initialize() {
     bbBaseGrid = fileBB.readGrid(bbNameIter.gridName());
     fileBB.close();
     openvdb::FloatGrid::Ptr fogBB = openvdb::gridPtrCast<openvdb::FloatGrid>(bbBaseGrid);
+    // TODO: reconsider the background of the velocity field
     mVCurr = openvdb::Vec3SGrid::create(openvdb::Vec3s(0.f, 1.f, 0.f));
-    mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->setTransform(mDensity->transform().copy());
+    mVCurr->setName("velocity");
+    mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->tree().topologyUnion(fogBB->tree());
     auto acc = mVCurr->getAccessor();
     for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
@@ -208,7 +211,6 @@ SmokeSolver::initialize() {
     }
     std::cout << "divSum = " << divSum << std::endl;
 
-    mVCurr->setName("velocity");
 }
 
 void
@@ -625,7 +627,7 @@ struct HeatMethod {
 }; // HeatMethod
 
 
-void foobar() {
+void heatmethod() {
     std::cout << "foobar begins" << std::endl;
     HeatMethod hm(0.1f);
     hm.createFlags();
@@ -655,6 +657,50 @@ void testFogToSdf() {
     file.close();
 }
 
+void
+SmokeSolver::foobar() {
+    // Density
+    openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/sphere_fog.vdb");
+    fileSrc.open();
+    openvdb::GridBase::Ptr baseGrid;
+    auto nameIter = fileSrc.beginName();
+    baseGrid = fileSrc.readGrid(nameIter.gridName());
+    fileSrc.close();
+    mDensity = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+    mDensity->setName("density");
+    auto const& xform = mDensity->transform();
+
+    // Velocity field
+    openvdb::io::File fileBB("/home/andre/dev/openvdb_aswf/_data/bounding_box.vdb");
+    fileBB.open();
+    openvdb::GridBase::Ptr bbBaseGrid;
+    auto bbNameIter = fileBB.beginName();
+    bbBaseGrid = fileBB.readGrid(bbNameIter.gridName());
+    fileBB.close();
+    openvdb::FloatGrid::Ptr fogBB = openvdb::gridPtrCast<openvdb::FloatGrid>(bbBaseGrid);
+    mVCurr = openvdb::Vec3SGrid::create(openvdb::Vec3s(0.f, 0.f, 0.f));
+    mVCurr->setName("velocity");
+    mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->setTransform(mDensity->transform().copy());
+    mVCurr->tree().topologyUnion(fogBB->tree());
+    auto acc = mVCurr->getAccessor();
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        math::Vec3s xyz = xform.indexToWorld(ijk);
+        acc.setValue(ijk, openvdb::Vec3s(xyz[0] * xyz[0]));
+    }
+
+    // Divergence
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
+    float divSum = 0.f;
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        divSum += divAcc.getValue(iter.getCoord());
+    }
+    std::cout << "divSum = " << divSum << std::endl;
+
+}
+
 // TO BUILD:
 // mkdir build
 // cd build
@@ -669,6 +715,7 @@ main(int argc, char *argv[])
     //foobar();
     convertToOnesAndZeros();
     SmokeSolver solver;
+    solver.foobar();
     // solver.render();
     // testPoissonSolve();
     // testDivergence();
