@@ -659,6 +659,8 @@ void testFogToSdf() {
 
 void
 SmokeSolver::foobar() {
+    using PCT = math::pcg::JacobiPreconditioner<tools::poisson::LaplacianMatrix>;
+
     // Density
     openvdb::io::File fileSrc("/home/andre/dev/openvdb_aswf/_data/sphere_fog.vdb");
     fileSrc.open();
@@ -683,11 +685,11 @@ SmokeSolver::foobar() {
     mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->setTransform(mDensity->transform().copy());
     mVCurr->tree().topologyUnion(fogBB->tree());
-    auto acc = mVCurr->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
     for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         math::Vec3s xyz = xform.indexToWorld(ijk);
-        acc.setValue(ijk, openvdb::Vec3s(xyz[0] * xyz[0]));
+        vCurrAcc.setValue(ijk, openvdb::Vec3s(xyz[0] * xyz[0]));
     }
 
     // Divergence
@@ -699,6 +701,42 @@ SmokeSolver::foobar() {
     }
     std::cout << "divSum = " << divSum << std::endl;
 
+    // Conjugate Gradient
+    std::cout << std::endl << " ==== Conjugate Gradient ====" << std::endl;
+    math::pcg::State state = math::pcg::terminationDefaults<float>();
+    state.iterations = 100;
+    state.relativeError = state.absoluteError = math::Delta<float>::value();
+    util::NullInterrupter interrupter;
+    openvdb::FloatTree::Ptr pressureTree = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+        divGrid->tree(), divGrid->tree(), BoundaryFoobarOp(), state,
+        interrupter, /*staggered=*/true);
+    openvdb::FloatGrid::Ptr pressureGrid = FloatGrid::create(pressureTree);
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+
+    // Update vCurr
+    std::cout << std::endl << " ==== Pressure Projection ====" << std::endl;
+    auto const voxelSize = mVCurr->voxelSize();
+    std::cout << "voxelSize = " << voxelSize << std::endl;
+    tools::Gradient<FloatGrid> gradientOp(*pressureGrid);
+    Vec3SGrid::Ptr gradientOfPressure = gradientOp.process();
+    auto pGradAcc = pressureGrid->getAccessor();
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        Vec3s newVel = *iter - voxelSize * voxelSize * pGradAcc.getValue(ijk);
+        vCurrAcc.setValue(ijk, newVel);
+    }
+
+    // Divergence2
+    FloatGrid::Ptr divAfterGrid = tools::divergence(*mVCurr);
+    FloatGrid::ConstAccessor divAfterAcc = divAfterGrid->getConstAccessor();
+    divSum = 0.f;
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        divSum += divAcc.getValue(iter.getCoord());
+    }
+    std::cout << "divSum after = " << divSum << std::endl;
 }
 
 // TO BUILD:
