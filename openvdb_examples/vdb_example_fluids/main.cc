@@ -17,7 +17,7 @@
 #include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
-
+#include <openvdb/tools/GridOperators.h> // for divergence
 using namespace openvdb;
 
 class Vector3 {
@@ -126,6 +126,49 @@ testPoissonSolve() {
     io::File file("poisson.vdb");
     file.write({grid});
     file.close();
+}
+
+void
+testDivergence()
+{
+    // This test is slightly different than the one above for sanity
+    // checking purposes.
+    using namespace openvdb;
+
+    Vec3SGrid::Ptr inGrid = VectorGrid::create();
+    inGrid->setGridClass(GRID_STAGGERED);
+    auto& inTree = inGrid->tree();
+
+    int const GRID_DIM = 10;
+    int dim = GRID_DIM;
+    for (int x = -dim; x<dim; ++x) {
+        for (int y = -dim; y<dim; ++y) {
+            for (int z = -dim; z<dim; ++z) {
+                inTree.setValue(Coord(x,y,z),
+                    VectorTree::ValueType(float(x), float(y), float(z)));
+            }
+        }
+    }
+
+    std::cout << "math::Pow3(2 *dim) = " << math::Pow3(2*dim) << "\t" << int(inTree.activeVoxelCount()) << std::endl;
+
+    FloatGrid::Ptr divGrid = tools::divergence(*inGrid);
+
+    FloatGrid::ConstAccessor accessor = divGrid->getConstAccessor();
+    --dim;
+    for (int x = -dim; x<dim; ++x) {
+        for (int y = -dim; y<dim; ++y) {
+            for (int z = -dim; z<dim; ++z) {
+                Coord xyz(x,y,z);
+                Vec3STree::ValueType v = inTree.getValue(xyz);
+
+                const float d = accessor.getValue(xyz);
+                if (std::abs(d-3.0f) > 1.e-5) {
+                    std::cout << "error" << std::endl;
+                }
+            }
+        }
+    }
 }
 
 
@@ -594,7 +637,6 @@ void testFogToSdf() {
     sdf->setTransform(fog->transform().copy());
     sdf->setName("sdf");
 
-
     openvdb::io::File file("bunny_sdf_3.vdb");
     openvdb::GridPtrVec grids;
     grids.push_back(sdf);
@@ -615,7 +657,8 @@ main(int argc, char *argv[])
     //createUnitBox();
     //foobar();
     convertToOnesAndZeros();
-    SmokeSolver solver;
-    solver.render();
+    // SmokeSolver solver;
+    // solver.render();
     testPoissonSolve();
+    testDivergence();
 }
