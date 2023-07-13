@@ -191,12 +191,23 @@ SmokeSolver::initialize() {
     fileBB.close();
     openvdb::FloatGrid::Ptr fogBB = openvdb::gridPtrCast<openvdb::FloatGrid>(bbBaseGrid);
     mVCurr = openvdb::Vec3SGrid::create(openvdb::Vec3s(0.f, 1.f, 0.f));
+    mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->setTransform(mDensity->transform().copy());
     mVCurr->tree().topologyUnion(fogBB->tree());
     auto acc = mVCurr->getAccessor();
     for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
         acc.setValue(iter.getCoord(), openvdb::Vec3s(0, 1, 0));
     }
+
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+
+    FloatGrid::ConstAccessor accessor = divGrid->getConstAccessor();
+    float divSum = 0.f;
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        divSum += accessor.getValue(iter.getCoord());
+    }
+    std::cout << "divSum = " << divSum << std::endl;
+
     mVCurr->setName("velocity");
 }
 
@@ -657,8 +668,8 @@ main(int argc, char *argv[])
     //createUnitBox();
     //foobar();
     convertToOnesAndZeros();
-    // SmokeSolver solver;
+    SmokeSolver solver;
     // solver.render();
-    testPoissonSolve();
-    testDivergence();
+    // testPoissonSolve();
+    // testDivergence();
 }
