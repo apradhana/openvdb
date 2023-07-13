@@ -49,7 +49,6 @@ public:
 
     void writeVDBs(int const frame);
 
- 
     struct BoundaryOp {
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
@@ -86,7 +85,7 @@ struct BoundaryOp {
         // There's nothing to do for zero Neumann
         //
         // This is the -X face of the domain:
-        if (neighbor.x() + 1 == ijk.x()) { 
+        if (neighbor.x() + 1 == ijk.x()) {
             const double bc = sin(ijk.y() * 0.2);
             source -= bc;
             diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
@@ -127,7 +126,8 @@ testPoissonSolve() {
     io::File file("poisson.vdb");
     file.write({grid});
     file.close();
-}   
+}
+
 
 void
 SmokeSolver::initialize() {
