@@ -18,6 +18,9 @@
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
 #include <openvdb/tools/GridOperators.h> // for divergence
+
+#include <openvdb/points/PointConversion.h>
+#include <openvdb/points/PointCount.h>
 using namespace openvdb;
 
 class Vector3 {
@@ -72,34 +75,58 @@ private:
 
 
 FlipSolver::FlipSolver()
-{}
+{
+    initialize();
+}
 
 void
 FlipSolver::foobar(){}
 
 void
-initialize(){}
+FlipSolver::initialize(){
+    // Create a vector with four point positions.
+    std::vector<Vec3s> positions;
+    positions.push_back(Vec3s(0.f, 1.f, 0.f));
+
+    points::PointAttributeVector<Vec3s> positionsWrapper(positions);
+    int const pointsPerVoxel = 8;
+    float const voxelSize =
+        points::computeVoxelSize(positionsWrapper, pointsPerVoxel);
+    // Print the voxel-size to cout
+    std::cout << "VoxelSize=" << voxelSize << std::endl;
+    // Create a transform using this voxel-size.
+    auto const xform =
+        math::Transform::createLinearTransform(voxelSize);
+    // Create a PointDataGrid containing these four points and using the
+    // transform given. This function has two template parameters, (1) the codec
+    // to use for storing the position, (2) the grid we want to create
+    // (ie a PointDataGrid).
+    // We use no compression here for the positions.
+    points::PointDataGrid::Ptr grid =
+        points::createPointDataGrid<points::NullCodec,
+                        points::PointDataGrid>(positions, *xform);
+}
 
 void
-substep(float const dt){}
+FlipSolver::substep(float const dt){}
 
 void
-render(){}
+FlipSolver::render(){}
 
 void
-particlesToGrid(){}
+FlipSolver::particlesToGrid(){}
 
 void
-gridToParticles(){}
+FlipSolver::gridToParticles(){}
 
 void
-pressureProjection(){}
+FlipSolver::pressureProjection(){}
 
 void
-advectParticles(float const dt){}
+FlipSolver::advectParticles(float const dt){}
 
 void
-writeVDBs(int const frame){}
+FlipSolver::writeVDBs(int const frame){}
 
 
 class SmokeSolver {
@@ -964,8 +991,10 @@ main(int argc, char *argv[])
     //createUnitBox();
     //foobar();
     convertToOnesAndZeros();
-    SmokeSolver solver;
-    solver.foobar2();
+    SmokeSolver smokeSim;
+    smokeSim.foobar2();
+
+    FlipSolver flipSim;
     // solver.render();
     // testPoissonSolve();
     // testDivergence();

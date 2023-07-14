@@ -8,9 +8,18 @@ Create an index tree from the domain mask. Create a mask of the interior voxels 
 
 If the domain mask is not given, then we use intree.
 
+## Resources
+
+OpenVDB:
+https://www.openvdb.org/documentation/doxygen/codeExamples.html
+
+OpenVDB point:
+https://www.openvdb.org/documentation/doxygen/codeExamples.html#openvdbPointsHelloWorld
+
 ## Key
 
 The key thing to understand are (1) the use of domain mask to tell the solver what dofs are considered fluid and (2) how to use a staggered grid velocity field in OpenVDB.
+
 
 ## How to create a grid
 
