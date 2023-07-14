@@ -27,6 +27,81 @@ public:
     Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 };
 
+
+class FlipSolver {
+public:
+    FlipSolver();
+
+    void foobar();
+
+    void initialize();
+
+    void substep(float const dt);
+
+    void render();
+
+    void particlesToGrid();
+
+    void gridToParticles();
+
+    void pressureProjection();
+
+    void advectParticles(float const dt);
+
+    void writeVDBs(int const frame);
+
+    struct BoundaryFoobarOp {
+        void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
+            double& source, double& diagonal) const
+        {
+            //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
+            //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
+            //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
+            //    if (dy > 0) source -= 1.0;
+            //    else diagonal -= 1.0;
+            //}
+        }
+    };
+
+private:
+    openvdb::FloatGrid::Ptr mDensity;
+    std::vector<openvdb::FloatGrid::Ptr> mColliders;
+    openvdb::Vec3SGrid::Ptr mVCurr;
+    openvdb::Vec3SGrid::Ptr mVNext;
+};
+
+
+FlipSolver::FlipSolver()
+{}
+
+void
+FlipSolver::foobar(){}
+
+void
+initialize(){}
+
+void
+substep(float const dt){}
+
+void
+render(){}
+
+void
+particlesToGrid(){}
+
+void
+gridToParticles(){}
+
+void
+pressureProjection(){}
+
+void
+advectParticles(float const dt){}
+
+void
+writeVDBs(int const frame){}
+
+
 class SmokeSolver {
 public:
     SmokeSolver();
