@@ -863,7 +863,7 @@ SmokeSolver::foobar2() {
             }
         }
     }
-    
+
     // Velocity field
     std::cout << "setting up velocity" << std::endl;
     mVCurr = openvdb::Vec3SGrid::create(openvdb::Vec3s(0.f, 0.f, 0.f));
