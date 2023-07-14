@@ -54,12 +54,12 @@ public:
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
         {
-            if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
-                // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
-                const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
-                if (dy > 0) source -= 1.0;
-                else diagonal -= 1.0;
-            }
+            //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
+            //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
+            //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
+            //    if (dy > 0) source -= 1.0;
+            //    else diagonal -= 1.0;
+            //}
         }
     };
 
@@ -694,6 +694,8 @@ SmokeSolver::foobar() {
 
     // Divergence
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    std::cout << "divGrid->voxelSize()[0] = " << divGrid->voxelSize()[0] << std::endl;
+    divGrid->setName("divergence");
     FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
     float divSum = 0.f;
     for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
@@ -711,6 +713,8 @@ SmokeSolver::foobar() {
         divGrid->tree(), divGrid->tree(), BoundaryFoobarOp(), state,
         interrupter, /*staggered=*/true);
     openvdb::FloatGrid::Ptr pressureGrid = FloatGrid::create(pressureTree);
+    pressureGrid->setTransform(mVCurr->transform().copy());
+    pressureGrid->setName("pressure");
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
     std::cout << "Relative error: " << state.relativeError << std::endl;
@@ -718,7 +722,7 @@ SmokeSolver::foobar() {
 
     // Update vCurr
     std::cout << std::endl << " ==== Pressure Projection ====" << std::endl;
-    auto const voxelSize = mVCurr->voxelSize();
+    auto const voxelSize = mVCurr->voxelSize()[0];
     std::cout << "voxelSize = " << voxelSize << std::endl;
     tools::Gradient<FloatGrid> gradientOp(*pressureGrid);
     Vec3SGrid::Ptr gradientOfPressure = gradientOp.process();
@@ -737,6 +741,18 @@ SmokeSolver::foobar() {
         divSum += divAcc.getValue(iter.getCoord());
     }
     std::cout << "divSum after = " << divSum << std::endl;
+
+    // Print:
+    // mVCurr
+    // divGrid
+    // pressureGrid
+    openvdb::io::File file("CG_debug.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(mVCurr);
+    grids.push_back(divGrid);
+    grids.push_back(pressureGrid);
+    file.write(grids);
+    file.close();
 }
 
 // TO BUILD:
