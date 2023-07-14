@@ -68,6 +68,9 @@ public:
     };
 
 private:
+
+    void sampleParticles();
+
     openvdb::FloatGrid::Ptr mDensity;
     std::vector<openvdb::FloatGrid::Ptr> mColliders;
     openvdb::Vec3SGrid::Ptr mVCurr;
@@ -82,6 +85,11 @@ FlipSolver::FlipSolver()
 
 void
 FlipSolver::foobar(){}
+
+void
+FlipSolver::sampleParticles() {
+    // Sample particles from .obj file
+}
 
 void
 FlipSolver::initialize(){
@@ -118,7 +126,6 @@ FlipSolver::initialize(){
     std::cout << "tree = " << tree << std::endl;
     std::cout << "velTree = " << velTree << std::endl;
     std::cout << "mVCurr = " << mVCurr << std::endl;
-
 }
 
 void
