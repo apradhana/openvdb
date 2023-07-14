@@ -11,3 +11,7 @@ If the domain mask is not given, then we use intree.
 ## Key
 
 The key thing to understand are (1) the use of domain mask to tell the solver what dofs are considered fluid and (2) how to use a staggered grid velocity field in OpenVDB.
+
+## How to create a grid
+
+### Don't do this in production, do this in unit tests
