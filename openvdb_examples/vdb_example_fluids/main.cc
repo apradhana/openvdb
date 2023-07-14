@@ -21,6 +21,7 @@
 
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
+#include <openvdb/points/PointRasterizeTrilinear.h>
 using namespace openvdb;
 
 class Vector3 {
@@ -87,6 +88,7 @@ FlipSolver::initialize(){
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 1.f, 0.f));
+    Vec3s v(1.f, 1.f, 1.f);
 
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
     int const pointsPerVoxel = 8;
@@ -97,14 +99,26 @@ FlipSolver::initialize(){
     // Create a transform using this voxel-size.
     auto const xform =
         math::Transform::createLinearTransform(voxelSize);
-    // Create a PointDataGrid containing these four points and using the
-    // transform given. This function has two template parameters, (1) the codec
-    // to use for storing the position, (2) the grid we want to create
-    // (ie a PointDataGrid).
-    // We use no compression here for the positions.
-    points::PointDataGrid::Ptr grid =
+    // Create a PointDataGrid
+    points::PointDataGrid::Ptr points =
         points::createPointDataGrid<points::NullCodec,
                         points::PointDataGrid>(positions, *xform);
+    points::appendAttribute<Vec3s>(points->tree(), "velocity", v);
+    TreeBase::Ptr tree =
+        points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
+    Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
+    mVCurr = Vec3SGrid::create(velTree);
+    auto const vCurrAcc = mVCurr->getConstAccessor();
+    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        std::cout << "ijk = " << ijk << "val = " << vCurrAcc.getValue(ijk) << std::endl;
+    }
+
+    std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
+    std::cout << "tree = " << tree << std::endl;
+    std::cout << "velTree = " << velTree << std::endl;
+    std::cout << "mVCurr = " << mVCurr << std::endl;
+
 }
 
 void
