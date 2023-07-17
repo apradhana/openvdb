@@ -93,6 +93,16 @@ FlipSolver::sampleParticles() {
 
 void
 FlipSolver::initialize(){
+}
+
+void
+FlipSolver::substep(float const dt){}
+
+void
+FlipSolver::render(){}
+
+void
+FlipSolver::particlesToGrid(){
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 0.f, 0.f));
@@ -141,21 +151,7 @@ FlipSolver::initialize(){
             std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
         }
     }
-
-    // std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
-    // std::cout << "tree = " << tree << std::endl;
-    // std::cout << "velTree = " << velTree << std::endl;
-    // std::cout << "mVCurr = " << mVCurr << std::endl;
 }
-
-void
-FlipSolver::substep(float const dt){}
-
-void
-FlipSolver::render(){}
-
-void
-FlipSolver::particlesToGrid(){}
 
 void
 FlipSolver::gridToParticles(){}
@@ -1036,6 +1032,7 @@ main(int argc, char *argv[])
     smokeSim.foobar2();
 
     FlipSolver flipSim;
+    flipSim.particlesToGrid();
     // solver.render();
     // testPoissonSolve();
     // testDivergence();
