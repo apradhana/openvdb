@@ -24,3 +24,11 @@ The key thing to understand are (1) the use of domain mask to tell the solver wh
 ## How to create a grid
 
 ### Don't do this in production, do this in unit tests
+
+## Working with MAC Grid
+- Important to do:
+  mVCurr->setGridClass(GRID_STAGGERED);
+  before the divergence computation
+- in the rasterization step, you need:
+    TreeBase::Ptr tree =
+        points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");

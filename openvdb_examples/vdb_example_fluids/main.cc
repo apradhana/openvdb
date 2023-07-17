@@ -95,7 +95,7 @@ void
 FlipSolver::initialize(){
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
-    positions.push_back(Vec3s(0.f, 1.f, 0.f));
+    positions.push_back(Vec3s(0.f, 0.f, 0.f));
     Vec3s v(1.f, 1.f, 1.f);
 
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
@@ -116,16 +116,36 @@ FlipSolver::initialize(){
         points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
     Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
     mVCurr = Vec3SGrid::create(velTree);
+    mVCurr->setGridClass(GRID_STAGGERED);
     auto const vCurrAcc = mVCurr->getConstAccessor();
-    for (openvdb::Vec3SGrid::ValueOnIter iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        std::cout << "ijk = " << ijk << "val = " << vCurrAcc.getValue(ijk) << std::endl;
+    for (int k = -1; k < 2; ++k) {
+        for (int j = -1; j < 2; ++j) {
+            for (int i = -1; i < 2; ++i) {
+                math::Coord ijk(i, j, k);
+                auto val = vCurrAcc.getValue(ijk);
+                if (val.length() > 1.0e-5) {
+                    std::cout << "ijk = " << ijk << ", val = " << vCurrAcc.getValue(ijk) << std::endl;
+                }
+            }
+        }
     }
 
-    std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
-    std::cout << "tree = " << tree << std::endl;
-    std::cout << "velTree = " << velTree << std::endl;
-    std::cout << "mVCurr = " << mVCurr << std::endl;
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
+    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
+    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAcc.getValue(ijk);
+        if (std::abs(val) > 1.0e-5)
+        {
+            std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+        }
+    }
+
+    // std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
+    // std::cout << "tree = " << tree << std::endl;
+    // std::cout << "velTree = " << velTree << std::endl;
+    // std::cout << "mVCurr = " << mVCurr << std::endl;
 }
 
 void
