@@ -157,7 +157,22 @@ void
 FlipSolver::gridToParticles(){}
 
 void
-FlipSolver::pressureProjection(){}
+FlipSolver::pressureProjection(){
+    std::cout << "flip::pressureProjection begin" << std::endl;
+    BoolTree::Ptr interiorMask(new BoolTree(false));
+    interiorMask->topologyUnion(mVCurr->tree());
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    BoolGrid::ConstAccessor intrAcc = interiorGrid->getConstAccessor();
+
+    for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = intrAcc.getValue(ijk);
+        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+    }
+    std::cout << "flip::pressureProjection end" << std::endl;
+
+}
 
 void
 FlipSolver::advectParticles(float const dt){}
@@ -1033,6 +1048,7 @@ main(int argc, char *argv[])
 
     FlipSolver flipSim;
     flipSim.particlesToGrid();
+    flipSim.pressureProjection();
     // solver.render();
     // testPoissonSolve();
     // testDivergence();
