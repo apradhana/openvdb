@@ -169,8 +169,23 @@ FlipSolver::pressureProjection(){
     for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = divAcc.getValue(ijk);
-        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+        std::cout << "div ijk = " << ijk << ", val = " << val << std::endl;
     }
+
+    BoolTree::Ptr pressureMask(new BoolTree(false));
+    pressureMask->topologyUnion(divGrid->tree());
+    tools::dilateActiveValues(*pressureMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    BoolGrid::Ptr pressureGridMask = BoolGrid::create(pressureMask);
+    BoolGrid::ConstAccessor prsAcc = pressureGridMask->getConstAccessor();
+    std::cout << "pressuregrid after pressure projection" << std::endl;
+    for (auto iter = pressureGridMask->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = prsAcc.getValue(ijk);
+        std::cout << "pres ijk = " << ijk << ", val = " << val << std::endl;
+    }
+
+
+
     std::cout << "flip::pressureProjection end" << std::endl;
 
 }

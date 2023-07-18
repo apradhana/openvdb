@@ -34,3 +34,4 @@ The key thing to understand are (1) the use of domain mask to tell the solver wh
         points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
 ## Pressure projection
 - Need to erodeActiveVoxel to deal with Mac Grid during the divergence computation.
+- Double check EXPAND_TILES or tools::IGNORE_TILES
