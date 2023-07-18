@@ -22,6 +22,7 @@
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
 #include <openvdb/points/PointRasterizeTrilinear.h>
+#include <openvdb/tools/Morphology.h> // for erodeActiveValues
 using namespace openvdb;
 
 class Vector3 {
@@ -140,17 +141,6 @@ FlipSolver::particlesToGrid(){
         }
     }
 
-    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
-    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
-    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
-    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAcc.getValue(ijk);
-        if (std::abs(val) > 1.0e-5)
-        {
-            std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
-        }
-    }
 }
 
 void
@@ -168,6 +158,17 @@ FlipSolver::pressureProjection(){
     for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = intrAcc.getValue(ijk);
+        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+    }
+
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
+    std::cout << "divgrid after pressure projection" << std::endl;
+    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
+    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAcc.getValue(ijk);
         std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
     }
     std::cout << "flip::pressureProjection end" << std::endl;
