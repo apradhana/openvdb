@@ -61,14 +61,44 @@ public:
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
         {
-            //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
-            //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
-            //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
-            //    if (dy > 0) source -= 1.0;
-            //    else diagonal -= 1.0;
-            //}
+            // Boundary conditions:
+            // (-X, +X, -Y, -Z, +Z): Neumann dp/dn = 0
+            // (+Y): Dirichlet p = 0
+            // There is nothing to do for zero value Neumann boundary condition.
+            if (ijk.y()+1 == neighbor.y()) {
+                source -= 0.0;
+                diagonal -= 1.0;
+            }
         }
     };
+
+    // struct BoundaryOp {
+    //     void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
+    //         double& source, double& diagonal) const
+    //     {
+    //         // Boundary conditions:
+    //         // (-X) - Dirichlet, sin(y/5)
+    //         // (+X) - Dirichlet, -sin(y/5)
+    //         // (-Y, +Y, -Z, +Z) - Neumann, dp/d* = 0
+    //         //
+    //         // There's nothing to do for zero Neumann
+    //         //
+    //         // This is the -X face of the domain:
+    //         if (neighbor.x() + 1 == ijk.x()) {
+    //             const double bc = sin(ijk.y() * 0.2);
+    //             source -= bc;
+    //             diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
+    //         }
+    // 
+    //         // This is the +X face of the domain:
+    //         if (neighbor.x() - 1 == ijk.x()) {
+    //             const double bc = -sin(ijk.y() * 0.2);
+    // 
+    //             source -= bc;
+    //             diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
+    //         }
+    //     }
+    // };
 
 private:
 
@@ -78,6 +108,7 @@ private:
     std::vector<openvdb::FloatGrid::Ptr> mColliders;
     openvdb::Vec3SGrid::Ptr mVCurr;
     openvdb::Vec3SGrid::Ptr mVNext;
+    openvdb::Int32Grid::Ptr mFlags;
 };
 
 
@@ -148,23 +179,22 @@ FlipSolver::particlesToGrid(){
 
 void
 FlipSolver::particlesToGrid2(){
+    float const voxelSize = 0.1f;
+    std::cout << "VoxelSize=" << voxelSize << std::endl;
+
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 0.f, 0.f));
-    positions.push_back(Vec3s(0.5f, 0.f, 0.f));
+    positions.push_back(Vec3s(1.5f * 0.1, 0.f, 0.f));
     std::vector<Vec3s> velocities;
     velocities.push_back(Vec3s(1.f, 1.f, 1.f));
     velocities.push_back(Vec3s(1.f, 2.f, 3.f));
 
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
-    int const pointsPerVoxel = 8;
-    float const voxelSize =
-        points::computeVoxelSize(positionsWrapper, pointsPerVoxel);
-    // Print the voxel-size to cout
-    std::cout << "VoxelSize=" << voxelSize << std::endl;
-    // Create a transform using this voxel-size.
+
     auto const xform =
         math::Transform::createLinearTransform(voxelSize);
+
     // Create a PointDataGrid
     points::PointDataGrid::Ptr points =
         points::createPointDataGrid<points::NullCodec,
@@ -195,23 +225,31 @@ FlipSolver::gridToParticles(){}
 
 void
 FlipSolver::pressureProjection2(){
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+
     std::cout << "flip::pressureProjection2 begins" << std::endl;
     auto const vCurrAcc = mVCurr->getConstAccessor();
-    
-    for (int k = -1; k < 3; ++k) {
-        for (int j = -1; j < 3; ++j) {
-            for (int i = -1; i < 3; ++i) {
-                math::Coord ijk(i, j, k);
-                auto val = vCurrAcc.getValue(ijk);
-                if (val.length() > 1.0e-5) {
-                    std::cout << "ijk = " << ijk << ", val = " << vCurrAcc.getValue(ijk) << std::endl;
-                }
-            }
-        }
-    }
+    std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
+    // for (int k = -1; k < 3; ++k) {
+    //     for (int j = -1; j < 3; ++j) {
+    //         for (int i = -1; i < 3; ++i) {
+    //             math::Coord ijk(i, j, k);
+    //             auto val = vCurrAcc.getValue(ijk);
+    //             if (val.length() > 1.0e-5) {
+    //                 std::cout << "vel" << ijk << " = " << vCurrAcc.getValue(ijk) << std::endl;
+    //             }
+    //         }
+    //     }
+    // }
 
     BoolTree::Ptr interiorMask(new BoolTree(false));
     interiorMask->topologyUnion(mVCurr->tree());
+    // This is one way to do this, another way is to deduce the topology from voxels
+    // where the velocity is not-zero, which might be more accurate.
     tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
     BoolGrid::ConstAccessor intrAcc = interiorGrid->getConstAccessor();
@@ -219,19 +257,35 @@ FlipSolver::pressureProjection2(){
     for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = intrAcc.getValue(ijk);
-        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+        std::cout << "interior " << ijk << " = " << val << std::endl;
     }
 
+    // Setup the right hand side 
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
     (divGrid->tree()).topologyIntersection(interiorGrid->tree());
     FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
     std::cout << "divgrid before pressure projection" << std::endl;
-    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
+    // Note that ijk = [0,0,0] is not printed because the divergence in that cell is 0
     for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = divAcc.getValue(ijk);
-        std::cout << "div ijk = " << ijk << ", val = " << val << std::endl;
+        std::cout << "beginvalon div " << ijk << " = " << val << std::endl;
     }
+
+    // Setup conjugate gradient
+    std::cout << "RHS: divGrid->activeVoxelCount() = " << divGrid->activeVoxelCount() << std::endl;
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100;
+    state.relativeError = state.absoluteError = epsilon;
+    util::NullInterrupter interrupter;
+    typename TreeType::Ptr solution = tools::poisson::solveWithBoundaryConditions(
+        divGrid->tree(), FlipSolver::BoundaryFoobarOp(), state, interrupter, /*staggered=*/true);
+
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "solution->activeVoxelCount() =  " << solution->activeVoxelCount() << std::endl;
 
 
     std::cout << "flip::pressureProjection2 ends" << std::endl;
