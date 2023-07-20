@@ -46,6 +46,7 @@ public:
     void render();
 
     void particlesToGrid();
+    void particlesToGrid2();
 
     void gridToParticles();
 
@@ -107,7 +108,7 @@ FlipSolver::particlesToGrid(){
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 0.f, 0.f));
-    Vec3s v(1.f, 1.f, 1.f);
+    Vec3s v(1.f, 1.f, 3.f);
 
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
     int const pointsPerVoxel = 8;
@@ -123,11 +124,69 @@ FlipSolver::particlesToGrid(){
         points::createPointDataGrid<points::NullCodec,
                         points::PointDataGrid>(positions, *xform);
     points::appendAttribute<Vec3s>(points->tree(), "velocity", v);
+    // TreeBase::Ptr tree =
+    //     points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
+    // Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
+    // mVCurr = Vec3SGrid::create(velTree);
+    // mVCurr->setGridClass(GRID_STAGGERED);
+    // auto const vCurrAcc = mVCurr->getConstAccessor();
+    // for (int k = -1; k < 2; ++k) {
+    //     for (int j = -1; j < 2; ++j) {
+    //         for (int i = -1; i < 2; ++i) {
+    //             math::Coord ijk(i, j, k);
+    //             auto val = vCurrAcc.getValue(ijk);
+    //             if (val.length() > 1.0e-5) {
+    //                 std::cout << "ijk = " << ijk << ", val = " << vCurrAcc.getValue(ijk) << std::endl;
+    //             }
+    //         }
+    //     }
+    // }
+
+}
+
+
+void
+FlipSolver::particlesToGrid2(){
+    // Create a vector with four point positions.
+    std::vector<Vec3s> positions;
+    positions.push_back(Vec3s(0.f, 0.f, 0.f));
+    positions.push_back(Vec3s(0.5f, 0.f, 0.f));
+    std::vector<Vec3s> velocities;
+    velocities.push_back(Vec3s(1.f, 1.f, 1.f));
+    velocities.push_back(Vec3s(1.f, 2.f, 3.f));
+
+    points::PointAttributeVector<Vec3s> positionsWrapper(positions);
+    int const pointsPerVoxel = 8;
+    float const voxelSize =
+        points::computeVoxelSize(positionsWrapper, pointsPerVoxel);
+    // Print the voxel-size to cout
+    std::cout << "VoxelSize=" << voxelSize << std::endl;
+    // Create a transform using this voxel-size.
+    auto const xform =
+        math::Transform::createLinearTransform(voxelSize);
+    // Create a PointDataGrid
+    points::PointDataGrid::Ptr points =
+        points::createPointDataGrid<points::NullCodec,
+                        points::PointDataGrid>(positions, *xform);
+    tools::PointIndexGrid::Ptr pointIndexGrid =
+        openvdb::tools::createPointIndexGrid<tools::PointIndexGrid>(
+            positionsWrapper, *xform);
+
+    points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
+    NamePair velocityAttribute =
+        openvdb::points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    openvdb::points::appendAttribute(points->tree(), "velocity", velocityAttribute);
+    points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
+    points::populateAttribute<points::PointDataTree,
+        tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
+            points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+
     TreeBase::Ptr tree =
         points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
     Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
     mVCurr = Vec3SGrid::create(velTree);
     mVCurr->setGridClass(GRID_STAGGERED);
+
     auto const vCurrAcc = mVCurr->getConstAccessor();
     for (int k = -1; k < 2; ++k) {
         for (int j = -1; j < 2; ++j) {
@@ -1063,7 +1122,7 @@ main(int argc, char *argv[])
     smokeSim.foobar2();
 
     FlipSolver flipSim;
-    flipSim.particlesToGrid();
+    flipSim.particlesToGrid2();
     flipSim.pressureProjection();
     // solver.render();
     // testPoissonSolve();
