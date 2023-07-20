@@ -51,6 +51,7 @@ public:
     void gridToParticles();
 
     void pressureProjection();
+    void pressureProjection2();
 
     void advectParticles(float const dt);
 
@@ -186,11 +187,20 @@ FlipSolver::particlesToGrid2(){
     Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
     mVCurr = Vec3SGrid::create(velTree);
     mVCurr->setGridClass(GRID_STAGGERED);
+}
 
+void
+FlipSolver::gridToParticles(){}
+
+
+void
+FlipSolver::pressureProjection2(){
+    std::cout << "flip::pressureProjection2 begins" << std::endl;
     auto const vCurrAcc = mVCurr->getConstAccessor();
-    for (int k = -1; k < 2; ++k) {
-        for (int j = -1; j < 2; ++j) {
-            for (int i = -1; i < 2; ++i) {
+    
+    for (int k = -1; k < 3; ++k) {
+        for (int j = -1; j < 3; ++j) {
+            for (int i = -1; i < 3; ++i) {
                 math::Coord ijk(i, j, k);
                 auto val = vCurrAcc.getValue(ijk);
                 if (val.length() > 1.0e-5) {
@@ -200,10 +210,32 @@ FlipSolver::particlesToGrid2(){
         }
     }
 
-}
+    BoolTree::Ptr interiorMask(new BoolTree(false));
+    interiorMask->topologyUnion(mVCurr->tree());
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    BoolGrid::ConstAccessor intrAcc = interiorGrid->getConstAccessor();
 
-void
-FlipSolver::gridToParticles(){}
+    for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = intrAcc.getValue(ijk);
+        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
+    }
+
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
+    std::cout << "divgrid before pressure projection" << std::endl;
+    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
+    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAcc.getValue(ijk);
+        std::cout << "div ijk = " << ijk << ", val = " << val << std::endl;
+    }
+
+
+    std::cout << "flip::pressureProjection2 ends" << std::endl;
+}
 
 void
 FlipSolver::pressureProjection(){
@@ -223,7 +255,7 @@ FlipSolver::pressureProjection(){
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
     (divGrid->tree()).topologyIntersection(interiorGrid->tree());
     FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
-    std::cout << "divgrid after pressure projection" << std::endl;
+    std::cout << "divgrid before pressure projection" << std::endl;
     // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
     for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -1123,7 +1155,7 @@ main(int argc, char *argv[])
 
     FlipSolver flipSim;
     flipSim.particlesToGrid2();
-    flipSim.pressureProjection();
+    flipSim.pressureProjection2();
     // solver.render();
     // testPoissonSolve();
     // testDivergence();
