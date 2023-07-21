@@ -225,15 +225,21 @@ FlipSolver::particlesToGrid2(){
 
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        if (ijk.y() < 0 || ijk.x() < 0 || ijk.x() > 2 || ijk.z() < 0 || ijk.z() > 1) {
+        if (ijk.y() <= -1 || ijk.x() <= -1 || ijk.x() >= 3 || ijk.z() <= -1 || ijk.z() >= 1) {
             flagAcc.setValue(ijk, 2); // Neumann pressure
         }
 
-        if (ijk.y() > 1) {
+        if (ijk.y() >= 1) {
             flagAcc.setValue(ijk, 1); // Dirichlet pressure
         }
-        auto val = flagAcc.getValue(ijk);
-        std::cout << "mFlags " << ijk << " = " << val << std::endl;
+    }
+    for (int k = -1; k <= 1; ++k) {
+        for (int j = -1; j <= 1; ++j) {
+            for (int i = -1; i <= 3; ++i) {
+                math::Coord ijk(i, j, k);
+                std::cout << "mFlags " << ijk << " = " << flagAcc.getValue(ijk) << std::endl; // Dirichlet pressure
+            }
+        }
     }
 
 }
