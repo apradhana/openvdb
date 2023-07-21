@@ -212,15 +212,20 @@ FlipSolver::particlesToGrid2(){
 
     TreeBase::Ptr tree =
         points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
+
     Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
     mVCurr = Vec3SGrid::create(velTree);
     mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->setTransform(xform);
+    auto vCurrAcc = mVCurr->getAccessor();
 
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        std::cout << "=== mVCurr" << ijk << " = " << vCurrAcc.getValue(ijk) << std::endl;
+    }
     mFlags = Int32Grid::create(0);
     (mFlags->tree()).topologyUnion(mVCurr->tree());
     mFlags->setTransform(xform);
-    std::cout << "mFlags = " << mFlags << std::endl;
     Int32Grid::Accessor flagAcc = mFlags->getAccessor();
 
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
@@ -233,15 +238,14 @@ FlipSolver::particlesToGrid2(){
             flagAcc.setValue(ijk, 1); // Dirichlet pressure
         }
     }
-    for (int k = -1; k <= 1; ++k) {
-        for (int j = -1; j <= 1; ++j) {
-            for (int i = -1; i <= 3; ++i) {
-                math::Coord ijk(i, j, k);
-                std::cout << "mFlags " << ijk << " = " << flagAcc.getValue(ijk) << std::endl; // Dirichlet pressure
-            }
-        }
-    }
-
+    // for (int k = -1; k <= 1; ++k) {
+    //     for (int j = -1; j <= 1; ++j) {
+    //         for (int i = -1; i <= 3; ++i) {
+    //             math::Coord ijk(i, j, k);
+    //             std::cout << "mFlags " << ijk << " = " << flagAcc.getValue(ijk) << std::endl; // Dirichlet pressure
+    //         }
+    //     }
+    // }
 }
     
 
@@ -257,9 +261,9 @@ FlipSolver::pressureProjection2(){
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    std::cout << "flip::pressureProjection2 begins" << std::endl;
+
+    std::cout << "\n\nflip::pressureProjection2 begins" << std::endl;
     auto const vCurrAcc = mVCurr->getConstAccessor();
-    std::cout << "mVCurr->activeVoxelCount() = " << mVCurr->activeVoxelCount() << std::endl;
     // for (int k = -1; k < 3; ++k) {
     //     for (int j = -1; j < 3; ++j) {
     //         for (int i = -1; i < 3; ++i) {
@@ -278,13 +282,14 @@ FlipSolver::pressureProjection2(){
     // where the velocity is not-zero, which might be more accurate.
     tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    interiorGrid->setTransform(mVCurr->transform().copy());
     BoolGrid::ConstAccessor intrAcc = interiorGrid->getConstAccessor();
 
-    for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = intrAcc.getValue(ijk);
-        std::cout << "interior " << ijk << " = " << val << std::endl;
-    }
+    // for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
+    //     math::Coord ijk = iter.getCoord();
+    //     auto val = intrAcc.getValue(ijk);
+    //     std::cout << "interior " << ijk << " = " << val << std::endl;
+    // }
 
     // Setup the right hand side 
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
@@ -306,6 +311,14 @@ FlipSolver::pressureProjection2(){
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
         divGrid->tree(), FlipSolver::BoundaryFoobarOp(), state, interrupter, /*staggered=*/true);
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+
+    auto fluidPressureAcc = fluidPressureGrid->getAccessor();
+    for (auto iter = fluidPressure->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = fluidPressureAcc.getValue(ijk);
+        std::cout << "fluidPressure " << ijk << " = " << val << std::endl;
+    }
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -313,7 +326,6 @@ FlipSolver::pressureProjection2(){
     std::cout << "Absolute error: " << state.absoluteError << std::endl;
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
 
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     fluidPressureGrid->setTransform(mVCurr->transform().copy());
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
     grad->setGridClass(GRID_STAGGERED);
@@ -331,9 +343,11 @@ FlipSolver::pressureProjection2(){
         " mVNext->voxelSize() = " << mVNext->voxelSize() <<
         " grad->voxelSize() = " << grad->voxelSize() <<
         std::endl;
+    for (int k = 0; k <=1; ++k) {
+    for (int j = 0; j <= 1; ++j) {
     for (int i = 0; i <= 2; ++i) {
-        math::Coord ijk(i, 0, 0);
-        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
+        math::Coord ijk(i, j, k);
+        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize /** mVoxelSize */;
         auto gradVal = gradAcc.getValue(ijk);
         auto scaleGrad1 = gradVal * mVoxelSize;
         auto scaleGrad2 = gradVal * mVoxelSize * mVoxelSize;
@@ -343,6 +357,8 @@ FlipSolver::pressureProjection2(){
             " scaleGrad2 = " << scaleGrad2 <<
             std::endl;
         vNextAcc.setValue(ijk, val);
+    }
+    }
     }
 
     // Div grid after
