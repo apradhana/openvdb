@@ -225,7 +225,7 @@ FlipSolver::particlesToGrid2(){
 
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        if (ijk.y() < 0 || ijk.x() < 0 || ijk.x() > 1 || ijk.z() < 0 || ijk.z() > 1) {
+        if (ijk.y() < 0 || ijk.x() < 0 || ijk.x() > 2 || ijk.z() < 0 || ijk.z() > 1) {
             flagAcc.setValue(ijk, 2); // Neumann pressure
         }
 
