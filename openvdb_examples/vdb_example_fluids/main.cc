@@ -322,13 +322,18 @@ FlipSolver::pressureProjection2(){
 
     mVNext = mVCurr->copy();
     mVNext->setGridClass(GRID_STAGGERED);
+    mVNext->setTransform(mVCurr->transform().copy());
     auto vNextAcc = mVNext->getAccessor();
     auto gradAcc = grad->getAccessor();
     //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
     //math::Coord ijk = iter.getCoord();
+    std::cout << "=== Debug mVoxelSize = " << mVoxelSize <<
+        " mVNext->voxelSize() = " << mVNext->voxelSize() <<
+        " grad->voxelSize() = " << grad->voxelSize() <<
+        std::endl;
     for (int i = 0; i <= 2; ++i) {
         math::Coord ijk(i, 0, 0);
-        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize;
+        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
         auto gradVal = gradAcc.getValue(ijk);
         auto scaleGrad1 = gradVal * mVoxelSize;
         auto scaleGrad2 = gradVal * mVoxelSize * mVoxelSize;
