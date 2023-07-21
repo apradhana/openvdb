@@ -35,3 +35,7 @@ The key thing to understand are (1) the use of domain mask to tell the solver wh
 ## Pressure projection
 - Need to erodeActiveVoxel to deal with Mac Grid during the divergence computation.
 - Double check EXPAND_TILES or tools::IGNORE_TILES
+
+## Topology:
+ - Pressure interior dof is derived from doing erodeActiveVoxel on velocity grid.
+ - Pressure full dof is derived either from mVCurr or erodeActiveVoxel followed by dilateActiveVoxel on the velocity grid.

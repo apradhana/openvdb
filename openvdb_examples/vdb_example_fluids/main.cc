@@ -104,11 +104,12 @@ private:
 
     void sampleParticles();
 
-    openvdb::FloatGrid::Ptr mDensity;
-    std::vector<openvdb::FloatGrid::Ptr> mColliders;
-    openvdb::Vec3SGrid::Ptr mVCurr;
-    openvdb::Vec3SGrid::Ptr mVNext;
-    openvdb::Int32Grid::Ptr mFlags;
+    float mVoxelSize = 0.1f;
+    FloatGrid::Ptr mDensity;
+    FloatGrid::Ptr mCollider;
+    Vec3SGrid::Ptr mVCurr;
+    Vec3SGrid::Ptr mVNext;
+    Int32Grid::Ptr mFlags;
 };
 
 
@@ -179,9 +180,6 @@ FlipSolver::particlesToGrid(){
 
 void
 FlipSolver::particlesToGrid2(){
-    float const voxelSize = 0.1f;
-    std::cout << "VoxelSize=" << voxelSize << std::endl;
-
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 0.f, 0.f));
@@ -193,7 +191,7 @@ FlipSolver::particlesToGrid2(){
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
 
     auto const xform =
-        math::Transform::createLinearTransform(voxelSize);
+        math::Transform::createLinearTransform(mVoxelSize);
 
     // Create a PointDataGrid
     points::PointDataGrid::Ptr points =
@@ -217,7 +215,29 @@ FlipSolver::particlesToGrid2(){
     Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
     mVCurr = Vec3SGrid::create(velTree);
     mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->setTransform(xform);
+
+    mFlags = Int32Grid::create(0);
+    (mFlags->tree()).topologyUnion(mVCurr->tree());
+    mFlags->setTransform(xform);
+    std::cout << "mFlags = " << mFlags << std::endl;
+    Int32Grid::Accessor flagAcc = mFlags->getAccessor();
+
+    for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        if (ijk.y() < 0 || ijk.x() < 0 || ijk.x() > 1 || ijk.z() < 0 || ijk.z() > 1) {
+            flagAcc.setValue(ijk, 2); // Neumann pressure
+        }
+
+        if (ijk.y() > 1) {
+            flagAcc.setValue(ijk, 1); // Dirichlet pressure
+        }
+        auto val = flagAcc.getValue(ijk);
+        std::cout << "mFlags " << ijk << " = " << val << std::endl;
+    }
+
 }
+    
 
 void
 FlipSolver::gridToParticles(){}
