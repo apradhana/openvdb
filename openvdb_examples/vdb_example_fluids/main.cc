@@ -304,15 +304,54 @@ FlipSolver::pressureProjection2(){
     state.iterations = 100;
     state.relativeError = state.absoluteError = epsilon;
     util::NullInterrupter interrupter;
-    typename TreeType::Ptr solution = tools::poisson::solveWithBoundaryConditions(
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
         divGrid->tree(), FlipSolver::BoundaryFoobarOp(), state, interrupter, /*staggered=*/true);
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
     std::cout << "Relative error: " << state.relativeError << std::endl;
     std::cout << "Absolute error: " << state.absoluteError << std::endl;
-    std::cout << "solution->activeVoxelCount() =  " << solution->activeVoxelCount() << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
 
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    fluidPressureGrid->setTransform(mVCurr->transform().copy());
+    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
+    grad->setGridClass(GRID_STAGGERED);
+    std::cout << "grad->activeVoxelCount() = " << grad->activeVoxelCount() << std::endl;
+    std::cout << "grad->voxelSize() = " << grad->voxelSize() << std::endl;
+
+    mVNext = mVCurr->copy();
+    mVNext->setGridClass(GRID_STAGGERED);
+    auto vNextAcc = mVNext->getAccessor();
+    auto gradAcc = grad->getAccessor();
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk);
+        std::cout << "vNext.getValue(ijk) = " << vNextAcc.getValue(ijk) << std::endl;
+        std::cout << "gradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
+        // vNextAcc.setValue(ijk, val);
+    }
+
+    // Div grid after
+    FloatGrid::Ptr divGridAfter = tools::divergence(*mVNext);
+    (divGridAfter->tree()).topologyIntersection(interiorGrid->tree());
+    FloatGrid::ConstAccessor divAfterAcc = divGridAfter->getConstAccessor();
+    std::cout << "divgrid after pressure projection" << std::endl;
+    // Note that ijk = [0,0,0] is not printed because the divergence in that cell is 0
+    for (auto iter = divGridAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        std::cout << "beginvalon div after " << ijk << " = " << val << std::endl;
+    }
+
+
+    // Make a deep copy of fluidPressure
+    TreeBase::Ptr baseFullPressure = fluidPressure->copy();
+    // Cast down to the concrete type to query values
+    openvdb::FloatTree *fullPressure = dynamic_cast<FloatTree*>(baseFullPressure.get());
+    tools::dilateActiveValues(*fullPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+
+    // TODO: parallelize this:
 
     std::cout << "flip::pressureProjection2 ends" << std::endl;
 }

@@ -39,3 +39,6 @@ The key thing to understand are (1) the use of domain mask to tell the solver wh
 ## Topology:
  - Pressure interior dof is derived from doing erodeActiveVoxel on velocity grid.
  - Pressure full dof is derived either from mVCurr or erodeActiveVoxel followed by dilateActiveVoxel on the velocity grid.
+
+ ## Where do I cut corners?
+  - In the creation of fullPressure grid from fluidPressure
