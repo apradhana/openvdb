@@ -57,7 +57,8 @@ public:
 
     void writeVDBs(int const frame);
 
-    struct BoundaryFoobarOp {
+    struct BoundaryFooBarOp {
+        BoundaryFooBarOp(float const voxelSize) : voxelSize(voxelSize) {}
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
         {
@@ -67,9 +68,11 @@ public:
             // There is nothing to do for zero value Neumann boundary condition.
             if (ijk.y()+1 == neighbor.y()) {
                 source -= 0.0;
-                diagonal -= 1.0;
+                diagonal -= 1.0 / (voxelSize * voxelSize);
             }
         }
+
+        float voxelSize;
     };
 
     // struct BoundaryOp {
@@ -310,7 +313,7 @@ FlipSolver::pressureProjection2(){
     state.relativeError = state.absoluteError = epsilon;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        divGrid->tree(), FlipSolver::BoundaryFoobarOp(), state, interrupter, /*staggered=*/true);
+        divGrid->tree(), FlipSolver::BoundaryFooBarOp(mVoxelSize), state, interrupter, /*staggered=*/true);
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
 
     auto fluidPressureAcc = fluidPressureGrid->getAccessor();
@@ -330,37 +333,43 @@ FlipSolver::pressureProjection2(){
     
     fluidPressureGrid->setTransform(mVCurr->transform().copy());
     auto fluidAcc = fluidPressureGrid->getAccessor();
+    math::Coord ijk(0, 0, 0);
+    float p000 = fluidPressureAcc.getValue(ijk);
+    ijk = math::Coord(1, 0, 0);
+    float p100 = fluidPressureAcc.getValue(ijk);
+    ijk = math::Coord(2, 0, 0);
+    float p200 = fluidPressureAcc.getValue(ijk);
 
-    math::Coord ijk(-1, 0, 0);
-    fluidAcc.setValue(ijk, 1.25);
+    ijk = math::Coord(-1, 0, 0);
+    fluidAcc.setValue(ijk, p000);
     ijk = math::Coord(0, -1, 0);
-    fluidAcc.setValue(ijk, 1.25);
+    fluidAcc.setValue(ijk, p000);
     ijk = math::Coord(1, -1, 0);
-    fluidAcc.setValue(ijk, 2.5);
+    fluidAcc.setValue(ijk, p100);
     ijk = math::Coord(2, -1, 0);
-    fluidAcc.setValue(ijk, 6.25);
+    fluidAcc.setValue(ijk, p200);
     ijk = math::Coord(0, 0, -1);
-    fluidAcc.setValue(ijk, 1.25);
+    fluidAcc.setValue(ijk, p000);
     ijk = math::Coord(1, 0, -1);
-    fluidAcc.setValue(ijk, 2.5);
+    fluidAcc.setValue(ijk, p100);
     ijk = math::Coord(2, 0, -1);
-    fluidAcc.setValue(ijk, 6.25);
+    fluidAcc.setValue(ijk, p200);
     ijk = math::Coord(0, 0, 1);
-    fluidAcc.setValue(ijk, 1.25);
+    fluidAcc.setValue(ijk, p000);
     ijk = math::Coord(0, 1, 0);
     fluidAcc.setValue(ijk, 0);
     ijk = math::Coord(1, -1, 0);
-    fluidAcc.setValue(ijk, 2.5);
+    fluidAcc.setValue(ijk, p100);
     ijk = math::Coord(1, 0, 1);
-    fluidAcc.setValue(ijk, 2.5);
+    fluidAcc.setValue(ijk, p100);
     ijk = math::Coord(1, 1, 0);
     fluidAcc.setValue(ijk, 0);
     ijk = math::Coord(2, 0, 1);
-    fluidAcc.setValue(ijk, 6.25);
+    fluidAcc.setValue(ijk, p200);
     ijk = math::Coord(2, 1, 0);
     fluidAcc.setValue(ijk, 0);
     ijk = math::Coord(3, 0, 0);
-    fluidAcc.setValue(ijk, 6.25);
+    fluidAcc.setValue(ijk, p200);
     for (auto iter = fluidPressure->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         std::cout << "p" << ijk << " = " << fluidAcc.getValue(ijk) << std::endl;
