@@ -326,10 +326,52 @@ FlipSolver::pressureProjection2(){
     std::cout << "Absolute error: " << state.absoluteError << std::endl;
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
 
+    tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    
     fluidPressureGrid->setTransform(mVCurr->transform().copy());
+    auto fluidAcc = fluidPressureGrid->getAccessor();
+
+    math::Coord ijk(-1, 0, 0);
+    fluidAcc.setValue(ijk, 1.25);
+    ijk = math::Coord(0, -1, 0);
+    fluidAcc.setValue(ijk, 1.25);
+    ijk = math::Coord(1, -1, 0);
+    fluidAcc.setValue(ijk, 2.5);
+    ijk = math::Coord(2, -1, 0);
+    fluidAcc.setValue(ijk, 6.25);
+    ijk = math::Coord(0, 0, -1);
+    fluidAcc.setValue(ijk, 1.25);
+    ijk = math::Coord(1, 0, -1);
+    fluidAcc.setValue(ijk, 2.5);
+    ijk = math::Coord(2, 0, -1);
+    fluidAcc.setValue(ijk, 6.25);
+    ijk = math::Coord(0, 0, 1);
+    fluidAcc.setValue(ijk, 1.25);
+    ijk = math::Coord(0, 1, 0);
+    fluidAcc.setValue(ijk, 0);
+    ijk = math::Coord(1, -1, 0);
+    fluidAcc.setValue(ijk, 2.5);
+    ijk = math::Coord(1, 0, 1);
+    fluidAcc.setValue(ijk, 2.5);
+    ijk = math::Coord(1, 1, 0);
+    fluidAcc.setValue(ijk, 0);
+    ijk = math::Coord(2, 0, 1);
+    fluidAcc.setValue(ijk, 6.25);
+    ijk = math::Coord(2, 1, 0);
+    fluidAcc.setValue(ijk, 0);
+    ijk = math::Coord(3, 0, 0);
+    fluidAcc.setValue(ijk, 6.25);
+    for (auto iter = fluidPressure->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        std::cout << "p" << ijk << " = " << fluidAcc.getValue(ijk) << std::endl;
+    }
+    // p[0, 0, 0] = 1.25
+    // p[1, 0, 0] = 2.5
+    // p[2, 0, 0] = 6.25
+
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
     grad->setGridClass(GRID_STAGGERED);
-    std::cout << "grad->activeVoxelCount() = " << grad->activeVoxelCount() << std::endl;
+    // std::cout << "grad->activeVoxelCount() = " << grad->activeVoxelCount() << std::endl;
     std::cout << "grad->voxelSize() = " << grad->voxelSize() << std::endl;
 
     mVNext = mVCurr->copy();
@@ -337,31 +379,13 @@ FlipSolver::pressureProjection2(){
     mVNext->setTransform(mVCurr->transform().copy());
     auto vNextAcc = mVNext->getAccessor();
     auto gradAcc = grad->getAccessor();
-    //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-    //math::Coord ijk = iter.getCoord();
-    std::cout << "=== Debug mVoxelSize = " << mVoxelSize <<
-        " mVNext->voxelSize() = " << mVNext->voxelSize() <<
-        " grad->voxelSize() = " << grad->voxelSize() <<
-        std::endl;
-    for (int k = 0; k <=1; ++k) {
-    for (int j = 0; j <= 1; ++j) {
-    for (int i = 0; i <= 2; ++i) {
-        math::Coord ijk(i, j, k);
-        auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize /** mVoxelSize */;
-        auto gradVal = gradAcc.getValue(ijk);
-        auto scaleGrad1 = gradVal * mVoxelSize;
-        auto scaleGrad2 = gradVal * mVoxelSize * mVoxelSize;
-        std::cout << "vNext.getValue(ijk) = " << vNextAcc.getValue(ijk) << std::endl;
-        std::cout << "gradVal = " << gradVal << 
-            " scaleGrad1 = " << scaleGrad1 <<
-            " scaleGrad2 = " << scaleGrad2 <<
-            std::endl;
+
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk);
         vNextAcc.setValue(ijk, val);
     }
-    }
-    }
 
-    // Div grid after
     FloatGrid::Ptr divGridAfter = tools::divergence(*mVNext);
     (divGridAfter->tree()).topologyIntersection(interiorGrid->tree());
     FloatGrid::ConstAccessor divAfterAcc = divGridAfter->getConstAccessor();
@@ -373,16 +397,52 @@ FlipSolver::pressureProjection2(){
         std::cout << "beginvalon div after " << ijk << " = " << val << std::endl;
     }
 
+    // //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+    // //math::Coord ijk = iter.getCoord();
+    // std::cout << "=== Debug mVoxelSize = " << mVoxelSize <<
+    //     " mVNext->voxelSize() = " << mVNext->voxelSize() <<
+    //     " grad->voxelSize() = " << grad->voxelSize() <<
+    //     std::endl;
+    // for (int k = 0; k <=1; ++k) {
+    // for (int j = 0; j <= 1; ++j) {
+    // for (int i = 0; i <= 2; ++i) {
+    //     math::Coord ijk(i, j, k);
+    //     auto val = vNextAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize /** mVoxelSize */;
+    //     auto gradVal = gradAcc.getValue(ijk);
+    //     auto scaleGrad1 = gradVal * mVoxelSize;
+    //     auto scaleGrad2 = gradVal * mVoxelSize * mVoxelSize;
+    //     std::cout << "vNext.getValue(ijk) = " << vNextAcc.getValue(ijk) << std::endl;
+    //     std::cout << "gradVal = " << gradVal << 
+    //         " scaleGrad1 = " << scaleGrad1 <<
+    //         " scaleGrad2 = " << scaleGrad2 <<
+    //         std::endl;
+    //     vNextAcc.setValue(ijk, val);
+    // }
+    // }
+    // }
 
-    // Make a deep copy of fluidPressure
-    TreeBase::Ptr baseFullPressure = fluidPressure->copy();
-    // Cast down to the concrete type to query values
-    openvdb::FloatTree *fullPressure = dynamic_cast<FloatTree*>(baseFullPressure.get());
-    tools::dilateActiveValues(*fullPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    // // Div grid after
+    // FloatGrid::Ptr divGridAfter = tools::divergence(*mVNext);
+    // (divGridAfter->tree()).topologyIntersection(interiorGrid->tree());
+    // FloatGrid::ConstAccessor divAfterAcc = divGridAfter->getConstAccessor();
+    // std::cout << "divgrid after pressure projection" << std::endl;
+    // // Note that ijk = [0,0,0] is not printed because the divergence in that cell is 0
+    // for (auto iter = divGridAfter->beginValueOn(); iter; ++iter) {
+    //     math::Coord ijk = iter.getCoord();
+    //     auto val = divAfterAcc.getValue(ijk);
+    //     std::cout << "beginvalon div after " << ijk << " = " << val << std::endl;
+    // }
 
-    // TODO: parallelize this:
 
-    std::cout << "flip::pressureProjection2 ends" << std::endl;
+    // // Make a deep copy of fluidPressure
+    // TreeBase::Ptr baseFullPressure = fluidPressure->copy();
+    // // Cast down to the concrete type to query values
+    // openvdb::FloatTree *fullPressure = dynamic_cast<FloatTree*>(baseFullPressure.get());
+    // tools::dilateActiveValues(*fullPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+
+    // // TODO: parallelize this:
+
+    // std::cout << "flip::pressureProjection2 ends" << std::endl;
 }
 
 void
