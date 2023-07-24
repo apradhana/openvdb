@@ -1439,7 +1439,8 @@ checkPoisson() {
     for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
-        float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
+        // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
+        float sln = sin(2 * M_PI * xyz[0]);
         float rhs = -4.f * M_PI * M_PI * sln;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
@@ -1449,16 +1450,17 @@ checkPoisson() {
     SimpleExampleBoundaryOp bcOp(voxelSize);
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 1000;
-    state.relativeError = state.absoluteError = epsilon;
+    state.relativeError = state.absoluteError = epsilon * 0.00000001;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        sourceGrid->tree(), bcOp/*openvdb::tools::poisson::DirichletBoundaryOp<double>()*/, state, interrupter, /*staggered=*/true);
+        sourceGrid->tree(), openvdb::tools::poisson::DirichletBoundaryOp<double>(), state, interrupter, /*staggered=*/true);
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
     std::cout << "Relative error: " << state.relativeError << std::endl;
     std::cout << "Absolute error: " << state.absoluteError << std::endl;
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+    std::cout << "epsilon = " << epsilon << std::endl;
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     auto numAcc = fluidPressureGrid->getAccessor();
