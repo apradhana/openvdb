@@ -66,10 +66,10 @@ public:
             // (-X, +X, -Y, -Z, +Z): Neumann dp/dn = 0
             // (+Y): Dirichlet p = 0
             // There is nothing to do for zero value Neumann boundary condition.
-            if (ijk.y()+1 == neighbor.y()) {
-                source -= 0.0;
-                diagonal -= 1.0 / (voxelSize * voxelSize);
-            }
+            //if (ijk.y()+1 == neighbor.y()) {
+            //    source -= 0.0;
+                diagonal -= 1.0; // / (voxelSize * voxelSize);
+            //}
         }
 
         float voxelSize;
@@ -334,11 +334,11 @@ FlipSolver::pressureProjection2(){
     fluidPressureGrid->setTransform(mVCurr->transform().copy());
     auto fluidAcc = fluidPressureGrid->getAccessor();
     math::Coord ijk(0, 0, 0);
-    float p000 = fluidPressureAcc.getValue(ijk);
+    float p000 = 0.f;//fluidPressureAcc.getValue(ijk);
     ijk = math::Coord(1, 0, 0);
-    float p100 = fluidPressureAcc.getValue(ijk);
+    float p100 = 0.f; //fluidPressureAcc.getValue(ijk);
     ijk = math::Coord(2, 0, 0);
-    float p200 = fluidPressureAcc.getValue(ijk);
+    float p200 = 0.f; //fluidPressureAcc.getValue(ijk);
 
     ijk = math::Coord(-1, 0, 0);
     fluidAcc.setValue(ijk, p000);
@@ -391,7 +391,7 @@ FlipSolver::pressureProjection2(){
 
     for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk);
+        auto val = vCurrAcc.getValue(ijk) - mVoxelSize * mVoxelSize * gradAcc.getValue(ijk);
         vNextAcc.setValue(ijk, val);
     }
 
