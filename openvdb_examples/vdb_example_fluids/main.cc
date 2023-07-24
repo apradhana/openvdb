@@ -1355,6 +1355,62 @@ SmokeSolver::foobar2() {
     file.close();
 }
 
+
+struct SimpleExampleBoundaryOp {
+
+    SimpleExampleBoundaryOp(const float vs) : voxelSize(vs) {
+        xform = math::Transform::createLinearTransform(voxelSize);
+    }
+
+    void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
+        double& source, double& diagonal) const
+    {
+        using std::sin;
+        auto xyzNgbr = xform->indexToWorld(neighbor);
+        // TODO: do I need to scale it??
+        double bc = sin(2 * M_PI * xyzNgbr[0]) + sin(2 * M_PI * xyzNgbr[1]) + sin(2 * M_PI * xyzNgbr[2]);
+        // left x-face
+        if (neighbor.x() + 1 == ijk.x()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        // right x-face
+        if (neighbor.x() - 1 == ijk.x()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        // bottom y-face
+        if (neighbor.y() + 1 == ijk.y()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        // up y-face
+        if (neighbor.y() - 1 == ijk.y()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        // back z-face
+        if (neighbor.z() + 1 == ijk.z()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        // front z-face
+        if (neighbor.z() - 1 == ijk.z()) {
+            diagonal -= 1.0;
+            source -= bc;
+        }
+        //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
+        //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
+        //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
+        //    if (dy > 0) source -= 1.0;
+        //    else diagonal -= 1.0;
+        //}
+    }
+
+    float voxelSize;
+    openvdb::math::Transform::Ptr xform;
+};
+
 void
 checkPoisson() {
     using TreeType = FloatTree;
@@ -1390,12 +1446,13 @@ checkPoisson() {
         std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
     }
 
+    SimpleExampleBoundaryOp bcOp(voxelSize);
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 1000;
     state.relativeError = state.absoluteError = epsilon;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        sourceGrid->tree(), openvdb::tools::poisson::DirichletBoundaryOp<double>(), state, interrupter, /*staggered=*/true);
+        sourceGrid->tree(), bcOp/*openvdb::tools::poisson::DirichletBoundaryOp<double>()*/, state, interrupter, /*staggered=*/true);
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -1405,7 +1462,6 @@ checkPoisson() {
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     auto numAcc = fluidPressureGrid->getAccessor();
-
     for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
@@ -1413,7 +1469,7 @@ checkPoisson() {
         float vsMult = numAcc.getValue(ijk) * voxelSize;
         float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
         if (std::abs(err) > 1.0e-5) {
-            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << std::endl;
+            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
         }
     }
 }
