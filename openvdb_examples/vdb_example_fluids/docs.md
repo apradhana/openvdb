@@ -42,3 +42,90 @@ The key thing to understand are (1) the use of domain mask to tell the solver wh
 
  ## Where do I cut corners?
   - In the creation of fullPressure grid from fluidPressure
+
+### Code and Answer
+
+```
+void
+checkPoisson() {
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+    using std::sin;
+
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+
+    int const N = 3;
+    float const voxelSize = 1.0f/static_cast<float>(N);
+    auto const xform = math::Transform::createLinearTransform(voxelSize);
+
+    FloatTree::Ptr source(new FloatTree(0.f));
+    source->fill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
+    FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
+    sourceGrid->setTransform(xform);
+    auto srcAcc = sourceGrid->getAccessor();
+
+    FloatTree::Ptr trueSln(new FloatTree(0.f));
+    trueSln->fill(CoordBBox(Coord(0, 0, 0), Coord(N, N, N)), /* value = */0.f);
+    FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
+    slnGrid->setTransform(xform);
+    auto slnAcc = slnGrid->getAccessor();
+
+    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto xyz = xform->indexToWorld(ijk);
+        // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
+        float sln = sin(2 * M_PI * xyz[0]);
+        float rhs = -4.f * M_PI * M_PI * sln;
+        srcAcc.setValue(ijk, rhs);
+        slnAcc.setValue(ijk, sln);
+        std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
+    }
+
+    SimpleExampleBoundaryOp bcOp(voxelSize);
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 1000;
+    state.relativeError = state.absoluteError = epsilon * 0.00000001;
+    util::NullInterrupter interrupter;
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+        sourceGrid->tree(), openvdb::tools::poisson::DirichletBoundaryOp<double>(), state, interrupter, /*staggered=*/true);
+
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+    std::cout << "epsilon = " << epsilon << std::endl;
+
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    auto numAcc = fluidPressureGrid->getAccessor();
+    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto xyz = xform->indexToWorld(ijk);
+        float err = slnAcc.getValue(ijk) - numAcc.getValue(ijk) * voxelSize * voxelSize;
+        float vsMult = numAcc.getValue(ijk) * voxelSize;
+        float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
+        if (std::abs(err) > 1.0e-5) {
+            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
+        }
+    }
+}
+```
+
+Answer:
+```
+Success: 1
+Iterations: 5
+Relative error: 3.61712e-21
+Absolute error: 1.23667e-19
+before dilate solution->activeVoxelCount() =  8
+epsilon = 1e-05
+ijk = [1, 1, 1] xyz = [0.333333, 0.333333, 0.333333] true sln = 0.866025 ovdb sln = 0.759762 err = 0.106263
+ijk = [1, 1, 2] xyz = [0.333333, 0.333333, 0.666667] true sln = 0.866025 ovdb sln = 0.759762 err = 0.106263
+ijk = [1, 2, 1] xyz = [0.333333, 0.666667, 0.333333] true sln = 0.866025 ovdb sln = 0.759762 err = 0.106263
+ijk = [1, 2, 2] xyz = [0.333333, 0.666667, 0.666667] true sln = 0.866025 ovdb sln = 0.759762 err = 0.106263
+ijk = [2, 1, 1] xyz = [0.666667, 0.333333, 0.333333] true sln = -0.866025 ovdb sln = -0.759763 err = -0.106263
+ijk = [2, 1, 2] xyz = [0.666667, 0.333333, 0.666667] true sln = -0.866025 ovdb sln = -0.759763 err = -0.106263
+ijk = [2, 2, 1] xyz = [0.666667, 0.666667, 0.333333] true sln = -0.866025 ovdb sln = -0.759763 err = -0.106263
+ijk = [2, 2, 2] xyz = [0.666667, 0.666667, 0.666667] true sln = -0.866025 ovdb sln = -0.759763 err = -0.106263
+```
