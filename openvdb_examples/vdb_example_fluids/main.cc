@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <math.h>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -1354,6 +1355,69 @@ SmokeSolver::foobar2() {
     file.close();
 }
 
+void
+checkPoisson() {
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+    using std::sin;
+
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+
+    int const N = 3;
+    float const voxelSize = 1.0f/static_cast<float>(N);
+    auto const xform = math::Transform::createLinearTransform(voxelSize);
+
+    FloatTree::Ptr source(new FloatTree(0.f));
+    source->fill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
+    FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
+    sourceGrid->setTransform(xform);
+    auto srcAcc = sourceGrid->getAccessor();
+
+    FloatTree::Ptr trueSln(new FloatTree(0.f));
+    trueSln->fill(CoordBBox(Coord(0, 0, 0), Coord(N, N, N)), /* value = */0.f);
+    FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
+    slnGrid->setTransform(xform);
+    auto slnAcc = slnGrid->getAccessor();
+
+    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto xyz = xform->indexToWorld(ijk);
+        float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
+        float rhs = -4.f * M_PI * M_PI * sln;
+        srcAcc.setValue(ijk, rhs);
+        slnAcc.setValue(ijk, sln);
+        std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
+    }
+
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 1000;
+    state.relativeError = state.absoluteError = epsilon;
+    util::NullInterrupter interrupter;
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+        sourceGrid->tree(), openvdb::tools::poisson::DirichletBoundaryOp<double>(), state, interrupter, /*staggered=*/true);
+
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    auto numAcc = fluidPressureGrid->getAccessor();
+
+    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto xyz = xform->indexToWorld(ijk);
+        float err = slnAcc.getValue(ijk) - numAcc.getValue(ijk) * voxelSize * voxelSize;
+        float vsMult = numAcc.getValue(ijk) * voxelSize;
+        float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
+        if (std::abs(err) > 1.0e-5) {
+            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << std::endl;
+        }
+    }
+}
+
 // TO BUILD:
 // mkdir build
 // cd build
@@ -1373,6 +1437,9 @@ main(int argc, char *argv[])
     FlipSolver flipSim;
     flipSim.particlesToGrid2();
     flipSim.pressureProjection2();
+
+    checkPoisson();
+
     // solver.render();
     // testPoissonSolve();
     // testDivergence();
