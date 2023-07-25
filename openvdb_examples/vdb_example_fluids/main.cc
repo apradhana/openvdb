@@ -1363,48 +1363,21 @@ struct SimpleExampleBoundaryOp {
     }
 
     void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
-        double& source, double& diagonal) const
-    {
+        double& source, double& diagonal) const {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
-        // TODO: do I need to scale it??
-        double bc = sin(2 * M_PI * xyzNgbr[0]) + sin(2 * M_PI * xyzNgbr[1]) + sin(2 * M_PI * xyzNgbr[2]);
+        //double bc = sin(xyzNgbr[0]);//xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
+        double bc = xyzNgbr[0];
         // left x-face
-        if (neighbor.x() + 1 == ijk.x()) {
+        if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
+            neighbor.x() - 1 == ijk.x() /* right x-face */ ||
+            neighbor.y() + 1 == ijk.y() /* bottom y-face */ ||
+            neighbor.y() - 1 == ijk.y() /* top y-face */ ||
+            neighbor.z() + 1 == ijk.z() /* back z-face */ ||
+            neighbor.z() - 1 == ijk.z() /* front z-face */) {
             diagonal -= 1.0;
             source -= bc;
         }
-        // right x-face
-        if (neighbor.x() - 1 == ijk.x()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // bottom y-face
-        if (neighbor.y() + 1 == ijk.y()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // up y-face
-        if (neighbor.y() - 1 == ijk.y()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // back z-face
-        if (neighbor.z() + 1 == ijk.z()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // front z-face
-        if (neighbor.z() - 1 == ijk.z()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
-        //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
-        //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
-        //    if (dy > 0) source -= 1.0;
-        //    else diagonal -= 1.0;
-        //}
     }
 
     float voxelSize;
@@ -1423,7 +1396,6 @@ struct SimpleLinearBoundaryOp {
     {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
-        // TODO: do I need to scale it??
         double bc = sin(xyzNgbr[0]);//xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
         // left x-face
         if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
@@ -1450,18 +1422,18 @@ checkPoisson() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    int const N = 3 * 2;
+    int const N = 4;
     float const voxelSize = 1.0f/static_cast<float>(N);
     auto const xform = math::Transform::createLinearTransform(voxelSize);
 
     FloatTree::Ptr source(new FloatTree(0.f));
-    source->fill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
+    source->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
     FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
     sourceGrid->setTransform(xform);
     auto srcAcc = sourceGrid->getAccessor();
 
     FloatTree::Ptr trueSln(new FloatTree(0.f));
-    trueSln->fill(CoordBBox(Coord(0, 0, 0), Coord(N, N, N)), /* value = */0.f);
+    trueSln->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
     FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
     slnGrid->setTransform(xform);
     auto slnAcc = slnGrid->getAccessor();
@@ -1470,8 +1442,10 @@ checkPoisson() {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
         // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
-        float sln = sin(2 * M_PI * xyz[0]);
-        float rhs = -4.f * M_PI * M_PI * sln * voxelSize * voxelSize;
+        // float sln = sin(2 * M_PI * xyz[0]);
+        // float rhs = -4.f * M_PI * M_PI * sln * voxelSize * voxelSize;
+        float sln = xyz[0];
+        float rhs = 0.f;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
         std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
@@ -1483,7 +1457,7 @@ checkPoisson() {
     state.relativeError = state.absoluteError = epsilon * 0.00000001;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        sourceGrid->tree(), openvdb::tools::poisson::DirichletBoundaryOp<double>(), state, interrupter, /*staggered=*/true);
+        sourceGrid->tree(), bcOp, state, interrupter, /*staggered=*/true);
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -1493,6 +1467,7 @@ checkPoisson() {
     std::cout << "epsilon = " << epsilon << std::endl;
 
     double totalError = 0.0;
+    double maxError = 0.0;
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     auto numAcc = fluidPressureGrid->getAccessor();
@@ -1504,13 +1479,16 @@ checkPoisson() {
         float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
         totalError += err * err;
         if (std::abs(err) > 1.0e-5) {
+            if (std::abs(err) > maxError) {
+                maxError = std::abs(err);
+            }
             // std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
-            //std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
+            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
         }
     }
     double cvgcTest = totalError * voxelSize * voxelSize * voxelSize;
     cvgcTest = std::sqrt(cvgcTest);
-    std::cout << "convergence Test = " << cvgcTest << std::endl;
+    std::cout << "convergence Test = " << cvgcTest << " maxError = " << maxError << std::endl;
 }
 
 
@@ -1617,7 +1595,7 @@ main(int argc, char *argv[])
     flipSim.particlesToGrid2();
     flipSim.pressureProjection2();
 
-    checkPoisson2();
+    checkPoisson();
 
     // solver.render();
     // testPoissonSolve();
