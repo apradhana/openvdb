@@ -1369,7 +1369,8 @@ struct SimpleExampleBoundaryOp {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
         //double bc = sin(xyzNgbr[0]);//xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
-        double bc = xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
+        // double bc = xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
+        double bc = sin(2 * M_PI * xyzNgbr[0]);
         // left x-face
         if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
             neighbor.x() - 1 == ijk.x() /* right x-face */ ||
@@ -1423,74 +1424,77 @@ checkPoisson() {
 
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
-
-    int const N = 100;
-    float const voxelSize = 1.0f/static_cast<float>(N);
-    auto const xform = math::Transform::createLinearTransform(voxelSize);
-
-    FloatTree::Ptr source(new FloatTree(0.f));
-    source->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
-    FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
-    sourceGrid->setTransform(xform);
-    auto srcAcc = sourceGrid->getAccessor();
-
-    FloatTree::Ptr trueSln(new FloatTree(0.f));
-    trueSln->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
-    FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
-    slnGrid->setTransform(xform);
-    auto slnAcc = slnGrid->getAccessor();
-
-    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        auto xyz = xform->indexToWorld(ijk);
-        // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
-        // float sln = sin(2 * M_PI * xyz[0]);
-        // float rhs = -4.f * M_PI * M_PI * sln * voxelSize * voxelSize;
-        float sln = xyz[0] * xyz[0] + xyz[1] * xyz[1] + xyz[2] * xyz[2];
-        float rhs = 6.f * voxelSize * voxelSize;
-        srcAcc.setValue(ijk, rhs);
-        slnAcc.setValue(ijk, sln);
-        std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
-    }
-
-    SimpleExampleBoundaryOp bcOp(voxelSize);
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 1000;
-    state.relativeError = state.absoluteError = epsilon * 0.00000001;
-    util::NullInterrupter interrupter;
-    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        sourceGrid->tree(), bcOp, state, interrupter, /*staggered=*/true);
-
-    std::cout << "Success: " << state.success << std::endl;
-    std::cout << "Iterations: " << state.iterations << std::endl;
-    std::cout << "Relative error: " << state.relativeError << std::endl;
-    std::cout << "Absolute error: " << state.absoluteError << std::endl;
-    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
-    std::cout << "epsilon = " << epsilon << std::endl;
-
-    double totalError = 0.0;
-    double maxError = 0.0;
-
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    auto numAcc = fluidPressureGrid->getAccessor();
-    for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        auto xyz = xform->indexToWorld(ijk);
-        float err = slnAcc.getValue(ijk) - numAcc.getValue(ijk);
-        float vsMult = numAcc.getValue(ijk) * voxelSize;
-        float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
-        totalError += err * err;
-        if (std::abs(err) > 1.0e-5) {
-            if (std::abs(err) > maxError) {
-                maxError = std::abs(err);
-            }
-            // std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
-            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
+    
+    std::vector<int> voxelsPerDims {4, 8, 16, 32, 64, 128};
+    
+    for (int i = 0; i < voxelsPerDims.size(); ++i) {
+        int const N = voxelsPerDims[i];
+        float const voxelSize = 1.0f/static_cast<float>(N);
+        auto const xform = math::Transform::createLinearTransform(voxelSize);
+        
+        FloatTree::Ptr source(new FloatTree(0.f));
+        source->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
+        FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
+        sourceGrid->setTransform(xform);
+        auto srcAcc = sourceGrid->getAccessor();
+        
+        FloatTree::Ptr trueSln(new FloatTree(0.f));
+        trueSln->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N-1, N-1, N-1)), /* value = */0.f);
+        FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
+        slnGrid->setTransform(xform);
+        auto slnAcc = slnGrid->getAccessor();
+        
+        for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            auto xyz = xform->indexToWorld(ijk);
+            // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
+            float sln = sin(2 * M_PI * xyz[0]);
+            float rhs = -4.f * M_PI * M_PI * sln * voxelSize * voxelSize;
+            // float sln = xyz[0] * xyz[0] + xyz[1] * xyz[1] + xyz[2] * xyz[2];
+            // float rhs = 6.f * voxelSize * voxelSize;
+            srcAcc.setValue(ijk, rhs);
+            slnAcc.setValue(ijk, sln);
+            // std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
         }
+        
+        SimpleExampleBoundaryOp bcOp(voxelSize);
+        math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+        state.iterations = 1000;
+        state.relativeError = state.absoluteError = epsilon * 0.00000001;
+        util::NullInterrupter interrupter;
+        FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+                                                                                   sourceGrid->tree(), bcOp, state, interrupter, /*staggered=*/true);
+        
+        // std::cout << "Success: " << state.success << std::endl;
+        // std::cout << "Iterations: " << state.iterations << std::endl;
+        // std::cout << "Relative error: " << state.relativeError << std::endl;
+        // std::cout << "Absolute error: " << state.absoluteError << std::endl;
+        // std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+        
+        double totalError = 0.0;
+        double maxError = 0.0;
+        
+        FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+        auto numAcc = fluidPressureGrid->getAccessor();
+        for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            auto xyz = xform->indexToWorld(ijk);
+            float err = slnAcc.getValue(ijk) - numAcc.getValue(ijk);
+            float vsMult = numAcc.getValue(ijk) * voxelSize;
+            float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
+            totalError += err * err;
+            if (std::abs(err) > 1.0e-5) {
+                if (std::abs(err) > maxError) {
+                    maxError = std::abs(err);
+                }
+                // std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
+                // std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
+            }
+        }
+        double cvgcTest = totalError * voxelSize * voxelSize * voxelSize;
+        cvgcTest = std::sqrt(cvgcTest);
+        std::cout << "Voxels per dim = " << N << " iterations = " << state.iterations << " cg relative error = " << state.relativeError << " cg absolute error = " << state.absoluteError << " convergence Test = " << cvgcTest << " maxError = max(true sln - num sln) = " << maxError << std::endl;
     }
-    double cvgcTest = totalError * voxelSize * voxelSize * voxelSize;
-    cvgcTest = std::sqrt(cvgcTest);
-    std::cout << "convergence Test = " << cvgcTest << " maxError = " << maxError << std::endl;
 }
 
 
@@ -1619,8 +1623,8 @@ main(int argc, char *argv[])
     // flipSim.particlesToGrid2();
     // flipSim.pressureProjection2();
 
-    // checkPoisson();
-    simpleFlip();
+    checkPoisson();
+    // simpleFlip();
 
     // solver.render();
     // testPoissonSolve();
