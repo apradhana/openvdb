@@ -1424,7 +1424,7 @@ struct SimpleLinearBoundaryOp {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
         // TODO: do I need to scale it??
-        double bc = xyzNgbr[0] + xyzNgbr[1] + xyzNgbr[2];
+        double bc = xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
         // left x-face
         if (neighbor.x() + 1 == ijk.x()) {
             diagonal -= 1.0;
@@ -1549,7 +1549,7 @@ checkPoisson2() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    int const N = 100;
+    int const N = 14;
     float const voxelSize = 1.0f;
     auto const xform = math::Transform::createLinearTransform(voxelSize);
 
@@ -1560,7 +1560,7 @@ checkPoisson2() {
     auto srcAcc = sourceGrid->getAccessor();
 
     FloatTree::Ptr trueSln(new FloatTree(0.f));
-    trueSln->fill(CoordBBox(Coord(0, 0, 0), Coord(N, N, N)), /* value = */0.f);
+    trueSln->fill(CoordBBox(Coord(1, 1, 1), Coord(N, N, N)), /* value = */0.f);
     FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
     slnGrid->setTransform(xform);
     auto slnAcc = slnGrid->getAccessor();
@@ -1569,8 +1569,8 @@ checkPoisson2() {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
         // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
-        float sln = xyz[0] + xyz[1] + xyz[2];
-        float rhs = 0;
+        float sln = xyz[0] * xyz[0] + xyz[1] * xyz[1] + xyz[2] * xyz[2];
+        float rhs = 6;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
         std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
@@ -1578,7 +1578,7 @@ checkPoisson2() {
 
     SimpleLinearBoundaryOp bcOp(voxelSize);
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 1000;
+    state.iterations = 1000000;
     state.relativeError = state.absoluteError = epsilon * 0.00000001;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
