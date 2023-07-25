@@ -1367,7 +1367,7 @@ struct SimpleExampleBoundaryOp {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
         //double bc = sin(xyzNgbr[0]);//xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
-        double bc = xyzNgbr[0];
+        double bc = xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
         // left x-face
         if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
             neighbor.x() - 1 == ijk.x() /* right x-face */ ||
@@ -1422,7 +1422,7 @@ checkPoisson() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    int const N = 4;
+    int const N = 100;
     float const voxelSize = 1.0f/static_cast<float>(N);
     auto const xform = math::Transform::createLinearTransform(voxelSize);
 
@@ -1444,8 +1444,8 @@ checkPoisson() {
         // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
         // float sln = sin(2 * M_PI * xyz[0]);
         // float rhs = -4.f * M_PI * M_PI * sln * voxelSize * voxelSize;
-        float sln = xyz[0];
-        float rhs = 0.f;
+        float sln = xyz[0] * xyz[0] + xyz[1] * xyz[1] + xyz[2] * xyz[2];
+        float rhs = 6.f * voxelSize * voxelSize;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
         std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
