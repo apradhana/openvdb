@@ -1549,21 +1549,22 @@ checkPoisson2() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    int const N = 15;
+    int const N = 100;
     float const voxelSize = 1.0f;
     auto const xform = math::Transform::createLinearTransform(voxelSize);
 
     FloatTree::Ptr source(new FloatTree(0.f));
-    source->fill(CoordBBox(Coord(1, 1, 1), Coord(N, N, N)), /* value = */0.f);
+    source->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N, N, N)), /* value = */0.f);
     FloatGrid::Ptr sourceGrid = Grid<FloatTree>::create(source);
     sourceGrid->setTransform(xform);
     auto srcAcc = sourceGrid->getAccessor();
 
     FloatTree::Ptr trueSln(new FloatTree(0.f));
-    trueSln->fill(CoordBBox(Coord(1, 1, 1), Coord(N, N, N)), /* value = */0.f);
+    trueSln->denseFill(CoordBBox(Coord(1, 1, 1), Coord(N, N, N)), /* value = */0.f);
     FloatGrid::Ptr slnGrid = Grid<FloatTree>::create(trueSln);
     slnGrid->setTransform(xform);
     auto slnAcc = slnGrid->getAccessor();
+
 
     for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
@@ -1573,7 +1574,9 @@ checkPoisson2() {
         float rhs = 6;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
-        std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
+        if (ijk[0] == 12 && ijk[1] == 10 && ijk[2] == 10) {
+            std::cout << "=== ijk" << ijk << " xyz = " << xyz << " = " << srcAcc.getValue(ijk) << std::endl;
+        }
     }
 
     SimpleLinearBoundaryOp bcOp(voxelSize);
@@ -1591,10 +1594,17 @@ checkPoisson2() {
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
     std::cout << "epsilon = " << epsilon << std::endl;
 
+
     double totalError = 0.0;
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     auto numAcc = fluidPressureGrid->getAccessor();
+
+
+    std::cout << "active voxel count: sourceGrid = " << sourceGrid->activeVoxelCount() <<
+        "solution = " << slnGrid->activeVoxelCount() <<
+        "fluid pressure = " << fluidPressureGrid->activeVoxelCount() << std::endl;
+
     for (auto iter = sourceGrid->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
@@ -1602,7 +1612,7 @@ checkPoisson2() {
         float num = numAcc.getValue(ijk);
         totalError += err * err;
         if (std::abs(err) > 1.0e-5) {
-            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << num << " err = " << err << std::endl;
+            //std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << num << " err = " << err << std::endl;
             //std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
         }
     }
