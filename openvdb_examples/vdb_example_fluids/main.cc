@@ -1424,7 +1424,7 @@ struct SimpleLinearBoundaryOp {
         using std::sin;
         auto xyzNgbr = xform->indexToWorld(neighbor);
         // TODO: do I need to scale it??
-        double bc = xyzNgbr[0];
+        double bc = xyzNgbr[0] + xyzNgbr[1] + xyzNgbr[2];
         // left x-face
         if (neighbor.x() + 1 == ijk.x()) {
             diagonal -= 1.0;
@@ -1569,7 +1569,7 @@ checkPoisson2() {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
         // float sln = sin(2 * M_PI * xyz[0]) + sin(2 * M_PI * xyz[1]) + sin(2 * M_PI * xyz[2]);
-        float sln = xyz[0];
+        float sln = xyz[0] + xyz[1] + xyz[2];
         float rhs = 0;
         srcAcc.setValue(ijk, rhs);
         slnAcc.setValue(ijk, sln);
