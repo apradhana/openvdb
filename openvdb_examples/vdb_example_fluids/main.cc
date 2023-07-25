@@ -22,6 +22,7 @@
 
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointCount.h>
+#include <openvdb/points/PointScatter.h>
 #include <openvdb/points/PointRasterizeTrilinear.h>
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
@@ -1579,15 +1580,19 @@ checkPoisson2() {
 void
 simpleFlip() {
     using BBox = math::BBox<Vec3s>;
+    int constexpr pointsPerVoxel = 8;
+    float const voxelSize = 0.1f;
+    
     std::cout << "simple flip begins" << std::endl;
     
     auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */);
     auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f, 4.f, 5.f) /* max */);
     
-    float const voxelSize = 0.1f;
     math::Transform::Ptr xform = math::Transform::createLinearTransform(voxelSize);
 
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *xform);
+    
+    auto points = points::denseUniformPointScatter(*fluidLSInit, pointsPerVoxel);
     
     std::cout << "fluidLSInit = " << fluidLSInit << std::endl;
     
