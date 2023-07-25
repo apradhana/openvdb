@@ -1549,7 +1549,7 @@ checkPoisson2() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    int const N = 14;
+    int const N = 15;
     float const voxelSize = 1.0f;
     auto const xform = math::Transform::createLinearTransform(voxelSize);
 
@@ -1599,11 +1599,10 @@ checkPoisson2() {
         auto ijk = iter.getCoord();
         auto xyz = xform->indexToWorld(ijk);
         float err = slnAcc.getValue(ijk) - numAcc.getValue(ijk);
-        float vsMult = numAcc.getValue(ijk) * voxelSize;
-        float vsSqrMult = numAcc.getValue(ijk) * voxelSize * voxelSize;
+        float num = numAcc.getValue(ijk);
         totalError += err * err;
         if (std::abs(err) > 1.0e-5) {
-            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << vsSqrMult << " err = " << err << std::endl;
+            std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << num << " err = " << err << std::endl;
             //std::cout << "ijk = " << ijk << " xyz = " << xyz << " true sln = " << slnAcc.getValue(ijk) << " ovdb sln = " << numAcc.getValue(ijk)  << " err = " << err << std::endl;
         }
     }
