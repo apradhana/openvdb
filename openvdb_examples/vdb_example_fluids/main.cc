@@ -24,6 +24,7 @@
 #include <openvdb/points/PointCount.h>
 #include <openvdb/points/PointRasterizeTrilinear.h>
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
+#include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
 using namespace openvdb;
 
 class Vector3 {
@@ -1575,6 +1576,24 @@ checkPoisson2() {
     std::cout << "convergence Test = " << cvgcTest << " maxError = " << maxError << std::endl;
 }
 
+void
+simpleFlip() {
+    using BBox = math::BBox<Vec3s>;
+    std::cout << "simple flip begins" << std::endl;
+    
+    auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */);
+    auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f, 4.f, 5.f) /* max */);
+    
+    float const voxelSize = 0.1f;
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(voxelSize);
+
+    FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *xform);
+    
+    std::cout << "fluidLSInit = " << fluidLSInit << std::endl;
+    
+    std::cout << "simple flip ends" << std::endl;
+}
+
 // TO BUILD:
 // mkdir build
 // cd build
@@ -1587,15 +1606,16 @@ main(int argc, char *argv[])
 
     //createUnitBox();
     //foobar();
-    convertToOnesAndZeros();
-    SmokeSolver smokeSim;
-    smokeSim.foobar2();
+    // convertToOnesAndZeros();
+    // SmokeSolver smokeSim;
+    // smokeSim.foobar2();
 
-    FlipSolver flipSim;
-    flipSim.particlesToGrid2();
-    flipSim.pressureProjection2();
+    // FlipSolver flipSim;
+    // flipSim.particlesToGrid2();
+    // flipSim.pressureProjection2();
 
-    checkPoisson();
+    // checkPoisson();
+    simpleFlip();
 
     // solver.render();
     // testPoissonSolve();
