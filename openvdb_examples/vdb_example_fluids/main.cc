@@ -1426,41 +1426,15 @@ struct SimpleLinearBoundaryOp {
         // TODO: do I need to scale it??
         double bc = sin(xyzNgbr[0]);//xyzNgbr[0] * xyzNgbr[0] + xyzNgbr[1] * xyzNgbr[1] + xyzNgbr[2] * xyzNgbr[2];
         // left x-face
-        if (neighbor.x() + 1 == ijk.x()) {
+        if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
+            neighbor.x() - 1 == ijk.x() /* right x-face */ ||
+            neighbor.y() + 1 == ijk.y() /* bottom y-face */ ||
+            neighbor.y() - 1 == ijk.y() /* top y-face */ ||
+            neighbor.z() + 1 == ijk.z() /* back z-face */ ||
+            neighbor.z() - 1 == ijk.z() /* front z-face */) {
             diagonal -= 1.0;
             source -= bc;
         }
-        // right x-face
-        if (neighbor.x() - 1 == ijk.x()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // bottom y-face
-        if (neighbor.y() + 1 == ijk.y()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // up y-face
-        if (neighbor.y() - 1 == ijk.y()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // back z-face
-        if (neighbor.z() + 1 == ijk.z()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        // front z-face
-        if (neighbor.z() - 1 == ijk.z()) {
-            diagonal -= 1.0;
-            source -= bc;
-        }
-        //if (neighbor.x() == ijk.x() && neighbor.z() == ijk.z()) {
-        //    // Workaround for spurious GCC 4.8 -Wstrict-overflow warning:
-        //    const openvdb::Coord::ValueType dy = (ijk.y() - neighbor.y());
-        //    if (dy > 0) source -= 1.0;
-        //    else diagonal -= 1.0;
-        //}
     }
 
     float voxelSize;
