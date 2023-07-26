@@ -1597,6 +1597,14 @@ simpleFlip() {
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *xform);
     
     auto points = points::denseUniformPointScatter(*fluidLSInit, pointsPerVoxel);
+
+    std::cout << "points->getName() = " << points->getName() << std::endl;
+    points->setName("Points");
+    openvdb::io::File("mypoints.vdb").write({points});
+
+
+
+
     
     std::cout << "fluidLSInit = " << fluidLSInit << std::endl;
     
@@ -1623,8 +1631,9 @@ main(int argc, char *argv[])
     // flipSim.particlesToGrid2();
     // flipSim.pressureProjection2();
 
-    checkPoisson();
-    // simpleFlip();
+    // checkPoisson();
+    simpleFlip();
+
 
     // solver.render();
     // testPoissonSolve();
