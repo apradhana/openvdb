@@ -52,15 +52,24 @@ public:
 
     void render();
 
+    // Rasterize particle velocity to the grid
     void particlesToGrid();
     void particlesToGrid2();
 
+    // FLIP update: Interpolate the delta of velocity update (v_np1 - v_n)
+    // back to the particle
     void gridToParticles();
 
+    // Update particle position based on velocity on the grid
+    void advectParticles(float const dt);
+
+    // Make the velocity on the grid to be divergence free
     void pressureProjection();
     void pressureProjection2();
+    void pressureProjection3();
+    void gridVelocityUpdate(float const dt);
 
-    void advectParticles(float const dt);
+    void addGravity(float const dt);
 
     void writeVDBs(int const frame);
 
@@ -120,7 +129,6 @@ private:
     math::Transform::Ptr mXform;
 
     points::PointDataGrid::Ptr mPoints;
-    FloatGrid::Ptr mDensity;
     FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
     Vec3SGrid::Ptr mVCurr;
@@ -172,50 +180,63 @@ FlipSolver::initialize() {
 }
 
 void
-FlipSolver::substep(float const dt){}
-
-void
-FlipSolver::render(){}
-
-void
 FlipSolver::particlesToGrid(){
-    // Create a vector with four point positions.
-    std::vector<Vec3s> positions;
-    positions.push_back(Vec3s(0.f, 0.f, 0.f));
-    Vec3s v(1.f, 1.f, 3.f);
+    TreeBase::Ptr baseVTree = points::rasterizeTrilinear<true /* staggered */, Vec3s>(mPoints->tree(), "velocity");
 
-    points::PointAttributeVector<Vec3s> positionsWrapper(positions);
-    int const pointsPerVoxel = 8;
-    float const voxelSize =
-        points::computeVoxelSize(positionsWrapper, pointsPerVoxel);
-    // Print the voxel-size to cout
-    std::cout << "VoxelSize=" << voxelSize << std::endl;
-    // Create a transform using this voxel-size.
-    auto const xform =
-        math::Transform::createLinearTransform(voxelSize);
-    // Create a PointDataGrid
-    points::PointDataGrid::Ptr points =
-        points::createPointDataGrid<points::NullCodec,
-                        points::PointDataGrid>(positions, *xform);
-    points::appendAttribute<Vec3s>(points->tree(), "velocity", v);
-    // TreeBase::Ptr tree =
-    //     points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
-    // Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
-    // mVCurr = Vec3SGrid::create(velTree);
-    // mVCurr->setGridClass(GRID_STAGGERED);
-    // auto const vCurrAcc = mVCurr->getConstAccessor();
-    // for (int k = -1; k < 2; ++k) {
-    //     for (int j = -1; j < 2; ++j) {
-    //         for (int i = -1; i < 2; ++i) {
-    //             math::Coord ijk(i, j, k);
-    //             auto val = vCurrAcc.getValue(ijk);
-    //             if (val.length() > 1.0e-5) {
-    //                 std::cout << "ijk = " << ijk << ", val = " << vCurrAcc.getValue(ijk) << std::endl;
-    //             }
-    //         }
-    //     }
-    // }
+    Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(baseVTree);
+    mVCurr = Vec3SGrid::create(velTree);
+    mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->setTransform(mXform);
 
+    mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
+    (mVNext->tree()).topologyUnion(mVCurr->tree());
+    mVNext->setGridClass(GRID_STAGGERED);
+    mVNext->setTransform(mXform);
+}
+
+
+void
+FlipSolver::addGravity(float const dt) {
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto vNextAcc = mVNext->getAccessor();
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        Vec3s newVel = vCurrAcc.getValue(ijk) + dt * mGravity;
+        vNextAcc.setValue(ijk, newVel);
+    }
+}
+
+
+void
+FlipSolver::pressureProjection() {
+
+}
+
+
+void
+FlipSolver::gridVelocityUpdate(float const dt) {
+    addGravity(dt);
+    pressureProjection();
+}
+
+
+void
+FlipSolver::substep(float const dt) {
+    particlesToGrid();
+    gridVelocityUpdate(dt);
+    gridToParticles();
+    advectParticles(dt);
+}
+
+
+void
+FlipSolver::render() {
+    float const dt = 1.f/24.f;
+    for (int frame = 0; frame < 100; ++frame) {
+        std::cout << "frame = " << frame << "\n";
+        substep(dt);
+        writeVDBs(frame);
+    }
 }
 
 
@@ -494,7 +515,7 @@ FlipSolver::pressureProjection2(){
 }
 
 void
-FlipSolver::pressureProjection(){
+FlipSolver::pressureProjection3(){
     std::cout << "flip::pressureProjection begin" << std::endl;
     BoolTree::Ptr interiorMask(new BoolTree(false));
     interiorMask->topologyUnion(mVCurr->tree());
@@ -538,10 +559,23 @@ FlipSolver::pressureProjection(){
 }
 
 void
-FlipSolver::advectParticles(float const dt){}
+FlipSolver::advectParticles(float const dt) {
+    Index const integrationOrder = 1;
+    int const steps = 1;
+
+    points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
+}
+
 
 void
-FlipSolver::writeVDBs(int const frame){}
+FlipSolver::writeVDBs(int const frame) {
+    std::ostringstream ss;
+    ss << "water_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    std::string fileName(ss.str());
+    io::File file(fileName.c_str());
+    file.write({mPoints});
+    file.close();
+}
 
 
 class SmokeSolver {
@@ -1706,6 +1740,7 @@ main(int argc, char *argv[])
     // smokeSim.foobar2();
 
     FlipSolver flipSim(0.1f /* voxel size */);
+    flipSim.render();
     // flipSim.particlesToGrid2();
     // flipSim.pressureProjection2();
 
