@@ -42,15 +42,16 @@ public:
 
 class FlipSolver {
 public:
+
     FlipSolver(float const voxelSize);
 
-    void foobar();
+    void render();
+
+private:
 
     void initialize();
 
     void substep(float const dt);
-
-    void render();
 
     // Rasterize particle velocity to the grid
     void particlesToGrid();
@@ -73,8 +74,53 @@ public:
 
     void writeVDBs(int const frame);
 
+    struct BoundaryOp {
+        BoundaryOp(float const voxelSize,
+                   FloatGrid::Ptr bBoxLS,
+                   FloatGrid::Ptr collider) :
+            voxelSize(voxelSize),
+            bBoxLS(bBoxLS),
+            collider(collider) {}
+
+        void operator()(const openvdb::Coord& ijk,
+                        const openvdb::Coord& neighbor,
+                        double& source,
+                        double& diagonal) const
+        {
+            float const dirichletBC = 0.f;
+            bool isInsideBBox = bBoxLS->tree().getValue(neighbor) >= 0.f;
+            bool isInsideCollider = collider->tree().getValue(neighbor) <= 0.f;
+
+            if (isInsideCollider) {
+                // Neumann pressure from bbox
+
+            } else if (isInsideBBox) {
+                // Neumann pressure from collider
+            } else {
+                // Dirichlet pressure
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
+                    neighbor.x() - 1 == ijk.x() /* right x-face */ ||
+                    neighbor.y() + 1 == ijk.y() /* bottom y-face */ ||
+                    neighbor.y() - 1 == ijk.y() /* top y-face */ ||
+                    neighbor.z() + 1 == ijk.z() /* back z-face */ ||
+                    neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC * voxelSize * voxelSize;
+                }
+            }
+        }
+
+        float voxelSize;
+        FloatGrid::Ptr bBoxLS;
+        FloatGrid::Ptr collider;
+    };
+
     struct BoundaryFooBarOp {
-        BoundaryFooBarOp(float const voxelSize) : voxelSize(voxelSize) {}
+        BoundaryFooBarOp(float const voxelSize) :
+            voxelSize(voxelSize) {
+
+        }
+
         void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
             double& source, double& diagonal) const
         {
@@ -119,10 +165,6 @@ public:
     //     }
     // };
 
-private:
-
-    void sampleParticles();
-
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
     int mPointsPerVoxel = 8;
@@ -142,13 +184,6 @@ FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
     initialize();
 }
 
-void
-FlipSolver::foobar(){}
-
-void
-FlipSolver::sampleParticles() {
-    // Sample particles from .obj file
-}
 
 void
 FlipSolver::initialize() {
