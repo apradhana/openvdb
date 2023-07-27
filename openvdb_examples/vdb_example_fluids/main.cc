@@ -24,6 +24,7 @@
 #include <openvdb/points/PointAttribute.h> // for appendAttribute
 #include <openvdb/points/PointCount.h>
 #include <openvdb/points/PointScatter.h>
+#include <openvdb/points/PointDataGrid.h>
 #include <openvdb/points/PointRasterizeTrilinear.h>
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
@@ -41,7 +42,7 @@ public:
 
 class FlipSolver {
 public:
-    FlipSolver();
+    FlipSolver(float const voxelSize);
 
     void foobar();
 
@@ -114,7 +115,13 @@ private:
     void sampleParticles();
 
     float mVoxelSize = 0.1f;
+    Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
+    int mPointsPerVoxel = 8;
+    math::Transform::Ptr mXform;
+
+    points::PointDataGrid::Ptr mPoints;
     FloatGrid::Ptr mDensity;
+    FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
@@ -122,7 +129,7 @@ private:
 };
 
 
-FlipSolver::FlipSolver()
+FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
     initialize();
 }
@@ -136,7 +143,32 @@ FlipSolver::sampleParticles() {
 }
 
 void
-FlipSolver::initialize(){
+FlipSolver::initialize() {
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+
+    auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */); // world space domain
+    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
+    mBBoxLS->setGridClass(GRID_LEVEL_SET);
+
+    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(14.f, 5.f, 3.5f) /* max */);
+    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
+    mCollider->setGridClass(GRID_LEVEL_SET);
+    
+    auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f, 4.f, 5.f) /* max */);
+    FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
+
+    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
+    mPoints->setName("Points");
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
 }
 
 void
@@ -1673,7 +1705,7 @@ main(int argc, char *argv[])
     // SmokeSolver smokeSim;
     // smokeSim.foobar2();
 
-    // FlipSolver flipSim;
+    FlipSolver flipSim(0.1f /* voxel size */);
     // flipSim.particlesToGrid2();
     // flipSim.pressureProjection2();
 
