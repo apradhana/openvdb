@@ -28,6 +28,7 @@
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
 #include <openvdb/points/PointSample.h> // for PointSample
+#include <openvdb/points/PointAdvect.h> // for advectPoints
 using namespace openvdb;
 
 class Vector3 {
@@ -1644,6 +1645,10 @@ simpleFlip() {
 
     // nearest-neighbour staggered sampling
     points::boxSample(*points, *mVNext, "velocity");
+    Index const integrationOrder = 1;
+    int const steps = 1;
+    double const timeStep = 1.0/24.0;
+    points::advectPoints(*points, *mVNext, integrationOrder, timeStep, steps);
 
     openvdb::io::File("mypoints_next.vdb").write({points});
 
