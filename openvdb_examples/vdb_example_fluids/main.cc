@@ -1605,83 +1605,40 @@ simpleFlip() {
 
     // Get number of points 
     int pointCount = static_cast<int>(points::pointCount(points->tree()));
+    // Populate velocity attribute
     points::appendAttribute<Vec3s>(points->tree(), "velocity",
                                    /*uniformValue*/ Vec3s(0.f, 0.f, 0.f),
                                    /*stride or total count=*/pointCount,
                                    /*constantStride=*/true,
-                                   /*defaultValue*/ nullptr,
+                                   /*defaultValue*/nullptr,
                                    /*hidden=*/false, /*transient=*/false);
 
-    //// Populate velocity attribute
-    //// TODO: check if you can visualize velocity in pointdatagrid
-    //// TODO: how to create point index grid
-    //// TODO: interpolate back
-    //std::cout << "one" << std::endl;
-    //std::vector<Vec3s> velocities(pointCount, Vec3s(0.f, 0.f, 0.f));
-    //std::cout << "velocities.size() = " << velocities.size() << std::endl;
-    //std::cout << "two" << std::endl;
-    //points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
-    //std::cout << "three" << std::endl;
-    //NamePair velocityAttribute = points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
-    //std::cout << "four" << std::endl;
-    //points::appendAttribute(points->tree(), "velocity", velocityAttribute);
-    //std::cout << "five" << std::endl;
-    //points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
-    //std::cout << "six" << std::endl;
-    //tools::PointIndexGrid::Ptr pointIndexGrid =
-    //     tools::createPointIndexGrid<tools::PointIndexGrid>(velocityWrapper, *xform);
-    //std::cout << "seven" << std::endl;
-    //points::populateAttribute<points::PointDataTree,
-    //     tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
-    //     points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+    TreeBase::Ptr baseVTree = points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
 
 
+    Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(baseVTree);
+    Vec3SGrid::Ptr mVCurr = Vec3SGrid::create(velTree);
+    mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->setTransform(xform);
 
-    //points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
-    //NamePair velocityAttribute =
-    //    openvdb::points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
-    //openvdb::points::appendAttribute(points->tree(), "velocity", velocityAttribute);
-    //points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
-    //points::populateAttribute<points::PointDataTree,
-    //    tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
-    //        points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+    Vec3SGrid::Ptr mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
+    (mVNext->tree()).topologyUnion(mVCurr->tree());
+    mVNext->setGridClass(GRID_STAGGERED);
+    mVNext->setTransform(xform);
 
-    //// Rasterize trilinear
-    //std::cout << "eight" << std::endl;
-    //TreeBase::Ptr baseVTree = points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto vNextAcc = mVNext->getAccessor();
 
-    //std::cout << "nine" << std::endl;
-    //Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(baseVTree);
-    //std::cout << "ten" << std::endl;
-    //Vec3SGrid::Ptr mVCurr = Vec3SGrid::create(velTree);
-    //std::cout << "eleven" << std::endl;
-    //mVCurr->setGridClass(GRID_STAGGERED);
-    //mVCurr->setTransform(xform);
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        Vec3s newVel = vCurrAcc.getValue(ijk) + dt * gravity;
+        vNextAcc.setValue(ijk, newVel);
+    }
 
-    //std::cout << "twelve" << std::endl;
-    //Vec3SGrid::Ptr mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
-    //std::cout << "thirteen" << std::endl;
-    //(mVNext->tree()).topologyUnion(mVCurr->tree());
-    //mVNext->setGridClass(GRID_STAGGERED);
-    //mVNext->setTransform(xform);
-
-    //auto vCurrAcc = mVCurr->getAccessor();
-    //auto vNextAcc = mVNext->getAccessor();
-
-    //std::cout << "fourteen" << std::endl;
-    //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-    //    auto ijk = iter.getCoord();
-    //    Vec3s newVel = vCurrAcc.getValue(ijk) + dt * gravity;
-    //    vNextAcc.setValue(ijk, newVel);
-    //}
-
+    // TODO: interpolate back
 
     openvdb::io::File("mypoints.vdb").write({points});
 
-
-
-
-    
     std::cout << "fluidLSInit = " << fluidLSInit << std::endl;
     
     std::cout << "simple flip ends" << std::endl;
