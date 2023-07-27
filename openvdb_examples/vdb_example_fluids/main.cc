@@ -21,6 +21,7 @@
 #include <openvdb/tools/GridOperators.h> // for divergence
 
 #include <openvdb/points/PointConversion.h>
+#include <openvdb/points/PointAttribute.h> // for appendAttribute
 #include <openvdb/points/PointCount.h>
 #include <openvdb/points/PointScatter.h>
 #include <openvdb/points/PointRasterizeTrilinear.h>
@@ -186,6 +187,9 @@ FlipSolver::particlesToGrid(){
 
 void
 FlipSolver::particlesToGrid2(){
+    auto const xform =
+        math::Transform::createLinearTransform(mVoxelSize);
+
     // Create a vector with four point positions.
     std::vector<Vec3s> positions;
     positions.push_back(Vec3s(0.f, 0.f, 0.f));
@@ -196,8 +200,6 @@ FlipSolver::particlesToGrid2(){
 
     points::PointAttributeVector<Vec3s> positionsWrapper(positions);
 
-    auto const xform =
-        math::Transform::createLinearTransform(mVoxelSize);
 
     // Create a PointDataGrid
     points::PointDataGrid::Ptr points =
@@ -1586,20 +1588,94 @@ simpleFlip() {
     using BBox = math::BBox<Vec3s>;
     int constexpr pointsPerVoxel = 8;
     float const voxelSize = 0.1f;
+    float dt = 1;
+    Vec3s const gravity(0.f, -9.8f, 0.f);
+
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(voxelSize);
     
     std::cout << "simple flip begins" << std::endl;
     
     auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */);
     auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f, 4.f, 5.f) /* max */);
     
-    math::Transform::Ptr xform = math::Transform::createLinearTransform(voxelSize);
-
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *xform);
     
     auto points = points::denseUniformPointScatter(*fluidLSInit, pointsPerVoxel);
-
-    std::cout << "points->getName() = " << points->getName() << std::endl;
     points->setName("Points");
+
+    // Get number of points 
+    int pointCount = static_cast<int>(points::pointCount(points->tree()));
+    points::appendAttribute<Vec3s>(points->tree(), "velocity",
+                                   /*uniformValue*/ Vec3s(0.f, 0.f, 0.f),
+                                   /*stride or total count=*/pointCount,
+                                   /*constantStride=*/true,
+                                   /*defaultValue*/ nullptr,
+                                   /*hidden=*/false, /*transient=*/false);
+
+    //// Populate velocity attribute
+    //// TODO: check if you can visualize velocity in pointdatagrid
+    //// TODO: how to create point index grid
+    //// TODO: interpolate back
+    //std::cout << "one" << std::endl;
+    //std::vector<Vec3s> velocities(pointCount, Vec3s(0.f, 0.f, 0.f));
+    //std::cout << "velocities.size() = " << velocities.size() << std::endl;
+    //std::cout << "two" << std::endl;
+    //points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
+    //std::cout << "three" << std::endl;
+    //NamePair velocityAttribute = points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    //std::cout << "four" << std::endl;
+    //points::appendAttribute(points->tree(), "velocity", velocityAttribute);
+    //std::cout << "five" << std::endl;
+    //points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
+    //std::cout << "six" << std::endl;
+    //tools::PointIndexGrid::Ptr pointIndexGrid =
+    //     tools::createPointIndexGrid<tools::PointIndexGrid>(velocityWrapper, *xform);
+    //std::cout << "seven" << std::endl;
+    //points::populateAttribute<points::PointDataTree,
+    //     tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
+    //     points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+
+
+
+    //points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
+    //NamePair velocityAttribute =
+    //    openvdb::points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    //openvdb::points::appendAttribute(points->tree(), "velocity", velocityAttribute);
+    //points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
+    //points::populateAttribute<points::PointDataTree,
+    //    tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
+    //        points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+
+    //// Rasterize trilinear
+    //std::cout << "eight" << std::endl;
+    //TreeBase::Ptr baseVTree = points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
+
+    //std::cout << "nine" << std::endl;
+    //Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(baseVTree);
+    //std::cout << "ten" << std::endl;
+    //Vec3SGrid::Ptr mVCurr = Vec3SGrid::create(velTree);
+    //std::cout << "eleven" << std::endl;
+    //mVCurr->setGridClass(GRID_STAGGERED);
+    //mVCurr->setTransform(xform);
+
+    //std::cout << "twelve" << std::endl;
+    //Vec3SGrid::Ptr mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
+    //std::cout << "thirteen" << std::endl;
+    //(mVNext->tree()).topologyUnion(mVCurr->tree());
+    //mVNext->setGridClass(GRID_STAGGERED);
+    //mVNext->setTransform(xform);
+
+    //auto vCurrAcc = mVCurr->getAccessor();
+    //auto vNextAcc = mVNext->getAccessor();
+
+    //std::cout << "fourteen" << std::endl;
+    //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+    //    auto ijk = iter.getCoord();
+    //    Vec3s newVel = vCurrAcc.getValue(ijk) + dt * gravity;
+    //    vNextAcc.setValue(ijk, newVel);
+    //}
+
+
     openvdb::io::File("mypoints.vdb").write({points});
 
 
