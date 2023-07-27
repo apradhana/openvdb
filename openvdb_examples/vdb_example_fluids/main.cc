@@ -27,6 +27,7 @@
 #include <openvdb/points/PointRasterizeTrilinear.h>
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
+#include <openvdb/points/PointSample.h> // for PointSample
 using namespace openvdb;
 
 class Vector3 {
@@ -1602,13 +1603,13 @@ simpleFlip() {
     
     auto points = points::denseUniformPointScatter(*fluidLSInit, pointsPerVoxel);
     points->setName("Points");
-
+    openvdb::io::File("mypoints_orig.vdb").write({points});
     // Get number of points 
     int pointCount = static_cast<int>(points::pointCount(points->tree()));
     // Populate velocity attribute
     points::appendAttribute<Vec3s>(points->tree(), "velocity",
                                    /*uniformValue*/ Vec3s(0.f, 0.f, 0.f),
-                                   /*stride or total count=*/pointCount,
+                                   /*stride or total count=*/1,
                                    /*constantStride=*/true,
                                    /*defaultValue*/nullptr,
                                    /*hidden=*/false, /*transient=*/false);
@@ -1636,8 +1637,15 @@ simpleFlip() {
     }
 
     // TODO: interpolate back
+    points::AttributeHandle<Vec3s>::Ptr velHandle =
+        points::AttributeHandle<Vec3s>::create(
+            points->tree().cbeginLeaf()->attributeArray("velocity"));
+    std::cout << "velHandle.get() = " << velHandle.get() << std::endl;
 
-    openvdb::io::File("mypoints.vdb").write({points});
+    // nearest-neighbour staggered sampling
+    points::boxSample(*points, *mVNext, "velocity");
+
+    openvdb::io::File("mypoints_next.vdb").write({points});
 
     std::cout << "fluidLSInit = " << fluidLSInit << std::endl;
     
