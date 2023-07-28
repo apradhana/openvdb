@@ -218,7 +218,7 @@ FlipSolver::initialize() {
     mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
     mCollider->setGridClass(GRID_LEVEL_SET);
     
-    auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f, 4.f, 5.f) /* max */);
+    auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
@@ -231,6 +231,9 @@ FlipSolver::initialize() {
                                    nullptr /* default value */,
                                    false /* hidden */,
                                    false /* transient */);
+
+    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
+    std::cout << "PointCount=" << count << std::endl;
 }
 
 void
@@ -331,7 +334,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 100; ++frame) {
+    for (int frame = 0; frame < 10; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
