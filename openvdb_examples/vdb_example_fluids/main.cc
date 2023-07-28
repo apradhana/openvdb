@@ -123,7 +123,7 @@ private:
                     neighbor.z() + 1 == ijk.z() /* back z-face */ ||
                     neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     diagonal -= 1.0;
-                    source -= dirichletBC * voxelSize * voxelSize;
+                    source -= dirichletBC;
                 }
             }
         }
@@ -314,7 +314,8 @@ FlipSolver::pressureProjection() {
 
     for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk);
+        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
+        //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
         vNextAcc.setValue(ijk, val);
     }
 
@@ -358,7 +359,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 3; ++frame) {
+    for (int frame = 0; frame < 20; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
