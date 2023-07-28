@@ -73,7 +73,7 @@ private:
     void addGravity(float const dt);
 
     void writeVDBs(int const frame);
-
+    void writeVDBsDebug(int const frame);
     struct BoundaryOp {
         BoundaryOp(float const voxelSize,
                    FloatGrid::Ptr bBoxLS,
@@ -213,10 +213,12 @@ FlipSolver::initialize() {
     auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */); // world space domain
     mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
     mBBoxLS->setGridClass(GRID_LEVEL_SET);
+    mBBoxLS->setName("bbox_ls");
 
-    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(14.f, 5.f, 3.5f) /* max */);
+    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(7.f, 5.f, 3.5f) /* max */);
     mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
     mCollider->setGridClass(GRID_LEVEL_SET);
+    mCollider->setName("collider");
     
     auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
@@ -244,11 +246,13 @@ FlipSolver::particlesToGrid(){
     mVCurr = Vec3SGrid::create(velTree);
     mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->setTransform(mXform);
+    mVCurr->setName("v_curr");
 
     mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
     (mVNext->tree()).topologyUnion(mVCurr->tree());
     mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setTransform(mXform);
+    mVNext->setName("v_next");
 }
 
 
@@ -294,9 +298,6 @@ FlipSolver::pressureProjection() {
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
     grad->setGridClass(GRID_STAGGERED);
 
-    mVNext = mVCurr->copy();
-    mVNext->setGridClass(GRID_STAGGERED);
-    mVNext->setTransform(mXform);
     auto vNextAcc = mVNext->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
     auto gradAcc = grad->getAccessor();
@@ -338,6 +339,7 @@ FlipSolver::render() {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
+        writeVDBsDebug(frame);
     }
 }
 
@@ -676,6 +678,23 @@ FlipSolver::writeVDBs(int const frame) {
     std::string fileName(ss.str());
     io::File file(fileName.c_str());
     file.write({mPoints});
+    file.close();
+}
+
+
+void
+FlipSolver::writeVDBsDebug(int const frame) {
+    std::ostringstream ss;
+    ss << "water_volume_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    std::string fileName(ss.str());
+    openvdb::io::File file(fileName.c_str());
+
+    openvdb::GridPtrVec grids;
+    grids.push_back(mBBoxLS);
+    grids.push_back(mCollider);
+    grids.push_back(mVCurr);
+    grids.push_back(mVNext);
+    file.write(grids);
     file.close();
 }
 
