@@ -99,32 +99,49 @@ private:
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     source += voxelSize * vNgbr[0];
                 }
-                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
                     source -= voxelSize * vNgbr[0];
                 }
-                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
                     source += voxelSize * vNgbr[1];
                 }
-                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
                     source -= voxelSize * vNgbr[1];
                 }
-                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
                     source += voxelSize * vNgbr[2];
                 }
-                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     source -= voxelSize * vNgbr[2];
                 }
             } else {
                 // Dirichlet pressure
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
-                    neighbor.x() - 1 == ijk.x() /* right x-face */ ||
-                    neighbor.y() + 1 == ijk.y() /* bottom y-face */ ||
-                    neighbor.y() - 1 == ijk.y() /* top y-face */ ||
-                    neighbor.z() + 1 == ijk.z() /* back z-face */ ||
-                    neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
+                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+
+
             }
         }
 
@@ -359,7 +376,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 20; ++frame) {
+    for (int frame = 0; frame < 200; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
