@@ -260,7 +260,6 @@ FlipSolver::addGravity(float const dt) {
 
 void
 FlipSolver::velocityBCCorrection() {
-    std::cout << "velocity BC correction begins" << std::endl;
     auto vNextAcc = mVNext->getAccessor();
     auto bboxAcc = mBBoxLS->getAccessor();
 
@@ -273,38 +272,22 @@ FlipSolver::velocityBCCorrection() {
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
         math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (bboxAcc.getValue(im1jk) >= 0) {
+        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
             auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
-        if (bboxAcc.getValue(ip1jk) >= 0) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            vNextAcc.setValue(ijk, newVal);
-        }
-        if (bboxAcc.getValue(ijm1k) >= 0) {
+        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
             auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
-        if (bboxAcc.getValue(ijp1k) >= 0) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            vNextAcc.setValue(ijk, newVal);
-        }
-        if (bboxAcc.getValue(ijkm1) >= 0) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            vNextAcc.setValue(ijk, newVal);
-        }
-        if (bboxAcc.getValue(ijkp1) >= 0) {
+        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
             auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             vNextAcc.setValue(ijk, newVal);
         }
     }
-    std::cout << "velocity BC correction ends" << std::endl;
 }
 
 
