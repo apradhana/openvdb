@@ -77,10 +77,12 @@ private:
     struct BoundaryOp {
         BoundaryOp(float const voxelSize,
                    FloatGrid::Ptr bBoxLS,
-                   FloatGrid::Ptr collider) :
+                   FloatGrid::Ptr collider,
+                   Vec3SGrid::Ptr vCurr) :
             voxelSize(voxelSize),
             bBoxLS(bBoxLS),
-            collider(collider) {}
+            collider(collider),
+            vCurr(vCurr) {}
 
         void operator()(const openvdb::Coord& ijk,
                         const openvdb::Coord& neighbor,
@@ -90,12 +92,28 @@ private:
             float const dirichletBC = 0.f;
             bool isInsideBBox = bBoxLS->tree().getValue(neighbor) >= 0.f;
             bool isInsideCollider = collider->tree().getValue(neighbor) <= 0.f;
+            auto vNgbr = vCurr->tree().getValue(neighbor);
 
-            if (isInsideCollider) {
+            if (isInsideCollider || isInsideBBox) {
                 // Neumann pressure from bbox
-
-            } else if (isInsideBBox) {
-                // Neumann pressure from collider
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    source += voxelSize * vNgbr[0];
+                }
+                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    source -= voxelSize * vNgbr[0];
+                }
+                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    source += voxelSize * vNgbr[1];
+                }
+                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    source -= voxelSize * vNgbr[1];
+                }
+                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    source += voxelSize * vNgbr[2];
+                }
+                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    source -= voxelSize * vNgbr[2];
+                }
             } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */ ||
@@ -113,6 +131,7 @@ private:
         float voxelSize;
         FloatGrid::Ptr bBoxLS;
         FloatGrid::Ptr collider;
+        Vec3SGrid::Ptr vCurr;
     };
 
     struct BoundaryFooBarOp {
@@ -237,14 +256,59 @@ FlipSolver::addGravity(float const dt) {
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         Vec3s newVel = vCurrAcc.getValue(ijk) + dt * mGravity;
-        vNextAcc.setValue(ijk, newVel);
+        vCurrAcc.setValue(ijk, newVel);
     }
 }
 
 
 void
 FlipSolver::pressureProjection() {
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
 
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+
+    //BoolTree::Ptr interiorMask(new BoolTree(false));
+    //interiorMask->topologyUnion(mVCurr->tree());
+    //BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    //interiorGrid->setTransform(mXform);
+
+    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
+    //(divGrid->tree()).topologyIntersection(interiorGrid->tree());
+
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100000;
+    state.relativeError = state.absoluteError = epsilon;
+    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mCollider, mVCurr);
+
+    util::NullInterrupter interrupter;
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+        divGrid->tree(), bop, state, interrupter, /*staggered=*/true);
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    fluidPressureGrid->setTransform(mXform);
+
+    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
+    grad->setGridClass(GRID_STAGGERED);
+
+    mVNext = mVCurr->copy();
+    mVNext->setGridClass(GRID_STAGGERED);
+    mVNext->setTransform(mXform);
+    auto vNextAcc = mVNext->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto gradAcc = grad->getAccessor();
+
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk);
+        vNextAcc.setValue(ijk, val);
+    }
+
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
 }
 
 
@@ -404,7 +468,7 @@ FlipSolver::pressureProjection2(){
     // Setup conjugate gradient
     std::cout << "RHS: divGrid->activeVoxelCount() = " << divGrid->activeVoxelCount() << std::endl;
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100;
+    state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
