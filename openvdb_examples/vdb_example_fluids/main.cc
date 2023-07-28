@@ -92,11 +92,12 @@ private:
                         double& diagonal) const
         {
             float const dirichletBC = 0.f;
-            bool isInsideBBox = bBoxLS->tree().getValue(neighbor) >= 0.f;
-            bool isInsideCollider = collider->tree().getValue(neighbor) <= 0.f;
+            bool isInsideBBox = bBoxLS->tree().isValueOn(neighbor);
+            bool isInsideCollider = collider->tree().isValueOn(neighbor);
             auto vNgbr = vCurr->tree().getValue(neighbor);
 
-            if (isInsideCollider || isInsideBBox) {
+            // TODO: Fix this:
+            if (/* isInsideCollider ||*/  isInsideBBox) {
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     source += voxelSize * vNgbr[0];
@@ -142,8 +143,6 @@ private:
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-
-
             }
         }
 
@@ -174,34 +173,6 @@ private:
 
         float voxelSize;
     };
-
-    // struct BoundaryOp {
-    //     void operator()(const openvdb::Coord& ijk, const openvdb::Coord& neighbor,
-    //         double& source, double& diagonal) const
-    //     {
-    //         // Boundary conditions:
-    //         // (-X) - Dirichlet, sin(y/5)
-    //         // (+X) - Dirichlet, -sin(y/5)
-    //         // (-Y, +Y, -Z, +Z) - Neumann, dp/d* = 0
-    //         //
-    //         // There's nothing to do for zero Neumann
-    //         //
-    //         // This is the -X face of the domain:
-    //         if (neighbor.x() + 1 == ijk.x()) {
-    //             const double bc = sin(ijk.y() * 0.2);
-    //             source -= bc;
-    //             diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
-    //         }
-    // 
-    //         // This is the +X face of the domain:
-    //         if (neighbor.x() - 1 == ijk.x()) {
-    //             const double bc = -sin(ijk.y() * 0.2);
-    // 
-    //             source -= bc;
-    //             diagonal -= 1.0; // must "add back" the diagonal's contribution for Dirichlet BCs!!!
-    //         }
-    //     }
-    // };
 
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
