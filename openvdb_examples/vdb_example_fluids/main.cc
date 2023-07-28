@@ -70,6 +70,8 @@ private:
     void pressureProjection3();
     void gridVelocityUpdate(float const dt);
 
+    void velocityBCCorrection();
+
     void addGravity(float const dt);
 
     void writeVDBs(int const frame);
@@ -286,6 +288,56 @@ FlipSolver::addGravity(float const dt) {
 
 
 void
+FlipSolver::velocityBCCorrection() {
+    std::cout << "velocity BC correction begins" << std::endl;
+    auto vNextAcc = mVNext->getAccessor();
+    auto bboxAcc = mBBoxLS->getAccessor();
+
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
+        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
+        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
+
+        if (bboxAcc.getValue(im1jk) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            vNextAcc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.getValue(ip1jk) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            vNextAcc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.getValue(ijm1k) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            vNextAcc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.getValue(ijp1k) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            vNextAcc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.getValue(ijkm1) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            vNextAcc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.getValue(ijkp1) >= 0) {
+            auto val = vNextAcc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            vNextAcc.setValue(ijk, newVal);
+        }
+    }
+    std::cout << "velocity BC correction ends" << std::endl;
+}
+
+
+void
 FlipSolver::pressureProjection() {
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
@@ -361,6 +413,7 @@ void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     pressureProjection();
+    velocityBCCorrection();
 }
 
 
