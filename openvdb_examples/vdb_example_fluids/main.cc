@@ -220,7 +220,8 @@ FlipSolver::initialize() {
     mCollider->setGridClass(GRID_LEVEL_SET);
     mCollider->setName("collider");
     
-    auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
+    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
+    auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 3.f, 3.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
@@ -259,7 +260,6 @@ FlipSolver::particlesToGrid(){
 void
 FlipSolver::addGravity(float const dt) {
     auto vCurrAcc = mVCurr->getAccessor();
-    auto vNextAcc = mVNext->getAccessor();
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         Vec3s newVel = vCurrAcc.getValue(ijk) + dt * mGravity;
@@ -276,13 +276,23 @@ FlipSolver::pressureProjection() {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    //BoolTree::Ptr interiorMask(new BoolTree(false));
-    //interiorMask->topologyUnion(mVCurr->tree());
-    //BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    //interiorGrid->setTransform(mXform);
+    BoolTree::Ptr interiorMask(new BoolTree(false));
+    interiorMask->topologyUnion(mVCurr->tree());
+    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    interiorGrid->setTransform(mXform);
 
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
-    //(divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    float divBefore = 0.f;
+    auto divAcc = divGrid->getAccessor();
+    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divBefore)) {
+            divBefore = val;
+        }
+    }
+    std::cout << "\t== divergence before " << divBefore << std::endl;
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
@@ -307,6 +317,19 @@ FlipSolver::pressureProjection() {
         auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk);
         vNextAcc.setValue(ijk, val);
     }
+
+    FloatGrid::Ptr divGridAfter = tools::divergence(*mVNext);
+    (divGridAfter->tree()).topologyIntersection(interiorGrid->tree());
+    float divAfter = 0.f;
+    auto divAfterAcc = divGridAfter->getAccessor();
+    for (auto iter = divGridAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after " << divAfter << std::endl;
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -335,7 +358,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 10; ++frame) {
+    for (int frame = 0; frame < 3; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
@@ -461,7 +484,7 @@ FlipSolver::pressureProjection2(){
     // Setup the right hand side 
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
     (divGrid->tree()).topologyIntersection(interiorGrid->tree());
-    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
+    auto divAcc = divGrid->getConstAccessor();
     std::cout << "divgrid before pressure projection" << std::endl;
     // Note that ijk = [0,0,0] is not printed because the divergence in that cell is 0
     for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
