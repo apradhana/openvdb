@@ -97,27 +97,27 @@ private:
             auto vNgbr = vCurr->tree().getValue(neighbor);
 
             // TODO: Fix this:
-            if (/* isInsideCollider ||*/  isInsideBBox) {
-                // Neumann pressure from bbox
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    source += voxelSize * vNgbr[0];
-                }
-                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    source -= voxelSize * vNgbr[0];
-                }
-                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    source += voxelSize * vNgbr[1];
-                }
-                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    source -= voxelSize * vNgbr[1];
-                }
-                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    source += voxelSize * vNgbr[2];
-                }
-                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    source -= voxelSize * vNgbr[2];
-                }
-            } else {
+            //if (/* isInsideCollider ||*/  isInsideBBox) {
+            //    // Neumann pressure from bbox
+            //    if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+            //        source += voxelSize * vNgbr[0];
+            //    }
+            //    if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+            //        source -= voxelSize * vNgbr[0];
+            //    }
+            //    if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+            //        source += voxelSize * vNgbr[1];
+            //    }
+            //    if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+            //        source -= voxelSize * vNgbr[1];
+            //    }
+            //    if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+            //        source += voxelSize * vNgbr[2];
+            //    }
+            //    if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+            //        source -= voxelSize * vNgbr[2];
+            //    }
+            //} else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     diagonal -= 1.0;
@@ -143,7 +143,7 @@ private:
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-            }
+            //}
         }
 
         float voxelSize;
@@ -182,6 +182,8 @@ private:
     points::PointDataGrid::Ptr mPoints;
     FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
+    FloatGrid::Ptr mDivBefore;
+    FloatGrid::Ptr mDivAfter;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
     Int32Grid::Ptr mFlags;
@@ -211,6 +213,7 @@ FlipSolver::initialize() {
     mCollider->setName("collider");
     
     // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
+    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
     auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 3.f, 3.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
@@ -301,14 +304,16 @@ FlipSolver::pressureProjection() {
 
     BoolTree::Ptr interiorMask(new BoolTree(false));
     interiorMask->topologyUnion(mVCurr->tree());
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
     interiorGrid->setTransform(mXform);
 
-    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
-    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    mDivBefore = tools::divergence(*mVCurr);
+    mDivBefore->setName("div_before");
+    (mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
     float divBefore = 0.f;
-    auto divAcc = divGrid->getAccessor();
-    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
+    auto divAcc = mDivBefore->getAccessor();
+    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = divAcc.getValue(ijk);
         if (std::abs(val) > std::abs(divBefore)) {
@@ -324,9 +329,10 @@ FlipSolver::pressureProjection() {
 
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        divGrid->tree(), bop, state, interrupter, /*staggered=*/true);
+        mDivBefore->tree(), bop, state, interrupter, /*staggered=*/true);
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     fluidPressureGrid->setTransform(mXform);
+    // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
 
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
     grad->setGridClass(GRID_STAGGERED);
@@ -334,19 +340,22 @@ FlipSolver::pressureProjection() {
     auto vNextAcc = mVNext->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
     auto gradAcc = grad->getAccessor();
+    auto boolAcc = interiorGrid->getAccessor();
 
     for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
+
         auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
         //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
         vNextAcc.setValue(ijk, val);
     }
 
-    FloatGrid::Ptr divGridAfter = tools::divergence(*mVNext);
-    (divGridAfter->tree()).topologyIntersection(interiorGrid->tree());
+    mDivAfter = tools::divergence(*mVNext);
+    mDivAfter->setName("div_after");
+    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
     float divAfter = 0.f;
-    auto divAfterAcc = divGridAfter->getAccessor();
-    for (auto iter = divGridAfter->beginValueOn(); iter; ++iter) {
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         auto val = divAfterAcc.getValue(ijk);
         if (std::abs(val) > std::abs(divAfter)) {
@@ -383,7 +392,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 200; ++frame) {
+    for (int frame = 0; frame < 3; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
@@ -742,6 +751,8 @@ FlipSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mCollider);
     grids.push_back(mVCurr);
     grids.push_back(mVNext);
+    grids.push_back(mDivBefore);
+    grids.push_back(mDivAfter);
     file.write(grids);
     file.close();
 }
