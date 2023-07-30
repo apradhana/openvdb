@@ -50,6 +50,7 @@ public:
 private:
 
     void initialize();
+    void initialize2();
 
     void substep(float const dt);
 
@@ -192,7 +193,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize();
+    initialize2();
 }
 
 
@@ -216,6 +217,51 @@ FlipSolver::initialize() {
     // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
     auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 3.f, 3.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
+
+    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
+    mPoints->setName("Points");
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+
+    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
+    std::cout << "PointCount=" << count << std::endl;
+}
+
+
+void
+FlipSolver::initialize2() {
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+
+    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(7.f, 5.f, 3.5f) /* max */);
+    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
+    mCollider->setGridClass(GRID_LEVEL_SET);
+    mCollider->setName("collider");
+    
+    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
+    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
+    auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 2.5f, 3.f) /* max */);
+    FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
+
+    auto wsDomain = BBox(Vec3s(1.9f, 1.9f, 1.9f) /* min */, Vec3s(3.1f, 3.1f, 3.1f) /* max */); // world space domain
+    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
+    mBBoxLS->setGridClass(GRID_LEVEL_SET);
+    mBBoxLS->setName("bbox_ls");
+
+    auto bboxLSAcc = mBBoxLS->getAccessor();
+    auto fluidLSInitAcc = fluidLSInit->getAccessor();
+    for (auto iter = mBBoxLS->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        bool fluidOn = fluidLSInitAcc.isValueOn(ijk);
+        if (fluidOn) iter.setValueOff();
+    }
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
