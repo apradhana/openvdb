@@ -242,18 +242,21 @@ FlipSolver::initialize2() {
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
 
-    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(7.f, 5.f, 3.5f) /* max */);
+    auto cldrBox = BBox(Vec3s(105.f, 100.f, 10.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
     mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
     mCollider->setGridClass(GRID_LEVEL_SET);
     mCollider->setName("collider");
     
     // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
     // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
-    auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 2.5f, 3.f) /* max */);
+    Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
+    Vec3s maxFI = Vec3s(3.f, 2.5f, 3.f);
+    auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
     auto wsDomain = BBox(Vec3s(1.9f, 1.9f, 1.9f) /* min */, Vec3s(3.1f, 3.1f, 3.1f) /* max */); // world space domain
     mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
+    // mBBoxLS->topologyDifference(*fluisdLSInit);
     mBBoxLS->setGridClass(GRID_LEVEL_SET);
     mBBoxLS->setName("bbox_ls");
 
@@ -261,8 +264,10 @@ FlipSolver::initialize2() {
     auto fluidLSInitAcc = fluidLSInit->getAccessor();
     for (auto iter = mBBoxLS->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        bool fluidOn = fluidLSInitAcc.isValueOn(ijk);
-        if (fluidOn) iter.setValueOff();
+        if (ijk[0] >= minFI[0] && ijk[1] >= minFI[1] && ijk[2] >= minFI[2] &&
+            ijk[0] <= maxFI[0] && ijk[1] <= maxFI[1] && ijk[2] >= maxFI[2]) {
+            iter.setValueOff();
+        }
     }
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
