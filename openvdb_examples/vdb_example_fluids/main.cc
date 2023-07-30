@@ -100,25 +100,27 @@ private:
 
             // TODO: Fix this:
             if (/* isInsideCollider ||*/  isInsideBBox) {
+                double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    source += /* voxelSize * */ vNgbr[0];
+                    delta += /* voxelSize * */ vNgbr[0];
                 }
                 if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    source -= /* voxelSize * */ vNgbr[0];
+                    delta -= /* voxelSize * */ vNgbr[0];
                 }
                 if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    source += /* voxelSize * */ vNgbr[1];
+                    delta += /* voxelSize * */ vNgbr[1];
                 }
                 if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    source -= /* voxelSize * */ vNgbr[1];
+                    delta -= /* voxelSize * */ vNgbr[1];
                 }
                 if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    source += /* voxelSize *  */ vNgbr[2];
+                    delta += /* voxelSize *  */ vNgbr[2];
                 }
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    source -= /* voxelSize *  */ vNgbr[2];
+                    delta -= /* voxelSize *  */ vNgbr[2];
                 }
+                source += delta * 0.5 / voxelSize;
             } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -252,12 +254,12 @@ FlipSolver::initialize2() {
 
     Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
     Vec3s maxFI = Vec3s(3.f, 2.5f, 3.f);
-    Vec3s maxFI2 = Vec3s(3.f, 3.1f, 3.f);
+    Vec3s maxFI2 = Vec3s(3.f, 5.1f, 3.f);
     Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
     Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
     Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
-    Vec3s minBBoxvec = Vec3s(1.9f, 1.9f, 1.9f);
-    Vec3s maxBBoxvec = Vec3s(3.1f, 3.1f, 3.1f);
+    Vec3s minBBoxvec = Vec3s(1.8f, 1.8f, 1.8f);
+    Vec3s maxBBoxvec = Vec3s(3.2f, 3.2f, 3.2f);
     Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
     Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
     auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
@@ -466,7 +468,7 @@ FlipSolver::pressureProjection4() {
     //std::cout << "\t== divergence before " << divBefore << std::endl;
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    // domainMaskGrid->topologyDifference(*mBBoxLS);
+    domainMaskGrid->topologyDifference(*mBBoxLS);
     // domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
