@@ -69,6 +69,7 @@ private:
     void pressureProjection();
     void pressureProjection2();
     void pressureProjection3();
+    void pressureProjection4();
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection();
@@ -381,10 +382,11 @@ FlipSolver::pressureProjection() {
     fluidPressureGrid->setTransform(mXform);
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
-    // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
+    (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
 
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
     grad->setGridClass(GRID_STAGGERED);
+    (grad->tree()).topologyIntersection(interiorGrid->tree());
 
     auto vNextAcc = mVNext->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
@@ -422,9 +424,110 @@ FlipSolver::pressureProjection() {
 
 
 void
+FlipSolver::pressureProjection4() {
+    std::cout << "pressure projection 4 begins" << std::endl;
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+    using MaskGridType = BoolGrid;
+    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
+
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
+
+    BoolTree::Ptr interiorMask(new BoolTree(false));
+    interiorMask->topologyUnion(mVCurr->tree());
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    interiorGrid->setTransform(mXform);
+
+    mDivBefore = tools::divergence(*mVCurr);
+    mDivBefore->setName("div_before");
+    // NOTE: not doing topology intersection
+    //(mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
+    float divBefore = 0.f;
+    auto divAcc = mDivBefore->getAccessor();
+    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divBefore)) {
+            divBefore = val;
+        }
+    }
+    //std::cout << "\t== divergence before " << divBefore << std::endl;
+
+    MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
+    domainMaskGrid->topologyDifference(*mBBoxLS);
+    domainMaskGrid->topologyDifference(*mCollider);
+
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100000;
+    state.relativeError = state.absoluteError = epsilon;
+    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mCollider, mVCurr);
+
+    util::NullInterrupter interrupter;
+    // FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+    //     mDivBefore->tree(), bop, state, interrupter, /*staggered=*/true);
+
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
+    //         divGrid->tree(), domainMaskGrid->tree(), boundaryOp, parms.outputState,
+    //             *parms.interrupter, staggered);
+
+    // FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    fluidPressureGrid->setTransform(mXform);
+    mPressure = fluidPressureGrid->copy();
+    mPressure->setName("pressure");
+    // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
+
+    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
+    grad->setGridClass(GRID_STAGGERED);
+    // (grad->tree()).topologyIntersection(interiorGrid->tree());
+    // NOTE: line 712-714 in SOP_OpenVDB_Remove_Divergence
+    grad->topologyUnion(*mVCurr);
+    grad->topologyIntersection(*mVCurr);
+    openvdb::tools::pruneInactive(grad->tree());
+
+    auto vNextAcc = mVNext->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto gradAcc = grad->getAccessor();
+    auto boolAcc = interiorGrid->getAccessor();
+
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+
+        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
+        //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
+        vNextAcc.setValue(ijk, val);
+    }
+
+    mDivAfter = tools::divergence(*mVNext);
+    mDivAfter->setName("div_after");
+    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after " << divAfter << std::endl;
+
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+    std::cout << "pressure projection 4 ends" << std::endl;
+}
+
+
+void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    pressureProjection();
+    pressureProjection4();
     velocityBCCorrection();
 }
 
@@ -566,7 +669,7 @@ FlipSolver::pressureProjection2(){
 
     // Setup the right hand side 
     FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
-    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
+    //(divGrid->tree()).topologyIntersection(interiorGrid->tree());
     auto divAcc = divGrid->getConstAccessor();
     std::cout << "divgrid before pressure projection" << std::endl;
     // Note that ijk = [0,0,0] is not printed because the divergence in that cell is 0
