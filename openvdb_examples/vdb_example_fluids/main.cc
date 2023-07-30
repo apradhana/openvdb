@@ -97,27 +97,27 @@ private:
             auto vNgbr = vCurr->tree().getValue(neighbor);
 
             // TODO: Fix this:
-            //if (/* isInsideCollider ||*/  isInsideBBox) {
-            //    // Neumann pressure from bbox
-            //    if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-            //        source += voxelSize * vNgbr[0];
-            //    }
-            //    if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-            //        source -= voxelSize * vNgbr[0];
-            //    }
-            //    if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-            //        source += voxelSize * vNgbr[1];
-            //    }
-            //    if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-            //        source -= voxelSize * vNgbr[1];
-            //    }
-            //    if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-            //        source += voxelSize * vNgbr[2];
-            //    }
-            //    if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-            //        source -= voxelSize * vNgbr[2];
-            //    }
-            //} else {
+            if (/* isInsideCollider ||*/  isInsideBBox) {
+                // Neumann pressure from bbox
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    source += /* voxelSize * */ vNgbr[0];
+                }
+                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    source -= /* voxelSize * */ vNgbr[0];
+                }
+                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    source += /* voxelSize * */ vNgbr[1];
+                }
+                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    source -= /* voxelSize * */ vNgbr[1];
+                }
+                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    source += /* voxelSize *  */ vNgbr[2];
+                }
+                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    source -= /* voxelSize *  */ vNgbr[2];
+                }
+            } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     diagonal -= 1.0;
@@ -143,7 +143,7 @@ private:
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-            //}
+            }
         }
 
         float voxelSize;
@@ -392,7 +392,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 3; ++frame) {
+    for (int frame = 0; frame < 200; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
