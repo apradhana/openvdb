@@ -187,6 +187,7 @@ private:
     FloatGrid::Ptr mDivAfter;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
+    FloatGrid::Ptr mPressure;
     Int32Grid::Ptr mFlags;
 };
 
@@ -378,6 +379,8 @@ FlipSolver::pressureProjection() {
         mDivBefore->tree(), bop, state, interrupter, /*staggered=*/true);
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     fluidPressureGrid->setTransform(mXform);
+    mPressure = fluidPressureGrid->copy();
+    mPressure->setName("pressure");
     // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
 
     Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
@@ -799,6 +802,7 @@ FlipSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mVNext);
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
+    grids.push_back(mPressure);
     file.write(grids);
     file.close();
 }
