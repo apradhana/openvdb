@@ -249,26 +249,31 @@ FlipSolver::initialize2() {
     
     // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
     // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
+
     Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
     Vec3s maxFI = Vec3s(3.f, 2.5f, 3.f);
+    Vec3s maxFI2 = Vec3s(3.f, 3.1f, 3.f);
+    Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
+    Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
+    Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
+    Vec3s minBBoxvec = Vec3s(1.9f, 1.9f, 1.9f);
+    Vec3s maxBBoxvec = Vec3s(3.1f, 3.1f, 3.1f);
+    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
     auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
-    FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
+    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
+    fluidLSInit->denseFill(CoordBBox(minFIcoord, maxFIcoord), /*value = */ 1.0, /*active = */ true);
+    fluidLSInit->setTransform(mXform);
+    FloatGrid::Ptr fluidLSInit2 = FloatGrid::create(/*bg = */0.f);
+    fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
+    fluidLSInit2->setTransform(mXform);
 
-    auto wsDomain = BBox(Vec3s(1.9f, 1.9f, 1.9f) /* min */, Vec3s(3.1f, 3.1f, 3.1f) /* max */); // world space domain
-    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
-    // mBBoxLS->topologyDifference(*fluisdLSInit);
-    mBBoxLS->setGridClass(GRID_LEVEL_SET);
+    mBBoxLS = FloatGrid::create(/*bg = */0.f);
+    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mBBoxLS->setTransform(mXform);
+    mBBoxLS->topologyDifference(*fluidLSInit2);
     mBBoxLS->setName("bbox_ls");
-
-    auto bboxLSAcc = mBBoxLS->getAccessor();
-    auto fluidLSInitAcc = fluidLSInit->getAccessor();
-    for (auto iter = mBBoxLS->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        if (ijk[0] >= minFI[0] && ijk[1] >= minFI[1] && ijk[2] >= minFI[2] &&
-            ijk[0] <= maxFI[0] && ijk[1] <= maxFI[1] && ijk[2] >= maxFI[2]) {
-            iter.setValueOff();
-        }
-    }
+    openvdb::tools::pruneInactive(mBBoxLS->tree());
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -441,7 +446,7 @@ FlipSolver::pressureProjection4() {
 
     BoolTree::Ptr interiorMask(new BoolTree(false));
     interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    // tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
     interiorGrid->setTransform(mXform);
 
@@ -461,8 +466,8 @@ FlipSolver::pressureProjection4() {
     //std::cout << "\t== divergence before " << divBefore << std::endl;
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    domainMaskGrid->topologyDifference(*mBBoxLS);
-    domainMaskGrid->topologyDifference(*mCollider);
+    // domainMaskGrid->topologyDifference(*mBBoxLS);
+    // domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
