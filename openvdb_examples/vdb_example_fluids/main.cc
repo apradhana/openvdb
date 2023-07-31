@@ -795,7 +795,6 @@ FlipSolver::pressureProjection5(bool print) {
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
     domainMaskGrid->topologyDifference(*mBBoxLS);
     (domainMaskGrid->tree()).topologyIntersection(interiorGrid->tree());
-    // domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
@@ -825,28 +824,8 @@ FlipSolver::pressureProjection5(bool print) {
     mPressure->setName("pressure");
     // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
 
-    GradientStaggered<FloatGrid> gradientOp(*fluidPressureGrid);
-    Vec3SGrid::Ptr grad = gradientOp.process();
-    grad->setGridClass(GRID_STAGGERED);
-    
-    auto gradAccOne = grad->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
-    // for (auto iter = grad->beginValueOn(); iter; ++iter) {
-    //     math::Coord ijk = iter.getCoord();
-
-    //     auto val = gradAccOne.getValue(ijk);
-    //     std::cout << "grad acc one " << ijk << " = " << val * mVoxelSize << " vCurr = " << vCurrAcc.getValue(ijk) << std::endl;
-    // }
-
-
-    // (grad->tree()).topologyIntersection(interiorGrid->tree());
-    // NOTE: line 712-714 in SOP_OpenVDB_Remove_Divergence
-    grad->topologyUnion(*mVCurr);
-    grad->topologyIntersection(*mVCurr);
-    openvdb::tools::pruneInactive(grad->tree());
-
     auto vNextAcc = mVNext->getAccessor();
-    auto gradAcc = grad->getAccessor();
     auto boolAcc = interiorGrid->getAccessor();
 
     int count = 0;
@@ -857,19 +836,12 @@ FlipSolver::pressureProjection5(bool print) {
         gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
         gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
 
-        //if (boolAcc.isValueOn(ijk)) {
             auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
             vNextAcc.setValue(ijk, val);
             // This is only multiplied by mVoxelSize because in the computation of
             // gradijk, I don't divide by mVoxelSize.
             if (print)
             std::cout << "gradijk = " << ijk << " = " << gradijk * mVoxelSize << "\tvnext = " << vNextAcc.getValue(ijk) << std::endl;
-        //}
-        //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
-        // if (boolAcc.isValueOn(ijk)) {
-        //     vNextAcc.setValue(ijk, val);
-        //     std::cout << "newvel = " << ijk << " = " << val << "\tvcurr = " << vCurrAcc.getValue(ijk) << std::endl;
-        // }
     }
 
     mDivAfter = tools::divergence(*mVNext);
