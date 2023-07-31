@@ -135,7 +135,7 @@ private:
     void pressureProjection2();
     void pressureProjection3();
     void pressureProjection4();
-    void pressureProjection5();
+    void pressureProjection5(bool print);
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(bool print);
@@ -264,7 +264,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize2();
+    initialize();
 }
 
 
@@ -274,20 +274,20 @@ FlipSolver::initialize() {
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
 
-    auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 5.f, 5.f) /* max */); // world space domain
-    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
-    mBBoxLS->setGridClass(GRID_LEVEL_SET);
-    mBBoxLS->setName("bbox_ls");
-
-    auto cldrBox = BBox(Vec3s(5.f, 0.f, 1.5f) /* min */, Vec3s(7.f, 5.f, 3.5f) /* max */);
+    auto cldrBox = BBox(Vec3s(105.f, 100.f, 101.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
     mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
     mCollider->setGridClass(GRID_LEVEL_SET);
     mCollider->setName("collider");
     
     // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
     // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
-    auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(3.f, 3.f, 3.f) /* max */);
+    auto wsFluidInit = BBox(Vec3s(3.f, 3.f, 3.f) /* min */, Vec3s(4.f, 4.f, 4.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
+
+    auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 0.5f, 14.f) /* max */); // world space domain
+    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
+    mBBoxLS->setGridClass(GRID_LEVEL_SET);
+    mBBoxLS->setName("bbox_ls");
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -759,7 +759,7 @@ FlipSolver::pressureProjection4() {
 
 
 void
-FlipSolver::pressureProjection5() {
+FlipSolver::pressureProjection5(bool print) {
     std::cout << "pressure projection 5 begins" << std::endl;
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
@@ -815,6 +815,7 @@ FlipSolver::pressureProjection5() {
 
         auto val = pressureAcc.getValue(ijk);
         auto divijk = divAcc.getValue(ijk);
+        if (print)
         std::cout << "pressure " << ijk << " = " << val << " div = " << divijk << std::endl;
     }
 
@@ -856,13 +857,14 @@ FlipSolver::pressureProjection5() {
         gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
         gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
 
-        if (boolAcc.isValueOn(ijk)) {
+        //if (boolAcc.isValueOn(ijk)) {
             auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
             vNextAcc.setValue(ijk, val);
             // This is only multiplied by mVoxelSize because in the computation of
             // gradijk, I don't divide by mVoxelSize.
+            if (print)
             std::cout << "gradijk = " << ijk << " = " << gradijk * mVoxelSize << "\tvnext = " << vNextAcc.getValue(ijk) << std::endl;
-        }
+        //}
         //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
         // if (boolAcc.isValueOn(ijk)) {
         //     vNextAcc.setValue(ijk, val);
@@ -897,8 +899,8 @@ void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     velocityBCCorrection(false /* print */);
-    pressureProjection5();
-    velocityBCCorrection(true /* print */);
+    pressureProjection5(false /* print */);
+    velocityBCCorrection(false /* print */);
 }
 
 
@@ -914,7 +916,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 10; ++frame) {
+    for (int frame = 0; frame < 200; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
