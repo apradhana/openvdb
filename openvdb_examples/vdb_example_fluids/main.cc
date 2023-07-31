@@ -185,7 +185,7 @@ private:
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     delta -= /* voxelSize *  */ vNgbr[2];
                 }
-                source += delta * 0.5 / voxelSize;
+                source += delta /** 0.5 */ / voxelSize;
             } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -460,17 +460,17 @@ FlipSolver::velocityBCCorrection() {
         math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
         if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
-            auto val = vCurrAcc.getValue(ijk);
+            auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
         if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
-            auto val = vCurrAcc.getValue(ijk);
+            auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
         if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
-            auto val = vCurrAcc.getValue(ijk);
+            auto val = vNextAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             vNextAcc.setValue(ijk, newVal);
         }
@@ -495,6 +495,17 @@ FlipSolver::velocityBCCorrection() {
         auto val = divAfterAcc.getValue(ijk);
         if (std::abs(val) > std::abs(divAfter)) {
             divAfter = val;
+        }
+    }
+
+    auto boolAcc = mInterior->getAccessor();
+    int count = 0;
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+
+        if (boolAcc.isValueOn(ijk)) {
+            auto val = vNextAcc.getValue(ijk);
+            std::cout << "vnext = " << ijk << " = " << val << std::endl;
         }
     }
     std::cout << "\t== divergence after vel bdry crct = " << divAfter << std::endl;
@@ -757,6 +768,17 @@ FlipSolver::pressureProjection5() {
     GradientStaggered<FloatGrid> gradientOp(*fluidPressureGrid);
     Vec3SGrid::Ptr grad = gradientOp.process();
     grad->setGridClass(GRID_STAGGERED);
+    
+    auto gradAccOne = grad->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
+    // for (auto iter = grad->beginValueOn(); iter; ++iter) {
+    //     math::Coord ijk = iter.getCoord();
+
+    //     auto val = gradAccOne.getValue(ijk);
+    //     std::cout << "grad acc one " << ijk << " = " << val * mVoxelSize << " vCurr = " << vCurrAcc.getValue(ijk) << std::endl;
+    // }
+
+
     // (grad->tree()).topologyIntersection(interiorGrid->tree());
     // NOTE: line 712-714 in SOP_OpenVDB_Remove_Divergence
     grad->topologyUnion(*mVCurr);
@@ -764,17 +786,24 @@ FlipSolver::pressureProjection5() {
     openvdb::tools::pruneInactive(grad->tree());
 
     auto vNextAcc = mVNext->getAccessor();
-    auto vCurrAcc = mVCurr->getAccessor();
     auto gradAcc = grad->getAccessor();
     auto boolAcc = interiorGrid->getAccessor();
 
     int count = 0;
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
+        Vec3s gradijk;
+        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
 
-        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
-        vNextAcc.setValue(ijk, val);
-        // std::cout << "newvel = " << ijk << " = " << val << "\tvcurr = " << vCurrAcc.getValue(ijk) << std::endl;
+        if (boolAcc.isValueOn(ijk)) {
+            auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+            vNextAcc.setValue(ijk, val);
+            // This is only multiplied by mVoxelSize because in the computation of
+            // gradijk, I don't divide by mVoxelSize.
+            std::cout << "gradijk = " << ijk << " = " << gradijk * mVoxelSize << "\tvnext = " << vNextAcc.getValue(ijk) << std::endl;
+        }
         //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
         // if (boolAcc.isValueOn(ijk)) {
         //     vNextAcc.setValue(ijk, val);
