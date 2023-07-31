@@ -192,6 +192,7 @@ private:
     Vec3SGrid::Ptr mVNext;
     FloatGrid::Ptr mPressure;
     Int32Grid::Ptr mFlags;
+    BoolGrid::Ptr mInterior;
 };
 
 
@@ -313,9 +314,11 @@ FlipSolver::particlesToGrid(){
 void
 FlipSolver::addGravity(float const dt) {
     auto vCurrAcc = mVCurr->getAccessor();
+    auto bboxAcc = mBBoxLS->getAccessor();
+
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        Vec3s newVel = vCurrAcc.getValue(ijk) + dt * mGravity;
+        Vec3s newVel = bboxAcc.isValueOn(ijk) ? Vec3s(0, 0, 0) : vCurrAcc.getValue(ijk) + dt * mGravity;
         vCurrAcc.setValue(ijk, newVel);
     }
 }
@@ -323,6 +326,7 @@ FlipSolver::addGravity(float const dt) {
 
 void
 FlipSolver::velocityBCCorrection() {
+    auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto bboxAcc = mBBoxLS->getAccessor();
 
@@ -336,21 +340,44 @@ FlipSolver::velocityBCCorrection() {
         math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
         if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
-            auto val = vNextAcc.getValue(ijk);
+            auto val = vCurrAcc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
         if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
-            auto val = vNextAcc.getValue(ijk);
+            auto val = vCurrAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             vNextAcc.setValue(ijk, newVal);
         }
         if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
-            auto val = vNextAcc.getValue(ijk);
+            auto val = vCurrAcc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             vNextAcc.setValue(ijk, newVal);
         }
     }
+
+
+    BoolTree::Ptr interiorMask(new BoolTree(false));
+    interiorMask->topologyUnion(mVCurr->tree());
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
+    interiorGrid->setTransform(mXform);
+    mInterior = interiorGrid->copy();
+    mInterior->setName("interior");
+
+    mDivAfter = tools::divergence(*mVNext);
+    mDivAfter->setName("div_after");
+    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after vel bdry crct" << divAfter << std::endl;
 }
 
 
@@ -448,14 +475,16 @@ FlipSolver::pressureProjection4() {
 
     BoolTree::Ptr interiorMask(new BoolTree(false));
     interiorMask->topologyUnion(mVCurr->tree());
-    // tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
     interiorGrid->setTransform(mXform);
+    mInterior = interiorGrid->copy();
+    mInterior->setName("interior");
 
     mDivBefore = tools::divergence(*mVCurr);
     mDivBefore->setName("div_before");
     // NOTE: not doing topology intersection
-    //(mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
+    // (mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
     float divBefore = 0.f;
     auto divAcc = mDivBefore->getAccessor();
     for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
@@ -505,12 +534,16 @@ FlipSolver::pressureProjection4() {
     auto gradAcc = grad->getAccessor();
     auto boolAcc = interiorGrid->getAccessor();
 
-    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+    int count = 0;
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
 
         auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
         //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
-        vNextAcc.setValue(ijk, val);
+        if (boolAcc.isValueOn(ijk)) {
+            vNextAcc.setValue(ijk, val);
+            // std::cout << "newvel = " << ijk << " = " << val << "\tvcurr = " << vCurrAcc.getValue(ijk) << std::endl;
+        }
     }
 
     mDivAfter = tools::divergence(*mVNext);
@@ -525,7 +558,7 @@ FlipSolver::pressureProjection4() {
             divAfter = val;
         }
     }
-    std::cout << "\t== divergence after " << divAfter << std::endl;
+    std::cout << "\t== divergence after pp" << divAfter << std::endl;
 
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -918,6 +951,7 @@ FlipSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
+    grids.push_back(mInterior);
     file.write(grids);
     file.close();
 }
