@@ -264,7 +264,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize4();
+    initialize2();
 }
 
 
