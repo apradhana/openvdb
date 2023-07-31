@@ -914,7 +914,7 @@ FlipSolver::substep(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 1; ++frame) {
+    for (int frame = 0; frame < 10; ++frame) {
         std::cout << "frame = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
