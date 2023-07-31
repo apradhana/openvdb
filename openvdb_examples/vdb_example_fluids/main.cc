@@ -115,6 +115,7 @@ private:
     void initialize();
     void initialize2();
     void initialize3();
+    void initialize4();
 
     void substep(float const dt);
 
@@ -137,7 +138,7 @@ private:
     void pressureProjection5();
     void gridVelocityUpdate(float const dt);
 
-    void velocityBCCorrection();
+    void velocityBCCorrection(bool print);
 
     void addGravity(float const dt);
 
@@ -263,7 +264,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize3();
+    initialize4();
 }
 
 
@@ -413,6 +414,61 @@ FlipSolver::initialize3() {
     std::cout << "PointCount=" << count << std::endl;
 }
 
+
+void
+FlipSolver::initialize4() {
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+
+    auto cldrBox = BBox(Vec3s(105.f, 100.f, 10.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
+    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
+    mCollider->setGridClass(GRID_LEVEL_SET);
+    mCollider->setName("collider");
+    
+    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
+    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
+
+    Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
+    Vec3s maxFI = Vec3s(2.5f, 2.3f, 2.5f);
+    Vec3s maxFI2 = Vec3s(2.5f, 5.1f, 2.5f);
+    Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
+    Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
+    Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
+    Vec3s minBBoxvec = Vec3s(1.8f, 1.8f, 1.8f);
+    Vec3s maxBBoxvec = Vec3s(2.7f, 5.1f, 2.7f);
+    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
+    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
+    fluidLSInit->denseFill(CoordBBox(minFIcoord, maxFIcoord), /*value = */ 1.0, /*active = */ true);
+    fluidLSInit->setTransform(mXform);
+    FloatGrid::Ptr fluidLSInit2 = FloatGrid::create(/*bg = */0.f);
+    fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
+    fluidLSInit2->setTransform(mXform);
+
+    mBBoxLS = FloatGrid::create(/*bg = */0.f);
+    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mBBoxLS->setTransform(mXform);
+    mBBoxLS->topologyDifference(*fluidLSInit2);
+    mBBoxLS->setName("bbox_ls");
+    openvdb::tools::pruneInactive(mBBoxLS->tree());
+
+    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
+    mPoints->setName("Points");
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+
+    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
+    std::cout << "PointCount=" << count << std::endl;
+}
+
 void
 FlipSolver::particlesToGrid(){
     TreeBase::Ptr baseVTree = points::rasterizeTrilinear<true /* staggered */, Vec3s>(mPoints->tree(), "velocity");
@@ -445,7 +501,7 @@ FlipSolver::addGravity(float const dt) {
 
 
 void
-FlipSolver::velocityBCCorrection() {
+FlipSolver::velocityBCCorrection(bool print) {
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto bboxAcc = mBBoxLS->getAccessor();
@@ -500,15 +556,17 @@ FlipSolver::velocityBCCorrection() {
 
     auto boolAcc = mInterior->getAccessor();
     int count = 0;
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
+    if (print) {
+        for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
 
-        if (boolAcc.isValueOn(ijk)) {
-            auto val = vNextAcc.getValue(ijk);
-            std::cout << "vnext = " << ijk << " = " << val << std::endl;
+            if (boolAcc.isValueOn(ijk)) {
+                auto val = vNextAcc.getValue(ijk);
+                std::cout << "vnext = " << ijk << " = " << val << std::endl;
+            }
         }
+        std::cout << "\t== divergence after vel bdry crct = " << divAfter << std::endl;
     }
-    std::cout << "\t== divergence after vel bdry crct = " << divAfter << std::endl;
 }
 
 
@@ -736,6 +794,7 @@ FlipSolver::pressureProjection5() {
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
     domainMaskGrid->topologyDifference(*mBBoxLS);
+    (domainMaskGrid->tree()).topologyIntersection(interiorGrid->tree());
     // domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
@@ -837,9 +896,9 @@ FlipSolver::pressureProjection5() {
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    velocityBCCorrection();
+    velocityBCCorrection(false /* print */);
     pressureProjection5();
-    velocityBCCorrection();
+    velocityBCCorrection(true /* print */);
 }
 
 
