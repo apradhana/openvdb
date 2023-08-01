@@ -72,6 +72,7 @@ private:
     void velocityBCCorrectionOld(bool print);
 
     void addGravity(float const dt);
+    void computeFlipVelocity(float const dt);
 
     void writeVDBs(int const frame);
     void writeVDBsDebug(int const frame);
@@ -374,6 +375,30 @@ FlipSolver::initialize4() {
                                    nullptr /* default value */,
                                    false /* hidden */,
                                    false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_pic" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_flip" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
 
     openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
     std::cout << "PointCount=" << count << std::endl;
@@ -472,6 +497,25 @@ FlipSolver::addGravity(float const dt) {
         auto ijk = iter.getCoord();
         Vec3s newVel = /*bboxAcc.isValueOn(ijk) ? Vec3s(0, 0, 0) : */ vCurrAcc.getValue(ijk) + dt * mGravity;
         vCurrAcc.setValue(ijk, newVel);
+    }
+}
+
+
+void
+FlipSolver::computeFlipVelocity(float const dt) {
+    Vec3SGrid::Ptr mVDiff = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
+    (mVDiff->tree()).topologyUnion(mVCurr->tree());
+    mVDiff->setGridClass(GRID_STAGGERED);
+    mVDiff->setTransform(mXform);
+
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto vNextAcc = mVNext->getAccessor();
+    auto vDiffAcc = mVDiff->getAccessor();
+
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        Vec3s val = vNextAcc.getValue(ijk) - vCurrAcc.getValue(ijk) - dt * mGravity;
+        vDiffAcc.setValue(ijk, val);
     }
 }
 
@@ -882,6 +926,7 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
     velocityBCCorrection(*mVNext);
+    computeFlipVelocity(dt);
 }
 
 
@@ -889,7 +934,7 @@ void
 FlipSolver::substep(float const dt) {
     particlesToGrid();
     gridVelocityUpdate(dt);
-    gridToParticles();
+    // gridToParticles();
     advectParticles(dt);
 }
 
@@ -979,7 +1024,10 @@ FlipSolver::particlesToGrid2(){
     
 
 void
-FlipSolver::gridToParticles(){}
+FlipSolver::gridToParticles() {
+    points::boxSample(*mPoints, *mVDiff, "v_flip");
+    points::boxSample(*mPoints, *mVNext, "v_pic");
+}
 
 
 void
