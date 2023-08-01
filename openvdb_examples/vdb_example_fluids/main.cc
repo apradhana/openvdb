@@ -43,17 +43,14 @@ public:
 
 private:
 
-    void initialize();
-    void initialize2();
-    void initialize3();
-    void initialize4();
+    void initializeFreeFall();
+    void initializePool();
     void initializeDamBreak();
 
     void substep(float const dt);
 
     // Rasterize particle velocity to the grid
     void particlesToGrid();
-    void particlesToGrid2();
 
     // FLIP update: Interpolate the delta of velocity update (v_np1 - v_n)
     // back to the particle
@@ -65,14 +62,11 @@ private:
     void advectParticles(float const dt);
 
     // Make the velocity on the grid to be divergence free
-    void pressureProjection();
-    void pressureProjection3();
-    void pressureProjection4();
-    void pressureProjection5(bool print);
+    void pressureProjection(bool print);
+
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
-    void velocityBCCorrectionOld(bool print);
 
     void addGravity(float const dt);
     void computeFlipVelocity(float const dt);
@@ -218,30 +212,39 @@ FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 
 
 void
-FlipSolver::initialize() {
+FlipSolver::initializeFreeFall() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-
-    auto cldrBox = BBox(Vec3s(105.f, 100.f, 101.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
-    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
-    mCollider->setGridClass(GRID_LEVEL_SET);
-    mCollider->setName("collider");
     
-    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
-    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
     auto wsFluidInit = BBox(Vec3s(3.f, 3.f, 3.f) /* min */, Vec3s(4.f, 4.f, 4.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
     auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 0.5f, 14.f) /* max */); // world space domain
     mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
     mBBoxLS->setGridClass(GRID_LEVEL_SET);
-    mBBoxLS->setName("bbox_ls");
+    mBBoxLS->setName("collider");
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
     points::appendAttribute<Vec3s>(mPoints->tree(),
                                    "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_pic" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_flip" /* attribute name */,
                                    Vec3s(0.f, 0.f, 0.f) /* uniform value */,
                                    1 /* stride or total count */,
                                    true /* constant stride */,
@@ -255,7 +258,7 @@ FlipSolver::initialize() {
 
 
 void
-FlipSolver::initialize2() {
+FlipSolver::initializePool() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
@@ -297,132 +300,6 @@ FlipSolver::initialize2() {
     mPoints->setName("Points");
     points::appendAttribute<Vec3s>(mPoints->tree(),
                                    "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-
-    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
-    std::cout << "PointCount=" << count << std::endl;
-}
-
-
-void
-FlipSolver::initialize3() {
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-
-    auto cldrBox = BBox(Vec3s(105.f, 100.f, 10.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
-    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
-    mCollider->setGridClass(GRID_LEVEL_SET);
-    mCollider->setName("collider");
-    
-    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
-    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
-
-    Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
-    Vec3s maxFI = Vec3s(2.1f, 2.3f, 2.1f);
-    Vec3s maxFI2 = Vec3s(2.1f, 5.1f, 2.1f);
-    Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
-    Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
-    Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
-    Vec3s minBBoxvec = Vec3s(1.8f, 1.8f, 1.8f);
-    Vec3s maxBBoxvec = Vec3s(2.3f, 3.2f, 2.3f);
-    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
-    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit->denseFill(CoordBBox(minFIcoord, maxFIcoord), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit->setTransform(mXform);
-    FloatGrid::Ptr fluidLSInit2 = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit2->setTransform(mXform);
-
-    mBBoxLS = FloatGrid::create(/*bg = */0.f);
-    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mBBoxLS->setTransform(mXform);
-    mBBoxLS->topologyDifference(*fluidLSInit2);
-    mBBoxLS->setName("bbox_ls");
-    openvdb::tools::pruneInactive(mBBoxLS->tree());
-
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, 1 /* mPointsPerVoxel */ );
-    mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-
-    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
-    std::cout << "PointCount=" << count << std::endl;
-}
-
-
-void
-FlipSolver::initialize4() {
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-
-    auto cldrBox = BBox(Vec3s(105.f, 100.f, 10.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
-    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
-    mCollider->setGridClass(GRID_LEVEL_SET);
-    mCollider->setName("collider");
-    
-    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
-    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
-
-    Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
-    Vec3s maxFI = Vec3s(2.5f, 2.3f, 2.5f);
-    Vec3s maxFI2 = Vec3s(2.5f, 5.1f, 2.5f);
-    Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
-    Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
-    Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
-    Vec3s minBBoxvec = Vec3s(1.8f, 1.8f, 1.8f);
-    Vec3s maxBBoxvec = Vec3s(2.7f, 5.1f, 2.7f);
-    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
-    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit->denseFill(CoordBBox(minFIcoord, maxFIcoord), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit->setTransform(mXform);
-    FloatGrid::Ptr fluidLSInit2 = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit2->setTransform(mXform);
-
-    mBBoxLS = FloatGrid::create(/*bg = */0.f);
-    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mBBoxLS->setTransform(mXform);
-    mBBoxLS->topologyDifference(*fluidLSInit2);
-    mBBoxLS->setName("bbox_ls");
-    openvdb::tools::pruneInactive(mBBoxLS->tree());
-
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
-    mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_pic" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_flip" /* attribute name */,
                                    Vec3s(0.f, 0.f, 0.f) /* uniform value */,
                                    1 /* stride or total count */,
                                    true /* constant stride */,
@@ -584,266 +461,8 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
 
 
 void
-FlipSolver::velocityBCCorrectionOld(bool print) {
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto vNextAcc = mVNext->getAccessor();
-    auto bboxAcc = mBBoxLS->getAccessor();
-
-    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
-        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
-        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
-
-        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            vNextAcc.setValue(ijk, newVal);
-        }
-        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            vNextAcc.setValue(ijk, newVal);
-        }
-        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
-            auto val = vNextAcc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            vNextAcc.setValue(ijk, newVal);
-        }
-    }
-
-
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    interiorGrid->setTransform(mXform);
-    mInterior = interiorGrid->copy();
-    mInterior->setName("interior");
-
-    mDivAfter = tools::divergence(*mVNext);
-    mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-
-    auto boolAcc = mInterior->getAccessor();
-    int count = 0;
-    if (print) {
-        for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-            math::Coord ijk = iter.getCoord();
-
-            if (boolAcc.isValueOn(ijk)) {
-                auto val = vNextAcc.getValue(ijk);
-                std::cout << "vnext = " << ijk << " = " << val << std::endl;
-            }
-        }
-        std::cout << "\t== divergence after vel bdry crct = " << divAfter << std::endl;
-    }
-}
-
-
-void
-FlipSolver::pressureProjection() {
-    using TreeType = FloatTree;
-    using ValueType = TreeType::ValueType;
-
-    const ValueType zero = zeroVal<ValueType>();
-    const double epsilon = math::Delta<ValueType>::value();
-
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    interiorGrid->setTransform(mXform);
-
-    mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->setName("div_before");
-    (mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
-    float divBefore = 0.f;
-    auto divAcc = mDivBefore->getAccessor();
-    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divBefore)) {
-            divBefore = val;
-        }
-    }
-    std::cout << "\t== divergence before " << divBefore << std::endl;
-
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100000;
-    state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
-
-    util::NullInterrupter interrupter;
-    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-        mDivBefore->tree(), bop, state, interrupter, /*staggered=*/true);
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    fluidPressureGrid->setTransform(mXform);
-    mPressure = fluidPressureGrid->copy();
-    mPressure->setName("pressure");
-    (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
-
-    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
-    grad->setGridClass(GRID_STAGGERED);
-    (grad->tree()).topologyIntersection(interiorGrid->tree());
-
-    auto vNextAcc = mVNext->getAccessor();
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto gradAcc = grad->getAccessor();
-    auto boolAcc = interiorGrid->getAccessor();
-
-    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-
-        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
-        //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
-        vNextAcc.setValue(ijk, val);
-    }
-
-    mDivAfter = tools::divergence(*mVNext);
-    mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-    std::cout << "\t== divergence after " << divAfter << std::endl;
-
-    std::cout << "Success: " << state.success << std::endl;
-    std::cout << "Iterations: " << state.iterations << std::endl;
-    std::cout << "Relative error: " << state.relativeError << std::endl;
-    std::cout << "Absolute error: " << state.absoluteError << std::endl;
-    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
-}
-
-
-void
-FlipSolver::pressureProjection4() {
-    std::cout << "pressure projection 4 begins" << std::endl;
-    using TreeType = FloatTree;
-    using ValueType = TreeType::ValueType;
-    using MaskGridType = BoolGrid;
-    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
-    const ValueType zero = zeroVal<ValueType>();
-    const double epsilon = math::Delta<ValueType>::value();
-
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    interiorGrid->setTransform(mXform);
-    mInterior = interiorGrid->copy();
-    mInterior->setName("interior");
-
-    mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->setName("div_before");
-    // NOTE: not doing topology intersection
-    // (mDivBefore->tree()).topologyIntersection(interiorGrid->tree());
-    float divBefore = 0.f;
-    auto divAcc = mDivBefore->getAccessor();
-    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divBefore)) {
-            divBefore = val;
-        }
-    }
-    //std::cout << "\t== divergence before " << divBefore << std::endl;
-
-    MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    domainMaskGrid->topologyDifference(*mBBoxLS);
-    // domainMaskGrid->topologyDifference(*mCollider);
-
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100000;
-    state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
-
-    util::NullInterrupter interrupter;
-    // FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-    //     mDivBefore->tree(), bop, state, interrupter, /*staggered=*/true);
-
-    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
-    //         divGrid->tree(), domainMaskGrid->tree(), boundaryOp, parms.outputState,
-    //             *parms.interrupter, staggered);
-
-    // FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    fluidPressureGrid->setTransform(mXform);
-    mPressure = fluidPressureGrid->copy();
-    mPressure->setName("pressure");
-    // (fluidPressureGrid->tree()).topologyIntersection(interiorGrid->tree());
-
-    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid);
-    grad->setGridClass(GRID_STAGGERED);
-    // (grad->tree()).topologyIntersection(interiorGrid->tree());
-    // NOTE: line 712-714 in SOP_OpenVDB_Remove_Divergence
-    grad->topologyUnion(*mVCurr);
-    grad->topologyIntersection(*mVCurr);
-    openvdb::tools::pruneInactive(grad->tree());
-
-    auto vNextAcc = mVNext->getAccessor();
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto gradAcc = grad->getAccessor();
-    auto boolAcc = interiorGrid->getAccessor();
-
-    int count = 0;
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-
-        auto val = vCurrAcc.getValue(ijk) - gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
-        //std::cout << "vCurr = " << vCurrAcc.getValue(ijk) << "\tgradAcc.getValue(ijk) = " << gradAcc.getValue(ijk) << std::endl;
-        if (boolAcc.isValueOn(ijk)) {
-            vNextAcc.setValue(ijk, val);
-            // std::cout << "newvel = " << ijk << " = " << val << "\tvcurr = " << vCurrAcc.getValue(ijk) << std::endl;
-        }
-    }
-
-    mDivAfter = tools::divergence(*mVNext);
-    mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(interiorGrid->tree());
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
-
-    std::cout << "Success: " << state.success << std::endl;
-    std::cout << "Iterations: " << state.iterations << std::endl;
-    std::cout << "Relative error: " << state.relativeError << std::endl;
-    std::cout << "Absolute error: " << state.absoluteError << std::endl;
-    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
-    std::cout << "pressure projection 4 ends" << std::endl;
-}
-
-
-void
-FlipSolver::pressureProjection5(bool print) {
-    std::cout << "pressure projection 5 begins" << std::endl;
+FlipSolver::pressureProjection(bool print) {
+    std::cout << "pressure projection begins" << std::endl;
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
     using MaskGridType = BoolGrid;
@@ -947,7 +566,7 @@ FlipSolver::pressureProjection5(bool print) {
     std::cout << "Relative error: " << state.relativeError << std::endl;
     std::cout << "Absolute error: " << state.absoluteError << std::endl;
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
-    std::cout << "pressure projection 5 ends" << std::endl;
+    std::cout << "pressure projection ends" << std::endl;
 }
 
 
@@ -955,7 +574,7 @@ void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     velocityBCCorrection(*mVCurr);
-    pressureProjection5(false /* print */);
+    pressureProjection(false /* print */);
     velocityBCCorrection(*mVNext);
     computeFlipVelocity(dt);
 }
@@ -1009,78 +628,6 @@ FlipSolver::render() {
 
 
 void
-FlipSolver::particlesToGrid2(){
-    auto const xform =
-        math::Transform::createLinearTransform(mVoxelSize);
-
-    // Create a vector with four point positions.
-    std::vector<Vec3s> positions;
-    positions.push_back(Vec3s(0.f, 0.f, 0.f));
-    positions.push_back(Vec3s(1.5f * 0.1, 0.f, 0.f));
-    std::vector<Vec3s> velocities;
-    velocities.push_back(Vec3s(1.f, 1.f, 1.f));
-    velocities.push_back(Vec3s(1.f, 2.f, 3.f));
-
-    points::PointAttributeVector<Vec3s> positionsWrapper(positions);
-
-
-    // Create a PointDataGrid
-    points::PointDataGrid::Ptr points =
-        points::createPointDataGrid<points::NullCodec,
-                        points::PointDataGrid>(positions, *xform);
-    tools::PointIndexGrid::Ptr pointIndexGrid =
-        openvdb::tools::createPointIndexGrid<tools::PointIndexGrid>(
-            positionsWrapper, *xform);
-
-    points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
-    NamePair velocityAttribute =
-        openvdb::points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
-    openvdb::points::appendAttribute(points->tree(), "velocity", velocityAttribute);
-    points::PointAttributeVector<Vec3s> velocityWrapper(velocities);
-    points::populateAttribute<points::PointDataTree,
-        tools::PointIndexTree, points::PointAttributeVector<Vec3s>>(
-            points->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
-
-    TreeBase::Ptr tree =
-        points::rasterizeTrilinear</*staggered=*/true, Vec3s>(points->tree(), "velocity");
-
-    Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(tree);
-    mVCurr = Vec3SGrid::create(velTree);
-    mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->setTransform(xform);
-    auto vCurrAcc = mVCurr->getAccessor();
-
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        std::cout << "=== mVCurr" << ijk << " = " << vCurrAcc.getValue(ijk) << std::endl;
-    }
-    mFlags = Int32Grid::create(0);
-    (mFlags->tree()).topologyUnion(mVCurr->tree());
-    mFlags->setTransform(xform);
-    Int32Grid::Accessor flagAcc = mFlags->getAccessor();
-
-    for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        if (ijk.y() <= -1 || ijk.x() <= -1 || ijk.x() >= 3 || ijk.z() <= -1 || ijk.z() >= 1) {
-            flagAcc.setValue(ijk, 2); // Neumann pressure
-        }
-
-        if (ijk.y() >= 1) {
-            flagAcc.setValue(ijk, 1); // Dirichlet pressure
-        }
-    }
-    // for (int k = -1; k <= 1; ++k) {
-    //     for (int j = -1; j <= 1; ++j) {
-    //         for (int i = -1; i <= 3; ++i) {
-    //             math::Coord ijk(i, j, k);
-    //             std::cout << "mFlags " << ijk << " = " << flagAcc.getValue(ijk) << std::endl; // Dirichlet pressure
-    //         }
-    //     }
-    // }
-}
-    
-
-void
 FlipSolver::gridToParticles() {
     // Interpolate PIC velocity
     points::boxSample(*mPoints, *mVNext, "v_pic");
@@ -1089,50 +636,6 @@ FlipSolver::gridToParticles() {
     points::boxSample(*mPoints, *mVDiff, "v_flip");
 }
 
-
-void
-FlipSolver::pressureProjection3(){
-    std::cout << "flip::pressureProjection begin" << std::endl;
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    BoolGrid::ConstAccessor intrAcc = interiorGrid->getConstAccessor();
-
-    for (auto iter = interiorGrid->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = intrAcc.getValue(ijk);
-        std::cout << "ijk = " << ijk << ", val = " << val << std::endl;
-    }
-
-    FloatGrid::Ptr divGrid = tools::divergence(*mVCurr);
-    (divGrid->tree()).topologyIntersection(interiorGrid->tree());
-    FloatGrid::ConstAccessor divAcc = divGrid->getConstAccessor();
-    std::cout << "divgrid before pressure projection" << std::endl;
-    // Note that ijk = [0,0, 0] is not printed because the divergence in that cell is 0
-    for (auto iter = divGrid->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAcc.getValue(ijk);
-        std::cout << "div ijk = " << ijk << ", val = " << val << std::endl;
-    }
-
-    BoolTree::Ptr pressureMask(new BoolTree(false));
-    pressureMask->topologyUnion(divGrid->tree());
-    tools::dilateActiveValues(*pressureMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr pressureGridMask = BoolGrid::create(pressureMask);
-    BoolGrid::ConstAccessor prsAcc = pressureGridMask->getConstAccessor();
-    std::cout << "pressuregrid after pressure projection" << std::endl;
-    for (auto iter = pressureGridMask->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = prsAcc.getValue(ijk);
-        std::cout << "pres ijk = " << ijk << ", val = " << val << std::endl;
-    }
-
-
-
-    std::cout << "flip::pressureProjection end" << std::endl;
-
-}
 
 void
 FlipSolver::advectParticles(float const dt) {
