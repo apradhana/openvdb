@@ -116,6 +116,7 @@ private:
     void initialize2();
     void initialize3();
     void initialize4();
+    void initializeDamBreak();
 
     void substep(float const dt);
 
@@ -161,7 +162,6 @@ private:
         {
             float const dirichletBC = 0.f;
             bool isInsideBBox = bBoxLS->tree().isValueOn(neighbor);
-            bool isInsideCollider = collider->tree().isValueOn(neighbor);
             auto vNgbr = vCurr->tree().getValue(neighbor);
 
             // TODO: Fix this:
@@ -264,7 +264,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize();
+    initializeDamBreak();
 }
 
 
@@ -468,6 +468,71 @@ FlipSolver::initialize4() {
     openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
     std::cout << "PointCount=" << count << std::endl;
 }
+
+
+void
+FlipSolver::initializeDamBreak() {
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+    float const padding = 0.2f;
+
+    Vec3s minFI = Vec3s(padding, padding, padding);
+    Vec3s maxFI = Vec3s(padding + 2.f, padding + 4.f, 5.f - padding);
+    Coord minFICoord = mXform->worldToIndexNodeCentered(minFI);
+    Coord maxFICoord = mXform->worldToIndexNodeCentered(maxFI);
+    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
+    fluidLSInit->denseFill(CoordBBox(minFICoord, maxFICoord), /*value = */ 1.0, /*active = */ true);
+    fluidLSInit->setTransform(mXform);
+
+    Vec3s maxIntr = Vec3s(14.f - padding, 5.f, 5.f - padding);
+    Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
+    FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
+    negativeSpace->denseFill(CoordBBox(minFICoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
+    negativeSpace->setTransform(mXform);
+
+    Vec3s minBBoxvec = Vec3s(0.f, 0.f, 0.f);
+    Vec3s maxBBoxvec = Vec3s(14.f, 5.f, 5.f);
+    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    mBBoxLS = FloatGrid::create(/*bg = */0.f);
+    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mBBoxLS->setTransform(mXform);
+    mBBoxLS->topologyDifference(*negativeSpace);
+    mBBoxLS->setName("collider");
+    openvdb::tools::pruneInactive(mBBoxLS->tree());
+
+    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
+    mPoints->setName("Points");
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "velocity" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    // points::appendAttribute<Vec3s>(mPoints->tree(),
+    //                                "v_pic" /* attribute name */,
+    //                                Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+    //                                1 /* stride or total count */,
+    //                                true /* constant stride */,
+    //                                nullptr /* default value */,
+    //                                false /* hidden */,
+    //                                false /* transient */);
+    // points::appendAttribute<Vec3s>(mPoints->tree(),
+    //                                "v_flip" /* attribute name */,
+    //                                Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+    //                                1 /* stride or total count */,
+    //                                true /* constant stride */,
+    //                                nullptr /* default value */,
+    //                                false /* hidden */,
+    //                                false /* transient */);
+
+    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
+    std::cout << "PointCount=" << count << std::endl;
+}
+
 
 void
 FlipSolver::particlesToGrid(){
