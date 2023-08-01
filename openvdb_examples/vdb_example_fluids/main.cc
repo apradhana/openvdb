@@ -475,7 +475,7 @@ FlipSolver::initializeDamBreak() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 0.2f;
+    float const padding = 2 * mVoxelSize;
 
     Vec3s minFI = Vec3s(0.f, 0.f, 0.f);
     Vec3s maxFI = Vec3s(2.f + mVoxelSize, 4.f + mVoxelSize, 5.f + mVoxelSize);
@@ -513,22 +513,22 @@ FlipSolver::initializeDamBreak() {
                                    nullptr /* default value */,
                                    false /* hidden */,
                                    false /* transient */);
-    // points::appendAttribute<Vec3s>(mPoints->tree(),
-    //                                "v_pic" /* attribute name */,
-    //                                Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-    //                                1 /* stride or total count */,
-    //                                true /* constant stride */,
-    //                                nullptr /* default value */,
-    //                                false /* hidden */,
-    //                                false /* transient */);
-    // points::appendAttribute<Vec3s>(mPoints->tree(),
-    //                                "v_flip" /* attribute name */,
-    //                                Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-    //                                1 /* stride or total count */,
-    //                                true /* constant stride */,
-    //                                nullptr /* default value */,
-    //                                false /* hidden */,
-    //                                false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_pic" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
+    points::appendAttribute<Vec3s>(mPoints->tree(),
+                                   "v_flip" /* attribute name */,
+                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
+                                   1 /* stride or total count */,
+                                   true /* constant stride */,
+                                   nullptr /* default value */,
+                                   false /* hidden */,
+                                   false /* transient */);
 
     openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
     std::cout << "PointCount=" << count << std::endl;
