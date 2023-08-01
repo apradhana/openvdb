@@ -901,7 +901,8 @@ FlipSolver::pressureProjection5(bool print) {
         std::cout << "pressure " << ijk << " = " << val << " div = " << divijk << std::endl;
     }
 
-    // From conversation with Greg
+    // Note: need to dilate in order to do one-sided difference
+    // because we use a staggered grid velocity field.
     tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
