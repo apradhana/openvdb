@@ -57,6 +57,7 @@ private:
     // FLIP update: Interpolate the delta of velocity update (v_np1 - v_n)
     // back to the particle
     void gridToParticles();
+    void updateParticles(float const dt);
 
     // Update particle position based on velocity on the grid
     void advectParticles(float const dt);
@@ -367,14 +368,6 @@ FlipSolver::initialize4() {
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
     points::appendAttribute<Vec3s>(mPoints->tree(),
                                    "velocity" /* attribute name */,
                                    Vec3s(0.f, 0.f, 0.f) /* uniform value */,
@@ -935,6 +928,30 @@ FlipSolver::substep(float const dt) {
     particlesToGrid();
     gridVelocityUpdate(dt);
     gridToParticles();
+    updateParticles(dt);
+}
+
+
+void
+FlipSolver::updateParticles(float const dt) {
+    float const alpha = 0.05;
+    for (auto leafIter = (mPoints->tree()).beginLeaf(); leafIter; ++leafIter) {
+        points::AttributeArray& velArray = leafIter->attributeArray("velocity");
+        points::AttributeArray& vPicArray = leafIter->attributeArray("v_pic");
+        points::AttributeArray& vFlipArray = leafIter->attributeArray("v_flip");
+        points::AttributeWriteHandle<Vec3s> velHandle(velArray);
+        points::AttributeWriteHandle<Vec3s> vPicHandle(vPicArray);
+        points::AttributeWriteHandle<Vec3s> vFlipHandle(vFlipArray);
+        // Iterate over active indices in the leaf.
+        for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
+            auto vPic = vPicHandle.get(*indexIter);
+            auto vFlip = vFlipHandle.get(*indexIter);
+            auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
+            // Set value
+            velHandle.set(*indexIter, newVel);
+        }
+    }
+
     advectParticles(dt);
 }
 
