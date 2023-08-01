@@ -477,28 +477,29 @@ FlipSolver::initializeDamBreak() {
     mXform = math::Transform::createLinearTransform(mVoxelSize);
     float const padding = 0.2f;
 
-    Vec3s minFI = Vec3s(padding, padding, padding);
-    Vec3s maxFI = Vec3s(padding + 2.f, padding + 4.f, 5.f - padding);
+    Vec3s minFI = Vec3s(0.f, 0.f, 0.f);
+    Vec3s maxFI = Vec3s(2.f + mVoxelSize, 4.f + mVoxelSize, 5.f + mVoxelSize);
     Coord minFICoord = mXform->worldToIndexNodeCentered(minFI);
     Coord maxFICoord = mXform->worldToIndexNodeCentered(maxFI);
     FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
     fluidLSInit->denseFill(CoordBBox(minFICoord, maxFICoord), /*value = */ 1.0, /*active = */ true);
     fluidLSInit->setTransform(mXform);
 
-    Vec3s maxIntr = Vec3s(14.f - padding, 5.f, 5.f - padding);
+    Vec3s maxIntr = Vec3s(14.f + mVoxelSize, 5.f + mVoxelSize, 5.f + mVoxelSize);
     Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
     FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
     negativeSpace->denseFill(CoordBBox(minFICoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
     negativeSpace->setTransform(mXform);
 
-    Vec3s minBBoxvec = Vec3s(0.f, 0.f, 0.f);
-    Vec3s maxBBoxvec = Vec3s(14.f, 5.f, 5.f);
+    Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
+    Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
     Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
     Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
     mBBoxLS = FloatGrid::create(/*bg = */0.f);
     mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
     mBBoxLS->setTransform(mXform);
     mBBoxLS->topologyDifference(*negativeSpace);
+    mBBoxLS->topologyDifference(*fluidLSInit);
     mBBoxLS->setName("collider");
     openvdb::tools::pruneInactive(mBBoxLS->tree());
 
