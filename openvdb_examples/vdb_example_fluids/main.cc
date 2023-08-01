@@ -32,76 +32,6 @@
 #include <openvdb/points/PointAdvect.h> // for advectPoints
 using namespace openvdb;
 
-class Vector3 {
-public:
-    float x, y, z;
-
-    Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-};
-
-namespace helper {
-template<typename GridType>
-struct ToMaskGrid {
-    typedef Grid<typename GridType::TreeType::template ValueConverter<ValueMask>::Type> Type;
-};
-}
-/// @brief Compute the gradient of a scalar grid.
-template<
-    typename InGridT,
-    typename MaskGridType = typename helper::ToMaskGrid<InGridT>::Type,
-    typename InterruptT = util::NullInterrupter>
-class GradientStaggered
-{
-public:
-    typedef InGridT                                         InGridType;
-    typedef typename tools::ScalarToVectorConverter<InGridT>::Type OutGridType;
-
-    GradientStaggered(const InGridT& grid, InterruptT* interrupt = nullptr):
-        mInputGrid(grid), mInterrupt(interrupt), mMask(nullptr)
-    {
-    }
-
-    GradientStaggered(const InGridT& grid, const MaskGridType& mask, InterruptT* interrupt = nullptr):
-        mInputGrid(grid), mInterrupt(interrupt), mMask(&mask)
-    {
-    }
-
-    typename OutGridType::Ptr process(bool threaded = true)
-    {
-        Functor functor(mInputGrid, mMask, threaded, mInterrupt);
-        processTypedMap(mInputGrid.transform(), functor);
-        if (functor.mOutputGrid) functor.mOutputGrid->setVectorType(VEC_COVARIANT);
-        return functor.mOutputGrid;
-    }
-
-protected:
-    struct Functor
-    {
-        Functor(const InGridT& grid, const MaskGridType* mask,
-            bool threaded, InterruptT* interrupt):
-            mThreaded(threaded), mInputGrid(grid), mInterrupt(interrupt), mMask(mask) {}
-
-        template<typename MapT>
-        void operator()(const MapT& map)
-        {
-            typedef math::Gradient<MapT, math::FD_1ST> OpT;
-            tools::gridop::GridOperator<InGridType, MaskGridType, OutGridType, MapT, OpT, InterruptT>
-                op(mInputGrid, mMask, map, mInterrupt);
-            mOutputGrid = op.process(mThreaded); // cache the result
-        }
-
-        const bool                 mThreaded;
-        const InGridT&             mInputGrid;
-        typename OutGridType::Ptr  mOutputGrid;
-        InterruptT*                mInterrupt;
-        const MaskGridType*        mMask;
-    }; // Private Functor
-
-    const InGridT&       mInputGrid;
-    InterruptT*          mInterrupt;
-    const MaskGridType*  mMask;
-}; // end of Gradient class
-
 
 class FlipSolver {
 public:
@@ -147,11 +77,9 @@ private:
     void writeVDBsDebug(int const frame);
     struct BoundaryOp {
         BoundaryOp(float const voxelSize,
-                   FloatGrid::Ptr bBoxLS,
                    FloatGrid::Ptr collider,
                    Vec3SGrid::Ptr vCurr) :
             voxelSize(voxelSize),
-            bBoxLS(bBoxLS),
             collider(collider),
             vCurr(vCurr) {}
 
@@ -161,11 +89,11 @@ private:
                         double& diagonal) const
         {
             float const dirichletBC = 0.f;
-            bool isInsideBBox = bBoxLS->tree().isValueOn(neighbor);
+            bool isInsideCollider = collider->tree().isValueOn(neighbor);
             auto vNgbr = vCurr->tree().getValue(neighbor);
 
             // TODO: Fix this:
-            if (/* isInsideCollider ||*/  isInsideBBox) {
+            if (isInsideCollider) {
                 double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -186,7 +114,10 @@ private:
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     delta -= /* voxelSize *  */ vNgbr[2];
                 }
-                source += delta /** 0.5 */ / voxelSize;
+                // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
+                // this by 0.5, because the gradient that's used is using
+                // central-differences in a collocated grid, instead of the staggered one.
+                source += delta / voxelSize;
             } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -217,7 +148,6 @@ private:
         }
 
         float voxelSize;
-        FloatGrid::Ptr bBoxLS;
         FloatGrid::Ptr collider;
         Vec3SGrid::Ptr vCurr;
     };
@@ -667,7 +597,7 @@ FlipSolver::pressureProjection() {
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mCollider, mVCurr);
+    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
 
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
@@ -758,7 +688,7 @@ FlipSolver::pressureProjection4() {
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mCollider, mVCurr);
+    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
 
     util::NullInterrupter interrupter;
     // FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditions(
@@ -865,7 +795,7 @@ FlipSolver::pressureProjection5(bool print) {
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mCollider, mVCurr);
+    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
 
     util::NullInterrupter interrupter;
 
@@ -1587,91 +1517,6 @@ SmokeSolver::writeVDBs(int const frame) {
     file.close();
 }
 
-void openvdb_points_for_houndstooth() {
-    std::vector<std::string> vdb_names = {"waterfall_100k.vdb",
-                                          "waterfall_1mil.vdb",
-                                          "waterfall_10mil.vdb"};
-
-    std::vector<std::string> output_names = {"waterfall_100k.txt",
-                                             "waterfall_1mil.txt",
-                                             "waterfall_10mil.txt"};
-
-    std::vector<int> point_numbers = {100000, 1000000, 10000000};
-
-    int const LENGTH = 3;
-
-    // WRITE TO FILES
-    for (int i = 0; i < LENGTH; ++i) {
-
-        auto const vdb_name = vdb_names[i];
-        auto const output_name = output_names[i];
-
-        std::cout << "Writing " << vdb_name << std::endl;
-
-        std::ofstream outputFile(output_name.c_str());
-
-        openvdb::io::File file(vdb_name.c_str());
-        // Open the file. This reads the file header, but not any grids.
-        file.open();
-        // Read the grid by name.
-        openvdb::GridBase::Ptr baseGrid = file.readGrid("points");
-        file.close();
-        // From the example above, "points" is known to be a PointDataGrid,
-        // so cast the generic grid pointer to a PointDataGrid pointer.
-        auto grid = openvdb::gridPtrCast<openvdb::points::PointDataGrid>(baseGrid);
-        openvdb::Index64 count = openvdb::points::pointCount(grid->tree());
-        std::cout << "PointCount=" << count << std::endl;
-        // Iterate over all the leaf nodes in the grid.
-        for (auto leafIter = grid->tree().cbeginLeaf(); leafIter; ++leafIter) {
-            // Verify the leaf origin.
-            // Extract the position attribute from the leaf by name (P is position).
-            const openvdb::points::AttributeArray& array =
-                leafIter->constAttributeArray("P");
-            // Create a read-only AttributeHandle. Position always uses Vec3f.
-            openvdb::points::AttributeHandle<openvdb::Vec3f> positionHandle(array);
-            // Iterate over the point indices in the leaf.
-            for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
-                // Extract the voxel-space position of the point.
-                openvdb::Vec3f voxelPosition = positionHandle.get(*indexIter);
-                // Extract the index-space position of the voxel.
-                const openvdb::Vec3d xyz = indexIter.getCoord().asVec3d();
-                // Compute the world-space position of the point.
-                openvdb::Vec3f worldPosition =
-                    grid->transform().indexToWorld(voxelPosition + xyz);
-                // Verify the index and world-space position of the point
-                outputFile << worldPosition[0] << "," << worldPosition[1] << "," << worldPosition[2] << "\n";
-            }
-        } // leafIter
-        outputFile.close();
-    } // LENGTH
-
-    for (int i = 0; i < LENGTH; ++i) {
-        std::string file_name = output_names[i];
-        std::ifstream inputFile(file_name.c_str());
-        std::string line;
-        std::vector<Vector3> vectorList;
-
-        if (inputFile.is_open()) {
-            while (std::getline(inputFile, line)) {
-                std::stringstream ss(line);
-                std::string value;
-                std::vector<float> values;
-
-                while (std::getline(ss, value, ',')) {
-                    values.push_back(std::stof(value));
-                }
-
-                if (values.size() == 3) {
-                    Vector3 vector(values[0], values[1], values[2]);
-                    vectorList.push_back(vector);
-                }
-            }
-
-            inputFile.close();
-        }
-        std::cout << "i = " << i << " vector length = " << vectorList.size() << std::endl;
-    }
-}
 
 // https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tools/FastSweeping.h
 struct SetTrueNearNarrowBandKernel {
