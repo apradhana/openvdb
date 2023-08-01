@@ -503,7 +503,7 @@ FlipSolver::addGravity(float const dt) {
 
 void
 FlipSolver::computeFlipVelocity(float const dt) {
-    Vec3SGrid::Ptr mVDiff = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
+    mVDiff = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
     (mVDiff->tree()).topologyUnion(mVCurr->tree());
     mVDiff->setGridClass(GRID_STAGGERED);
     mVDiff->setTransform(mXform);
@@ -934,7 +934,7 @@ void
 FlipSolver::substep(float const dt) {
     particlesToGrid();
     gridVelocityUpdate(dt);
-    // gridToParticles();
+    gridToParticles();
     advectParticles(dt);
 }
 
@@ -1025,8 +1025,11 @@ FlipSolver::particlesToGrid2(){
 
 void
 FlipSolver::gridToParticles() {
-    points::boxSample(*mPoints, *mVDiff, "v_flip");
+    // Interpolate PIC velocity
     points::boxSample(*mPoints, *mVNext, "v_pic");
+
+    // Interpolate FLIP velocity
+    points::boxSample(*mPoints, *mVDiff, "v_flip");
 }
 
 
