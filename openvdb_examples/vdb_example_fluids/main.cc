@@ -68,7 +68,8 @@ private:
     void pressureProjection5(bool print);
     void gridVelocityUpdate(float const dt);
 
-    void velocityBCCorrection(bool print);
+    void velocityBCCorrection(Vec3SGrid& vecGrid);
+    void velocityBCCorrectionOld(bool print);
 
     void addGravity(float const dt);
 
@@ -476,7 +477,40 @@ FlipSolver::addGravity(float const dt) {
 
 
 void
-FlipSolver::velocityBCCorrection(bool print) {
+FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
+    auto acc = vecGrid.getAccessor();
+    auto bboxAcc = mBBoxLS->getAccessor();
+
+    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
+        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
+        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
+
+        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            acc.setValue(ijk, newVal);
+        }
+    }
+}
+
+
+void
+FlipSolver::velocityBCCorrectionOld(bool print) {
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto bboxAcc = mBBoxLS->getAccessor();
@@ -845,9 +879,9 @@ FlipSolver::pressureProjection5(bool print) {
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    velocityBCCorrection(false /* print */);
+    velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
-    velocityBCCorrection(false /* print */);
+    velocityBCCorrection(*mVNext);
 }
 
 
