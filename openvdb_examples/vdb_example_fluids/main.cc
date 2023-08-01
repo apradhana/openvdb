@@ -18,6 +18,7 @@
 #include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tree/NodeManager.h> // for post processing bool grid
+#include <openvdb/tree/LeafManager.h> // for LeafManager
 #include <openvdb/tools/GridOperators.h> // for divergence and gradient
 
 #include <openvdb/points/PointConversion.h>
@@ -58,6 +59,7 @@ private:
     // back to the particle
     void gridToParticles();
     void updateParticles(float const dt);
+    void updateParticlesVelocity();
 
     // Update particle position based on velocity on the grid
     void advectParticles(float const dt);
@@ -154,6 +156,41 @@ private:
         Vec3SGrid::Ptr vCurr;
     };
 
+
+    struct FlipUpdateOp
+    {
+        explicit FlipUpdateOp(Index64 const velAtrIdx,
+                              Index64 const vPicAtrIdx,
+                              Index64 const vFlipAtrIdx,
+                              float const alpha)
+                              : velAtrIdx(velAtrIdx),
+                                vPicAtrIdx(vPicAtrIdx),
+                                vFlipAtrIdx(vFlipAtrIdx),
+                                alpha(alpha) { }
+
+        void operator()(const tree::LeafManager<points::PointDataTree>::LeafRange& range) const {
+            for (auto leafIter = range.begin(); leafIter; ++leafIter) {
+                points::AttributeArray& velArray = leafIter->attributeArray(velAtrIdx);
+                points::AttributeArray const& vPicArray = leafIter->constAttributeArray(vPicAtrIdx);
+                points::AttributeArray const& vFlipArray = leafIter->constAttributeArray(vFlipAtrIdx);
+                points::AttributeWriteHandle<Vec3s> velHandle(velArray);
+                points::AttributeHandle<Vec3s> vPicHandle(vPicArray);
+                points::AttributeHandle<Vec3s> vFlipHandle(vFlipArray);
+                // Iterate over active indices in the leaf.
+                for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
+                    auto vPic = vPicHandle.get(*indexIter);
+                    auto vFlip = vFlipHandle.get(*indexIter);
+                    auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
+                    velHandle.set(*indexIter, newVel);
+                }
+            }
+        }
+
+        Index64 velAtrIdx;
+        Index64 vPicAtrIdx;
+        Index64 vFlipAtrIdx;
+        float alpha;
+    };
 
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
@@ -933,25 +970,27 @@ FlipSolver::substep(float const dt) {
 
 
 void
-FlipSolver::updateParticles(float const dt) {
-    float const alpha = 0.05;
-    for (auto leafIter = (mPoints->tree()).beginLeaf(); leafIter; ++leafIter) {
-        points::AttributeArray& velArray = leafIter->attributeArray("velocity");
-        points::AttributeArray& vPicArray = leafIter->attributeArray("v_pic");
-        points::AttributeArray& vFlipArray = leafIter->attributeArray("v_flip");
-        points::AttributeWriteHandle<Vec3s> velHandle(velArray);
-        points::AttributeWriteHandle<Vec3s> vPicHandle(vPicArray);
-        points::AttributeWriteHandle<Vec3s> vFlipHandle(vFlipArray);
-        // Iterate over active indices in the leaf.
-        for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
-            auto vPic = vPicHandle.get(*indexIter);
-            auto vFlip = vFlipHandle.get(*indexIter);
-            auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
-            // Set value
-            velHandle.set(*indexIter, newVel);
-        }
-    }
+FlipSolver::updateParticlesVelocity() {
+    // Create a leaf iterator for the PointDataTree.
+    auto leafIter = (mPoints->tree()).beginLeaf();
 
+    // Retrieve the index from the descriptor.
+    // Used to get the array attribute in the functor.
+    auto descriptor = leafIter->attributeSet().descriptor();
+    Index64 velIdx = descriptor.find("velocity");
+    Index64 vPicIdx = descriptor.find("v_pic");
+    Index64 vFlipIdx = descriptor.find("v_flip");
+
+    // PIC/FLIP update
+    tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
+    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.05 /* alpha in PIC/FlIP update */);
+    tbb::parallel_for(leafManager.leafRange(), op);
+}
+
+
+void
+FlipSolver::updateParticles(float const dt) {
+    updateParticlesVelocity();
     advectParticles(dt);
 }
 
