@@ -92,22 +92,22 @@ private:
                 double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    delta += /* voxelSize * */ vNgbr[0];
+                    delta += vNgbr[0];
                 }
                 if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    delta -= /* voxelSize * */ vNgbr[0];
+                    delta -= vNgbr[0];
                 }
                 if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    delta += /* voxelSize * */ vNgbr[1];
+                    delta += vNgbr[1];
                 }
                 if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    delta -= /* voxelSize * */ vNgbr[1];
+                    delta -= vNgbr[1];
                 }
                 if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    delta += /* voxelSize *  */ vNgbr[2];
+                    delta += vNgbr[2];
                 }
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    delta -= /* voxelSize *  */ vNgbr[2];
+                    delta -= vNgbr[2];
                 }
                 // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
                 // this by 0.5, because the gradient that's used is using
@@ -242,7 +242,6 @@ private:
     math::Transform::Ptr mXform;
 
     points::PointDataGrid::Ptr mPoints;
-    FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
@@ -269,9 +268,9 @@ FlipSolver::initializeFreeFall() {
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
     auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 0.5f, 14.f) /* max */); // world space domain
-    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
-    mBBoxLS->setGridClass(GRID_LEVEL_SET);
-    mBBoxLS->setName("collider");
+    mCollider = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
+    mCollider->setGridClass(GRID_LEVEL_SET);
+    mCollider->setName("collider");
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -329,12 +328,12 @@ FlipSolver::initializePool() {
     fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
     fluidLSInit2->setTransform(mXform);
 
-    mBBoxLS = FloatGrid::create(/*bg = */0.f);
-    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mBBoxLS->setTransform(mXform);
-    mBBoxLS->topologyDifference(*fluidLSInit2);
-    mBBoxLS->setName("collider");
-    openvdb::tools::pruneInactive(mBBoxLS->tree());
+    mCollider = FloatGrid::create(/*bg = */0.f);
+    mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mCollider->setTransform(mXform);
+    mCollider->topologyDifference(*fluidLSInit2);
+    mCollider->setName("collider");
+    openvdb::tools::pruneInactive(mCollider->tree());
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -377,13 +376,13 @@ FlipSolver::initializeDamBreak() {
     Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
     Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
     Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    mBBoxLS = FloatGrid::create(/*bg = */0.f);
-    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mBBoxLS->setTransform(mXform);
-    mBBoxLS->topologyDifference(*negativeSpace);
-    mBBoxLS->topologyDifference(*fluidLSInit);
-    mBBoxLS->setName("collider");
-    openvdb::tools::pruneInactive(mBBoxLS->tree());
+    mCollider = FloatGrid::create(/*bg = */0.f);
+    mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mCollider->setTransform(mXform);
+    mCollider->topologyDifference(*negativeSpace);
+    mCollider->topologyDifference(*fluidLSInit);
+    mCollider->setName("collider");
+    openvdb::tools::pruneInactive(mCollider->tree());
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -459,7 +458,7 @@ FlipSolver::computeFlipVelocity(float const dt) {
 void
 FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     auto acc = vecGrid.getAccessor();
-    auto bboxAcc = mBBoxLS->getAccessor();
+    auto cldrAcc = mCollider->getAccessor();
 
     for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -470,17 +469,17 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
         math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
+        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ip1jk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
+        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijp1k)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
+        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijkp1)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             acc.setValue(ijk, newVal);
@@ -512,12 +511,12 @@ FlipSolver::pressureProjection(bool print) {
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
     tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    domainMaskGrid->topologyDifference(*mBBoxLS);
+    domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mBBoxLS, mVCurr);
+    FlipSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
@@ -647,7 +646,6 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     openvdb::io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
-    grids.push_back(mBBoxLS);
     grids.push_back(mCollider);
     grids.push_back(mVCurr);
     grids.push_back(mVNext);
