@@ -186,6 +186,25 @@ private:
         float alpha;
     };
 
+    // Apply Gravity Functor. Meant to be used with
+    // foreach in LeafManager
+    struct ApplyGravityOp
+    {
+        ApplyGravityOp(float const dt, Vec3s const gravity) : dt(dt), gravity(gravity) {}
+
+        template <typename T>
+        void operator()(T &leaf, size_t) const
+        {
+            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto newVal = *iter  + dt * gravity;
+                iter.setValue(newVal);
+            }
+        }
+        Vec3s const gravity;
+        float const dt;
+    };// ApplyGravityOp
+
+
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
     int mPointsPerVoxel = 8;
@@ -397,14 +416,9 @@ FlipSolver::particlesToGrid(){
 
 void
 FlipSolver::addGravity(float const dt) {
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto bboxAcc = mBBoxLS->getAccessor();
-
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        Vec3s newVel = /*bboxAcc.isValueOn(ijk) ? Vec3s(0, 0, 0) : */ vCurrAcc.getValue(ijk) + dt * mGravity;
-        vCurrAcc.setValue(ijk, newVel);
-    }
+    tree::LeafManager<Vec3STree> r(mVCurr->tree());
+    FlipSolver::ApplyGravityOp op(dt, mGravity);
+    r.foreach(op);
 }
 
 
