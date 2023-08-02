@@ -266,7 +266,7 @@ FlipSolver::initializeFreeFall() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-    
+
     auto wsFluidInit = BBox(Vec3s(3.f, 3.f, 3.f) /* min */, Vec3s(4.f, 4.f, 4.f) /* max */);
     FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
 
@@ -313,14 +313,6 @@ FlipSolver::initializePool() {
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
 
-    auto cldrBox = BBox(Vec3s(105.f, 100.f, 10.5f) /* min */, Vec3s(107.f, 105.f, 103.5f) /* max */);
-    mCollider = tools::createLevelSetBox<FloatGrid>(cldrBox, *mXform);
-    mCollider->setGridClass(GRID_LEVEL_SET);
-    mCollider->setName("collider");
-    
-    // auto wsFluidInit = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(3.f * 0.5f, 4.f * 0.5f, 5.f * 0.5f) /* max */);
-    // auto wsFluidInit = BBox(Vec3s(2.f, 2.f, 2.f) /* min */, Vec3s(2.1f, 2.1f, 2.1f) /* max */);
-
     Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
     Vec3s maxFI = Vec3s(3.f, 2.5f, 3.f);
     Vec3s maxFI2 = Vec3s(3.f, 5.1f, 3.f);
@@ -343,7 +335,7 @@ FlipSolver::initializePool() {
     mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
     mBBoxLS->setTransform(mXform);
     mBBoxLS->topologyDifference(*fluidLSInit2);
-    mBBoxLS->setName("bbox_ls");
+    mBBoxLS->setName("collider");
     openvdb::tools::pruneInactive(mBBoxLS->tree());
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
