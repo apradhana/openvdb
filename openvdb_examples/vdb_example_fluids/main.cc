@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include "FlipExample.h"
+#include "SmokeExample.h"
 
 // TO BUILD:
 // mkdir build
@@ -13,6 +14,9 @@ main(int argc, char *argv[])
 {
     openvdb::initialize();
 
-    example::FlipSolver flipSim(0.1f /* voxel size */);
-    flipSim.render();
+    // example::FlipSolver flipSim(0.1f /* voxel size */);
+    // flipSim.render();
+
+    example::SmokeSolver smokeSim(0.1f /* voxel size */);
+    smokeSim.render();
 }
