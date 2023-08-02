@@ -43,18 +43,6 @@ private:
 
     void substep(float const dt);
 
-    // Rasterize particle velocity to the grid
-    void particlesToGrid();
-
-    // FLIP update: Interpolate the delta of velocity update (v_np1 - v_n)
-    // back to the particle
-    void gridToParticles();
-    void updateParticles(float const dt);
-    void updateParticlesVelocity();
-
-    // Update particle position based on velocity on the grid
-    void advectParticles(float const dt);
-
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
 
@@ -63,11 +51,8 @@ private:
     void velocityBCCorrection(Vec3SGrid& vecGrid);
 
     void addGravity(float const dt);
-    void computeFlipVelocity(float const dt);
 
     void writeVDBs(int const frame);
-    void writeVDBsVerbose(int const frame);
-
     struct BoundaryOp {
         BoundaryOp(float const voxelSize,
                    FloatGrid::Ptr collider,
@@ -236,10 +221,8 @@ private:
 
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
-    int mPointsPerVoxel = 8;
     math::Transform::Ptr mXform;
 
-    points::PointDataGrid::Ptr mPoints;
     FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
 
@@ -247,11 +230,11 @@ private:
     FloatGrid::Ptr mDivAfter;
 
     FloatGrid::Ptr mDensity;
+    FloatGrid::Ptr mEmitter;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
     Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
     FloatGrid::Ptr mPressure;
-    Int32Grid::Ptr mFlags;
 };
 
 
@@ -266,20 +249,23 @@ SmokeSolver::initialize() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 2 * mVoxelSize;
+    float const padding = 2.f * mVoxelSize;
+    float const centerY = 3.f;
 
-    Vec3s minFI = Vec3s(0.f, 0.f, 0.f);
-    Vec3s maxFI = Vec3s(2.f + mVoxelSize, 4.f + mVoxelSize, 5.f + mVoxelSize);
-    Coord minFICoord = mXform->worldToIndexNodeCentered(minFI);
-    Coord maxFICoord = mXform->worldToIndexNodeCentered(maxFI);
-    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit->denseFill(CoordBBox(minFICoord, maxFICoord), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit->setTransform(mXform);
+    // Create an emitter
+    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
+    auto maxEmtW = Vec3s(3.f, 4.5f, 4.5f);
+    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
+    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
+    mEmitter = FloatGrid::create(/*bg = */0.f);
+    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /*value = */ 2.0, /*active = */ true);
+    mEmitter->setTransform(mXform);
+    mEmitter->setName("emitter");
 
     Vec3s maxIntr = Vec3s(14.f + mVoxelSize, 5.f + mVoxelSize, 5.f + mVoxelSize);
     Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
     FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
-    negativeSpace->denseFill(CoordBBox(minFICoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
+    negativeSpace->denseFill(CoordBBox(minEmtCoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
     negativeSpace->setTransform(mXform);
 
     Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
@@ -290,57 +276,8 @@ SmokeSolver::initialize() {
     mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
     mBBoxLS->setTransform(mXform);
     mBBoxLS->topologyDifference(*negativeSpace);
-    mBBoxLS->topologyDifference(*fluidLSInit);
     mBBoxLS->setName("collider");
     openvdb::tools::pruneInactive(mBBoxLS->tree());
-
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
-    mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_pic" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_flip" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-
-    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
-    std::cout << "PointCount=" << count << std::endl;
-}
-
-
-void
-SmokeSolver::particlesToGrid(){
-    TreeBase::Ptr baseVTree = points::rasterizeTrilinear<true /* staggered */, Vec3s>(mPoints->tree(), "velocity");
-
-    Vec3STree::Ptr velTree = DynamicPtrCast<Vec3STree>(baseVTree);
-    mVCurr = Vec3SGrid::create(velTree);
-    mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->setTransform(mXform);
-    mVCurr->setName("v_curr");
-
-    mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
-    (mVNext->tree()).topologyUnion(mVCurr->tree());
-    mVNext->setGridClass(GRID_STAGGERED);
-    mVNext->setTransform(mXform);
-    mVNext->setName("v_next");
 }
 
 
@@ -348,19 +285,6 @@ void
 SmokeSolver::addGravity(float const dt) {
     tree::LeafManager<Vec3STree> r(mVCurr->tree());
     SmokeSolver::ApplyGravityOp op(dt, mGravity);
-    r.foreach(op);
-}
-
-
-void
-SmokeSolver::computeFlipVelocity(float const dt) {
-    mVDiff = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
-    (mVDiff->tree()).topologyUnion(mVCurr->tree());
-    mVDiff->setGridClass(GRID_STAGGERED);
-    mVDiff->setTransform(mXform);
-
-    tree::LeafManager<Vec3STree> r(mVDiff->tree());
-    SmokeSolver::ComputeFlipVelocityOp op(mVCurr, mVNext, dt, mGravity);
     r.foreach(op);
 }
 
@@ -467,73 +391,23 @@ SmokeSolver::gridVelocityUpdate(float const dt) {
     velocityBCCorrection(*mVCurr);
     pressureProjection(false /* print */);
     velocityBCCorrection(*mVNext);
-    computeFlipVelocity(dt);
 }
 
 
 void
 SmokeSolver::substep(float const dt) {
-    particlesToGrid();
-    gridVelocityUpdate(dt);
-    gridToParticles();
-    updateParticles(dt);
-}
-
-
-void
-SmokeSolver::updateParticlesVelocity() {
-    // Create a leaf iterator for the PointDataTree.
-    auto leafIter = (mPoints->tree()).beginLeaf();
-
-    // Retrieve the index from the descriptor.
-    // Used to get the array attribute in the functor.
-    auto descriptor = leafIter->attributeSet().descriptor();
-    Index64 velIdx = descriptor.find("velocity");
-    Index64 vPicIdx = descriptor.find("v_pic");
-    Index64 vFlipIdx = descriptor.find("v_flip");
-
-    // PIC/FLIP update
-    tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
-    SmokeSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.05 /* alpha in PIC/FlIP update */);
-    tbb::parallel_for(leafManager.leafRange(), op);
-}
-
-
-void
-SmokeSolver::updateParticles(float const dt) {
-    updateParticlesVelocity();
-    advectParticles(dt);
+    // gridVelocityUpdate(dt);
 }
 
 
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 200; ++frame) {
+    for (int frame = 0; frame < 100; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
-        writeVDBsVerbose(frame);
     }
-}
-
-
-void
-SmokeSolver::gridToParticles() {
-    // Interpolate PIC velocity
-    points::boxSample(*mPoints, *mVNext, "v_pic");
-
-    // Interpolate FLIP velocity
-    points::boxSample(*mPoints, *mVDiff, "v_flip");
-}
-
-
-void
-SmokeSolver::advectParticles(float const dt) {
-    Index const integrationOrder = 1;
-    int const steps = 1;
-
-    points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
 }
 
 
@@ -543,19 +417,10 @@ SmokeSolver::writeVDBs(int const frame) {
     ss << "smoke_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
     std::string fileName(ss.str());
     io::File file(fileName.c_str());
-    file.write({mPoints});
-    file.close();
-}
-
-
-void
-SmokeSolver::writeVDBsVerbose(int const frame) {
-    std::ostringstream ss;
-    ss << "smoke_volume_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
-    std::string fileName(ss.str());
-    openvdb::io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
+    grids.push_back(mDensity);
+    grids.push_back(mEmitter);
     grids.push_back(mBBoxLS);
     grids.push_back(mCollider);
     grids.push_back(mVCurr);
@@ -563,7 +428,7 @@ SmokeSolver::writeVDBsVerbose(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    // grids.push_back(mInterior);
+
     file.write(grids);
     file.close();
 }

@@ -250,8 +250,6 @@ private:
     Vec3SGrid::Ptr mVNext;
     Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
     FloatGrid::Ptr mPressure;
-    Int32Grid::Ptr mFlags;
-    // BoolGrid::Ptr mInterior;
 };
 
 
@@ -602,7 +600,7 @@ FlipSolver::updateParticles(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 200; ++frame) {
+    for (int frame = 0; frame < 100; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
