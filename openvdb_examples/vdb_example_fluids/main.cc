@@ -2,35 +2,31 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <math.h>
-#include <cmath>
 #include <string>
 #include <vector>
 
 #include <openvdb/openvdb.h>
-#include <openvdb/points/PointConversion.h>
-#include <openvdb/points/PointCount.h>
-#include <openvdb/util/logging.h>
-#include <openvdb/tools/FastSweeping.h>
-#include <openvdb/tools/Composite.h> // for tools::compMax
-#include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
-#include <openvdb/tools/PoissonSolver.h> // for poisson solve
-#include <openvdb/tree/NodeManager.h> // for post processing bool grid
-#include <openvdb/tree/LeafManager.h> // for LeafManager
-#include <openvdb/tools/GridOperators.h> // for divergence and gradient
-
-#include <openvdb/points/PointConversion.h>
-#include <openvdb/points/PointAttribute.h> // for appendAttribute
-#include <openvdb/points/PointCount.h>
-#include <openvdb/points/PointScatter.h>
-#include <openvdb/points/PointDataGrid.h>
-#include <openvdb/points/PointRasterizeTrilinear.h>
-#include <openvdb/tools/Morphology.h> // for erodeActiveValues
-#include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
-#include <openvdb/points/PointSample.h> // for PointSample
 #include <openvdb/points/PointAdvect.h> // for advectPoints
+#include <openvdb/points/PointAttribute.h> // for appendAttribute
+#include <openvdb/points/PointConversion.h>
+#include <openvdb/points/PointDataGrid.h> // for PointDataGrid
+#include <openvdb/points/PointRasterizeTrilinear.h> // for rasterizing to the grid
+#include <openvdb/points/PointSample.h> // for PointSample
+#include <openvdb/points/PointScatter.h> // for point sampling
+#include <openvdb/tools/Composite.h> // for tools::compMax
+#include <openvdb/tools/GridOperators.h> // for divergence and gradient
+#include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
+#include <openvdb/tools/Morphology.h> // for erodeActiveValues
+#include <openvdb/tools/PoissonSolver.h> // for poisson solve
+#include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
+#include <openvdb/tree/LeafManager.h> // for LeafManager
+#include <openvdb/tree/NodeManager.h> // for post processing bool grid
+#include <openvdb/util/logging.h>
+
 using namespace openvdb;
 
 
@@ -72,7 +68,8 @@ private:
     void computeFlipVelocity(float const dt);
 
     void writeVDBs(int const frame);
-    void writeVDBsDebug(int const frame);
+    void writeVDBsVerbose(int const frame);
+
     struct BoundaryOp {
         BoundaryOp(float const voxelSize,
                    FloatGrid::Ptr collider,
@@ -618,7 +615,7 @@ FlipSolver::render() {
         std::cout << "\nframe = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
-        writeVDBsDebug(frame);
+        writeVDBsVerbose(frame);
     }
 }
 
@@ -654,7 +651,7 @@ FlipSolver::writeVDBs(int const frame) {
 
 
 void
-FlipSolver::writeVDBsDebug(int const frame) {
+FlipSolver::writeVDBsVerbose(int const frame) {
     std::ostringstream ss;
     ss << "water_volume_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
     std::string fileName(ss.str());
