@@ -251,7 +251,7 @@ private:
     Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
     FloatGrid::Ptr mPressure;
     Int32Grid::Ptr mFlags;
-    BoolGrid::Ptr mInterior;
+    // BoolGrid::Ptr mInterior;
 };
 
 
@@ -506,15 +506,15 @@ FlipSolver::pressureProjection(bool print) {
     tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
     interiorGrid->setTransform(mXform);
-    mInterior = interiorGrid->copy();
-    mInterior->setName("interior");
+    // mInterior = interiorGrid->copy();
+    // mInterior->setName("interior");
 
     mDivBefore = tools::divergence(*mVCurr);
     mDivBefore->setName("div_before");
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
+    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     domainMaskGrid->topologyDifference(*mBBoxLS);
-    (domainMaskGrid->tree()).topologyIntersection(interiorGrid->tree());
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
@@ -534,7 +534,6 @@ FlipSolver::pressureProjection(bool print) {
 
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
-    auto boolAcc = interiorGrid->getAccessor();
     auto pressureAcc = fluidPressureGrid->getAccessor();
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -657,7 +656,7 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    grids.push_back(mInterior);
+    // grids.push_back(mInterior);
     file.write(grids);
     file.close();
 }
