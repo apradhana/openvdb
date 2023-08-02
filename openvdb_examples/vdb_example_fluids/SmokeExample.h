@@ -39,9 +39,7 @@ public:
 
 private:
 
-    void initializeFreeFall();
-    void initializePool();
-    void initializeDamBreak();
+    void initialize();
 
     void substep(float const dt);
 
@@ -244,118 +242,27 @@ private:
     points::PointDataGrid::Ptr mPoints;
     FloatGrid::Ptr mBBoxLS;
     FloatGrid::Ptr mCollider;
+
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
+
+    FloatGrid::Ptr mDensity;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
     Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
     FloatGrid::Ptr mPressure;
     Int32Grid::Ptr mFlags;
-    // BoolGrid::Ptr mInterior;
 };
 
 
 SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializeDamBreak();
+    initialize();
 }
 
 
 void
-SmokeSolver::initializeFreeFall() {
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-
-    auto wsFluidInit = BBox(Vec3s(3.f, 3.f, 3.f) /* min */, Vec3s(4.f, 4.f, 4.f) /* max */);
-    FloatGrid::Ptr fluidLSInit = tools::createLevelSetBox<FloatGrid>(wsFluidInit, *mXform);
-
-    auto wsDomain = BBox(Vec3s(0.f, 0.f, 0.f) /* min */, Vec3s(14.f, 0.5f, 14.f) /* max */); // world space domain
-    mBBoxLS = tools::createLevelSetBox<FloatGrid>(wsDomain, *mXform);
-    mBBoxLS->setGridClass(GRID_LEVEL_SET);
-    mBBoxLS->setName("collider");
-
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
-    mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_pic" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "v_flip" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-
-    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
-    std::cout << "PointCount=" << count << std::endl;
-}
-
-
-void
-SmokeSolver::initializePool() {
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-
-    Vec3s minFI = Vec3s(2.f, 2.f, 2.f);
-    Vec3s maxFI = Vec3s(3.f, 2.5f, 3.f);
-    Vec3s maxFI2 = Vec3s(3.f, 5.1f, 3.f);
-    Coord minFIcoord = mXform->worldToIndexNodeCentered(minFI);
-    Coord maxFIcoord = mXform->worldToIndexNodeCentered(maxFI);
-    Coord maxFIcoord2 = mXform->worldToIndexNodeCentered(maxFI2);
-    Vec3s minBBoxvec = Vec3s(1.8f, 1.8f, 1.8f);
-    Vec3s maxBBoxvec = Vec3s(3.2f, 3.2f, 3.2f);
-    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    auto wsFluidInit = BBox( minFI/* min */,  maxFI/* max */);
-    FloatGrid::Ptr fluidLSInit = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit->denseFill(CoordBBox(minFIcoord, maxFIcoord), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit->setTransform(mXform);
-    FloatGrid::Ptr fluidLSInit2 = FloatGrid::create(/*bg = */0.f);
-    fluidLSInit2->denseFill(CoordBBox(minFIcoord, maxFIcoord2), /*value = */ 1.0, /*active = */ true);
-    fluidLSInit2->setTransform(mXform);
-
-    mBBoxLS = FloatGrid::create(/*bg = */0.f);
-    mBBoxLS->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mBBoxLS->setTransform(mXform);
-    mBBoxLS->topologyDifference(*fluidLSInit2);
-    mBBoxLS->setName("collider");
-    openvdb::tools::pruneInactive(mBBoxLS->tree());
-
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
-    mPoints->setName("Points");
-    points::appendAttribute<Vec3s>(mPoints->tree(),
-                                   "velocity" /* attribute name */,
-                                   Vec3s(0.f, 0.f, 0.f) /* uniform value */,
-                                   1 /* stride or total count */,
-                                   true /* constant stride */,
-                                   nullptr /* default value */,
-                                   false /* hidden */,
-                                   false /* transient */);
-
-    openvdb::Index64 count = openvdb::points::pointCount(mPoints->tree());
-    std::cout << "PointCount=" << count << std::endl;
-}
-
-
-void
-SmokeSolver::initializeDamBreak() {
+SmokeSolver::initialize() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
