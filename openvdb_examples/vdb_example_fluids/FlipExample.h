@@ -9,12 +9,10 @@
 #include <iostream>
 #include <math.h>
 #include <string>
-#include <vector>
 
 #include <openvdb/openvdb.h>
 #include <openvdb/points/PointAdvect.h> // for advectPoints
 #include <openvdb/points/PointAttribute.h> // for appendAttribute
-#include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointDataGrid.h> // for PointDataGrid
 #include <openvdb/points/PointRasterizeTrilinear.h> // for rasterizing to the grid
 #include <openvdb/points/PointSample.h> // for PointSample
@@ -26,8 +24,6 @@
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
 #include <openvdb/tree/LeafManager.h> // for LeafManager
-#include <openvdb/tree/NodeManager.h> // for post processing bool grid
-#include <openvdb/util/logging.h>
 
 using namespace openvdb;
 
