@@ -228,11 +228,11 @@ private:
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
 
-    FloatGrid::Ptr mDensity;
     FloatGrid::Ptr mEmitter;
+    FloatGrid::Ptr mDensityCurr;
+    FloatGrid::Ptr mDensityNext;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
-    Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
     FloatGrid::Ptr mPressure;
 };
 
@@ -257,26 +257,56 @@ SmokeSolver::initialize() {
     Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
     Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
     mEmitter = FloatGrid::create(/*bg = */0.f);
-    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /*value = */ 2.0, /*active = */ true);
+    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
-    Vec3s maxIntr = Vec3s(14.f + mVoxelSize, 5.f + mVoxelSize, 5.f + mVoxelSize);
-    Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
-    FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
-    negativeSpace->denseFill(CoordBBox(minEmtCoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
-    negativeSpace->setTransform(mXform);
+    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    auto maxBBox = Vec3s(14.f + mVoxelSize, 6.f + mVoxelSize, 6.f + mVoxelSize);
+    Coord minBBoxCoord = mXform->worldToIndexNodeCentered(minBBox);
+    Coord maxBBoxCoord = mXform->worldToIndexNodeCentered(maxBBox);
 
-    Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
-    Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
-    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    mCollider = FloatGrid::create(/*bg = */0.f);
-    mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mCollider->setTransform(mXform);
-    mCollider->topologyDifference(*negativeSpace);
-    mCollider->setName("collider");
-    openvdb::tools::pruneInactive(mCollider->tree());
+    // Create collider
+
+
+    // Set up density and velocity grid. Need to take the collider out.
+    mDensityCurr = FloatGrid::create(/*bg = */0.f);
+    mDensityCurr->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ 0.f, /* active = */ true);
+    mDensityCurr->setTransform(mXform);
+    mDensityCurr->setName("density_curr");
+
+    mDensityNext = FloatGrid::create(/*bg = */0.f);
+    mDensityNext->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ 0.f, /* active = */ true);
+    mDensityNext->setTransform(mXform);
+    mDensityNext->setName("density_next");
+
+    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
+    mVCurr->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
+    mVCurr->setTransform(mXform);
+    mVCurr->setName("vel_curr");
+
+    mVNext = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
+    mVNext->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
+    mVNext->setTransform(mXform);
+    mVNext->setName("vel_next");
+
+
+    // Vec3s maxIntr = Vec3s(14.f + mVoxelSize, 5.f + mVoxelSize, 5.f + mVoxelSize);
+    // Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
+    // FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
+    // negativeSpace->denseFill(CoordBBox(minEmtCoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
+    // negativeSpace->setTransform(mXform);
+
+    // Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
+    // Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
+    // Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    // Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    // mCollider = FloatGrid::create(/*bg = */0.f);
+    // mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    // mCollider->setTransform(mXform);
+    // mCollider->topologyDifference(*negativeSpace);
+    // mCollider->setName("collider");
+    // openvdb::tools::pruneInactive(mCollider->tree());
 }
 
 
@@ -418,11 +448,12 @@ SmokeSolver::writeVDBs(int const frame) {
     io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
-    grids.push_back(mDensity);
     grids.push_back(mEmitter);
-    grids.push_back(mCollider);
+    grids.push_back(mDensityCurr);
+    grids.push_back(mDensityNext);
     grids.push_back(mVCurr);
     grids.push_back(mVNext);
+    grids.push_back(mCollider);
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
