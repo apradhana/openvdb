@@ -186,6 +186,7 @@ private:
         float alpha;
     };
 
+
     // Apply Gravity Functor. Meant to be used with
     // foreach in LeafManager
     struct ApplyGravityOp
@@ -196,13 +197,46 @@ private:
         void operator()(T &leaf, size_t) const
         {
             for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
-                auto newVal = *iter  + dt * gravity;
+                Vec3s newVal = *iter  + dt * gravity;
                 iter.setValue(newVal);
             }
         }
+
         Vec3s const gravity;
         float const dt;
     };// ApplyGravityOp
+
+
+    // Compute the difference between vNext and the original rasterized
+    // vCurr (before the addition of gravity). To be used with foreach in LeafManager.
+    struct ComputeFlipVelocityOp
+    {
+        ComputeFlipVelocityOp(Vec3SGrid::Ptr vCurr,
+                              Vec3SGrid::Ptr vNext,
+                              float const dt,
+                              Vec3s const gravity) :
+                              vCurr(vCurr),
+                              vNext(vNext),
+                              dt(dt),
+                              gravity(gravity) {}
+
+        template <typename T>
+        void operator()(T &leaf, size_t) const
+        {
+            auto vCurrAcc = vCurr->getAccessor();
+            auto vNextAcc = vNext->getAccessor();
+            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto ijk = iter.getCoord();
+                Vec3s val = vNextAcc.getValue(ijk) - vCurrAcc.getValue(ijk) - dt * gravity;
+                iter.setValue(val);
+            }
+        }
+
+        Vec3SGrid::Ptr vCurr;
+        Vec3SGrid::Ptr vNext;
+        Vec3s const gravity;
+        float const dt;
+    };// ComputeFlipVelocityOp
 
 
     float mVoxelSize = 0.1f;
@@ -429,15 +463,9 @@ FlipSolver::computeFlipVelocity(float const dt) {
     mVDiff->setGridClass(GRID_STAGGERED);
     mVDiff->setTransform(mXform);
 
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto vNextAcc = mVNext->getAccessor();
-    auto vDiffAcc = mVDiff->getAccessor();
-
-    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        Vec3s val = vNextAcc.getValue(ijk) - vCurrAcc.getValue(ijk) - dt * mGravity;
-        vDiffAcc.setValue(ijk, val);
-    }
+    tree::LeafManager<Vec3STree> r(mVDiff->tree());
+    FlipSolver::ComputeFlipVelocityOp op(mVCurr, mVNext, dt, mGravity);
+    r.foreach(op);
 }
 
 
