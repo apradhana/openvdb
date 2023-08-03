@@ -235,6 +235,42 @@ private:
         float const dt;
     };// ComputeFlipVelocityOp
 
+    // Pressure projection: mVNext = mVCurr - grad pressure.
+    // After calling this operator, the divergence of mVNext should be close to zero.
+    struct SubtractPressureGradientOp
+    {
+        SubtractPressureGradientOp(FloatGrid::Ptr pressure,
+                                   Vec3SGrid::Ptr vCurr,
+                                   float const voxelSize) :
+                                   pressure(pressure),
+                                   vCurr(vCurr),
+                                   voxelSize(voxelSize)
+                                   {}
+
+        template <typename T>
+        void operator()(T &leaf, size_t) const
+        {
+            auto pressureAcc = pressure->getAccessor();
+            auto vCurrAcc = vCurr->getAccessor();
+            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto ijk = iter.getCoord();
+                Vec3s gradijk;
+                gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+                gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+                gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+
+                // This is only multiplied by mVoxelSize because there is no division by voxel size
+                // in the computation of gradijk above.
+                auto val = vCurrAcc.getValue(ijk) - gradijk * voxelSize;
+                iter.setValue(val);
+            }
+        }
+
+        FloatGrid::Ptr pressure;
+        Vec3SGrid::Ptr vCurr;
+        float voxelSize;
+    };// SubtractPressureGradientOp
+
 
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
@@ -436,9 +472,9 @@ FlipSolver::particlesToGrid(){
 
 void
 FlipSolver::addGravity(float const dt) {
-    tree::LeafManager<Vec3STree> r(mVCurr->tree());
+    tree::LeafManager<Vec3STree> lm(mVCurr->tree());
     FlipSolver::ApplyGravityOp op(dt, mGravity);
-    r.foreach(op);
+    lm.foreach(op);
 }
 
 
@@ -449,9 +485,9 @@ FlipSolver::computeFlipVelocity(float const dt) {
     mVDiff->setGridClass(GRID_STAGGERED);
     mVDiff->setTransform(mXform);
 
-    tree::LeafManager<Vec3STree> r(mVDiff->tree());
+    tree::LeafManager<Vec3STree> lm(mVDiff->tree());
     FlipSolver::ComputeFlipVelocityOp op(mVCurr, mVNext, dt, mGravity);
-    r.foreach(op);
+    lm.foreach(op);
 }
 
 
@@ -524,25 +560,15 @@ FlipSolver::pressureProjection(bool print) {
     // Note: need to dilate in order to do one-sided difference
     // because we use a staggered grid velocity field.
     tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-
     fluidPressureGrid->setTransform(mXform);
+
+    // Pressure projection: subtract grad p from current velocity
+    tree::LeafManager<Vec3STree> lm(mVNext->tree());
+    FlipSolver::SubtractPressureGradientOp op(fluidPressureGrid, mVCurr, mVoxelSize);
+    lm.foreach(op);
+
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
-
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto vNextAcc = mVNext->getAccessor();
-    auto pressureAcc = fluidPressureGrid->getAccessor();
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        Vec3s gradijk;
-        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-
-        // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
-        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-        vNextAcc.setValue(ijk, val);
-    }
 
     std::cout << "Projection Success: " << state.success << "\n";
     std::cout << "Iterations: " << state.iterations << "\n";
