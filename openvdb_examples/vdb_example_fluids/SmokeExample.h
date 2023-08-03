@@ -19,6 +19,7 @@
 #include <openvdb/points/PointScatter.h> // for point sampling
 #include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tools/GridOperators.h> // for divergence and gradient
+#include <openvdb/tools/LevelSetSphere.h> // for createLevelSetSphere
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
@@ -231,6 +232,8 @@ private:
     FloatGrid::Ptr mDivAfter;
 
     FloatGrid::Ptr mEmitter;
+    Vec3SGrid::Ptr mEmitterVelocity;
+
     FloatGrid::Ptr mDensityCurr;
     FloatGrid::Ptr mDensityNext;
     Vec3SGrid::Ptr mVCurr;
@@ -257,12 +260,12 @@ SmokeSolver::initialize() {
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 2.f * mVoxelSize;
+    float const padding = 4.f * mVoxelSize;
     float const centerY = 3.f;
 
-    // Create an emitter
+    // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
-    auto maxEmtW = Vec3s(3.f, 4.5f, 4.5f);
+    auto maxEmtW = Vec3s(3.f, 3.5f, 3.5f);
     Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
     Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
     mEmitter = FloatGrid::create(/*bg = */0.f);
@@ -270,60 +273,68 @@ SmokeSolver::initialize() {
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
+    mEmitterVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    mEmitterVelocity->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mEmitterVelocity->setTransform(mXform);
+    mEmitterVelocity->setName("emitter_velocity");
+
+
+    // Create collider. Collider is bounding box minus interior plus sphere.
     auto minBBox = Vec3s(0.f, 0.f, 0.f);
     auto maxBBox = Vec3s(14.f + mVoxelSize, 6.f + mVoxelSize, 6.f + mVoxelSize);
-    Coord minBBoxCoord = mXform->worldToIndexNodeCentered(minBBox);
-    Coord maxBBoxCoord = mXform->worldToIndexNodeCentered(maxBBox);
+    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
+    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
 
-    // Create collider
+    FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
+    negativeSpace->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /*value = */ 1.0, /*active = */ true);
+    negativeSpace->setTransform(mXform);
+
+    Vec3s const center(5.f, 3.f, 3.f);
+    float const radius = 1.f;
+    FloatGrid::Ptr sphere = tools::createLevelSetSphere<FloatGrid>(radius, center, mVoxelSize);
+    sphere->setTransform(mXform);
+    sphere->setName("sphere");
+
+    Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
+    Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 6.f + padding + mVoxelSize, 6.f + padding + mVoxelSize);
+    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    mCollider = FloatGrid::create(/*bg = */0.f);
+    mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    mCollider->topologyDifference(*negativeSpace);
+    mCollider->topologyUnion(*sphere);
+    mCollider->setTransform(mXform);
+    mCollider->setName("collider");
 
 
     // Set up density and velocity grid. Need to take the collider out.
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
-    mDensityCurr->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ 0.f, /* active = */ true);
+    mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->setTransform(mXform);
     mDensityCurr->setName("density_curr");
 
     mDensityNext = FloatGrid::create(/*bg = */0.f);
-    mDensityNext->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ 0.f, /* active = */ true);
+    mDensityNext->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityNext->setTransform(mXform);
     mDensityNext->setName("density_next");
 
     mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVCurr->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
+    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
 
     mVNext = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVNext->denseFill(CoordBBox(minBBoxCoord, maxBBoxCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
+    mVNext->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
     mVNext->setTransform(mXform);
     mVNext->setName("vel_next");
-
-
-    // Vec3s maxIntr = Vec3s(14.f + mVoxelSize, 5.f + mVoxelSize, 5.f + mVoxelSize);
-    // Coord maxFIIntrCoord = mXform->worldToIndexNodeCentered(maxIntr);
-    // FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
-    // negativeSpace->denseFill(CoordBBox(minEmtCoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
-    // negativeSpace->setTransform(mXform);
-
-    // Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
-    // Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
-    // Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    // Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
-    // mCollider = FloatGrid::create(/*bg = */0.f);
-    // mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    // mCollider->setTransform(mXform);
-    // mCollider->topologyDifference(*negativeSpace);
-    // mCollider->setName("collider");
-    // openvdb::tools::pruneInactive(mCollider->tree());
 }
 
 
 void
 SmokeSolver::addGravity(float const dt) {
-    tree::LeafManager<Vec3STree> r(mVCurr->tree());
+    tree::LeafManager<Vec3STree> lm(mVCurr->tree());
     SmokeSolver::ApplyGravityOp op(dt, mGravity);
-    r.foreach(op);
+    lm.foreach(op);
 }
 
 
@@ -459,6 +470,7 @@ SmokeSolver::writeVDBs(int const frame) {
 
     openvdb::GridPtrVec grids;
     grids.push_back(mEmitter);
+    grids.push_back(mEmitterVelocity);
     grids.push_back(mDensityCurr);
     grids.push_back(mDensityNext);
     grids.push_back(mVCurr);
