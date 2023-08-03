@@ -59,12 +59,12 @@ private:
 
     void writeVDBs(int const frame);
     struct BoundaryOp {
-        BoundaryOp(float const voxelSize,
-                   FloatGrid::Ptr collider,
-                   Vec3SGrid::Ptr vCurr) :
-            voxelSize(voxelSize),
-            collider(collider),
-            vCurr(vCurr) {}
+        BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity;
+                   FloatGrid::ConstPtr collider,
+                   float const voxelSize) :
+                   dirichletVelocity(dirichletVelocity),
+                   collider(collider),
+                   voxelSize(voxelSize) {}
 
         void operator()(const openvdb::Coord& ijk,
                         const openvdb::Coord& neighbor,
@@ -72,11 +72,12 @@ private:
                         double& diagonal) const
         {
             float const dirichletBC = 0.f;
-            bool isInsideCollider = collider->tree().isValueOn(neighbor);
-            auto vNgbr = vCurr->tree().getValue(neighbor);
+            bool isInsideNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
+            auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
+            bool isInsideDirichletPressure = collider->tree().isValueOn(neighbor);
 
             // TODO: Double check this:
-            if (isInsideCollider) {
+            if (isInsideNeumannBC) {
                 double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -130,9 +131,9 @@ private:
             }
         }
 
-        float voxelSize;
+        Vec3SGrid::Ptr dirichletVelocity;
         FloatGrid::Ptr collider;
-        Vec3SGrid::Ptr vCurr;
+        float voxelSize;
     };
 
 
@@ -321,22 +322,28 @@ SmokeSolver::initialize() {
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
 
-    FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
-    negativeSpace->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /*value = */ 1.0, /*active = */ true);
-    negativeSpace->setTransform(mXform);
+    // FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
+    // negativeSpace->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /*value = */ 1.0, /*active = */ true);
+    // negativeSpace->setTransform(mXform);
+    // Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
+    // Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 6.f + padding + mVoxelSize, 6.f + padding + mVoxelSize);
+    // Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
+    // Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    // mCollider = FloatGrid::create(/*bg = */0.f);
+    // mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
+    // mCollider->topologyDifference(*negativeSpace);
+    // mCollider->topologyUnion(*sphere);
+    // mCollider->setTransform(mXform);
+    // mCollider->setName("collider");
 
-
-    Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
-    Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 6.f + padding + mVoxelSize, 6.f + padding + mVoxelSize);
-    Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
-    Coord maxBBoxcoord = mXform->worldToIndexNodeCentered(maxBBoxvec);
+    Vec3s minCldr = Vec3s(14.f, 0.f, 0.f);
+    Vec3s maxCldr = Vec3s(14.f + padding, 6.f + padding, 6.f + padding);
+    Coord minCldrCoord = mXform->worldToIndexNodeCentered(minCldr);
+    Coord maxCldrCoord = mXform->worldToIndexNodeCentered(maxCldr);
     mCollider = FloatGrid::create(/*bg = */0.f);
-    mCollider->denseFill(CoordBBox(minBBoxcoord, maxBBoxcoord), /*value = */ 1.0, /*active = */ true);
-    mCollider->topologyDifference(*negativeSpace);
-    mCollider->topologyUnion(*sphere);
+    mCollider->denseFill(CoordBBox(minCldrCoord, maxCldrCoord), /*value = */ 1.0, /*active = */ true);
     mCollider->setTransform(mXform);
     mCollider->setName("collider");
-
 
     // Set up density and velocity grid. Need to take the collider out.
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
@@ -422,11 +429,12 @@ SmokeSolver::pressureProjection(bool print) {
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
     tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     domainMaskGrid->topologyDifference(*mCollider);
+    domainMaskGrid->topologyDifference(*mDirichletVelocity);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    SmokeSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
+    SmokeSolver::BoundaryOp bop(mDirichletVelocity, mCollider, mVoxelSize);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
