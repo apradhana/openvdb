@@ -190,6 +190,27 @@ private:
     };// ApplyGravityOp
 
 
+    // Update the emitter by taking the maximum density with the current density.
+    struct UpdateEmitterOp
+    {
+        UpdateEmitterOp(FloatGrid::Ptr emitter, FloatGrid::Ptr density) : emitter(emitter), density(density) {}
+
+        template <typename T>
+        void operator()(T &leaf, size_t) const
+        {
+            auto densityAcc = density->getAccessor();
+            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto ijk = iter.getCoord();
+                float newVal = std::max(*iter, densityAcc.getValue(ijk));
+                densityAcc.setValue(ijk, newVal);
+            }
+        }
+
+        FloatGrid::Ptr emitter;
+        FloatGrid::Ptr density; // current density
+    };// UpdateEmitterOp
+
+
     // Compute the difference between vNext and the original rasterized
     // vCurr (before the addition of gravity). To be used with foreach in LeafManager.
     struct ComputeFlipVelocityOp
@@ -250,8 +271,10 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 void
 SmokeSolver::updateEmitter()
 {
-    std::cout << "update emitter begins" << std::endl;
-    std::cout << "update emitter ends" << std::endl;
+    tree::LeafManager<FloatTree> lm(mEmitter->tree());
+    UpdateEmitterOp op(mEmitter, mDensityCurr);
+    lm.foreach(op);
+    std::cout << "done with update emitter" << std::endl;
 }
 
 
