@@ -416,14 +416,6 @@ SmokeSolver::pressureProjection(bool print) {
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
 
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    interiorGrid->setTransform(mXform);
-    // mInterior = interiorGrid->copy();
-    // mInterior->setName("interior");
-
     mDivBefore = tools::divergence(*mVCurr);
     mDivBefore->setName("div_before");
 
@@ -481,7 +473,12 @@ SmokeSolver::gridVelocityUpdate(float const dt) {
 void
 SmokeSolver::substep(float const dt) {
     updateEmitter();
-    // gridVelocityUpdate(dt);
+    // add gravity on vCurr
+    // pressure projection on vCurr
+    // advect density
+    // advect velocity
+    // apply velocity boundary condition on vNext
+    // swap density current
 }
 
 
