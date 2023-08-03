@@ -49,6 +49,8 @@ private:
 
     void updateEmitter();
 
+    void applyDirichletVelocity(Vec3SGrid::Ptr velocity);
+
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
@@ -268,6 +270,14 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     initialize();
 }
 
+
+void
+SmokeSolver::applyDirichletVelocity(Vec3SGrid::Ptr velocity)
+{
+    std::cout << "apply dirichlet velocity begins" << std::endl;
+    std::cout << "apply dirichlet velocity ends" << std::endl;
+}
+
 void
 SmokeSolver::updateEmitter()
 {
@@ -297,12 +307,46 @@ SmokeSolver::initialize() {
     mEmitter->setName("emitter");
 
     // Create Dirichlet Velocity (Neumann-pressure)
-    auto minDirichletVelW = Vec3s(0.f, 0.f, 0.f);
-    auto maxDirichletVelW = Vec3s(2 * mVoxelSize, 6.f, 6.f);
-    Coord minDirichletVelCoord = mXform->worldToIndexNodeCentered(minDirichletVelW);
-    Coord maxDirichletVelCoord = mXform->worldToIndexNodeCentered(maxDirichletVelW);
+    // DirichletVel
+    auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -padding);
+    auto maxDVBck = Vec3s(14.f + padding, 6.f, 0.f);
+    Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
+    Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
+    Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
+    auto maxDVFrt = Vec3s(14.f + padding, 6.f, 6.f + padding);
+    Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
+    Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
+    Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
+    auto maxDVTop = Vec3s(14.f + padding, 6.f + padding, 6.f);
+    Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
+    Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
+    Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVBtm = Vec3s(2 * mVoxelSize, -padding, 0.f);
+    auto maxDVBtm = Vec3s(14.f + padding, 0.f, 6.f);
+    Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
+    Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
+    Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVLft = Vec3s(-padding, -padding, -padding);
+    auto maxDVLft = Vec3s(2 * mVoxelSize, 6.f, 6.f);
+    Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
+    Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mDirichletVelocity->denseFill(CoordBBox(minDirichletVelCoord, maxDirichletVelCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->topologyUnion(*bck);
+    mDirichletVelocity->topologyUnion(*frt);
+    mDirichletVelocity->topologyUnion(*top);
+    mDirichletVelocity->topologyUnion(*btm);
+    mDirichletVelocity->setGridClass(GRID_STAGGERED);
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setName("dirichlet_velocity");
 
@@ -350,11 +394,13 @@ SmokeSolver::initialize() {
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
+    mVCurr->setGridClass(GRID_STAGGERED);
 
     mVNext = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
     mVNext->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
     mVNext->setTransform(mXform);
     mVNext->setName("vel_next");
+    mVNext->setGridClass(GRID_STAGGERED);
 }
 
 
