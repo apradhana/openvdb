@@ -57,6 +57,10 @@ private:
 
     void addGravity(float const dt);
 
+    void advectDensity(float const dt);
+
+    void advectVelocity(float const dt);
+
     void writeVDBs(int const frame);
     struct BoundaryOp {
         BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity,
@@ -381,6 +385,35 @@ SmokeSolver::addGravity(float const dt) {
 
 
 void
+SmokeSolver::advectDensity(float const dt)
+{
+    using MaskGridType = BoolGrid;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid>;
+    using SamplerT = openvdb::tools::Sampler<1>;
+
+    AdvT advection(*mVCurr);
+    advection.setIntegrator(tools::Scheme::MAC);
+    MaskGridType* domainMaskGrid = new MaskGridType(*mDensityCurr); // match input grid's topology
+
+    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *domainMaskGrid, dt);
+}
+
+void
+SmokeSolver::advectVelocity(float const dt)
+{
+    using MaskGridType = BoolGrid;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid>;
+    using SamplerT = openvdb::tools::Sampler<1>;
+
+    AdvT advection(*mVCurr);
+    advection.setIntegrator(tools::Scheme::MAC);
+
+    MaskGridType* domainMaskGrid = new MaskGridType(*mDensityCurr); // match input grid's topology
+    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *domainMaskGrid, dt);
+}
+
+
+void
 SmokeSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     auto acc = vecGrid.getAccessor();
     auto cldrAcc = mCollider->getAccessor();
@@ -450,6 +483,7 @@ SmokeSolver::pressureProjection(bool print) {
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto pressureAcc = fluidPressureGrid->getAccessor();
+    // Note: I'm modifying vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         Vec3s gradijk;
@@ -459,7 +493,7 @@ SmokeSolver::pressureProjection(bool print) {
 
         // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
         auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-        vNextAcc.setValue(ijk, val);
+        vCurrAcc.setValue(ijk, val);
     }
 
     std::cout << "Projection Success: " << state.success << "\n";
@@ -481,11 +515,11 @@ SmokeSolver::gridVelocityUpdate(float const dt) {
 void
 SmokeSolver::substep(float const dt) {
     updateEmitter();
-    // add gravity on vCurr
-    // pressure projection on vCurr
-    // advect density
-    // advect velocity
-    // apply velocity boundary condition on vNext
+    addGravity(dt);
+    pressureProjection(true /* print */);
+    advectDensity(dt);
+    advectVelocity(dt);
+    applyDirichletVelocity(*mVNext);
     // swap density current
 }
 
@@ -493,7 +527,7 @@ SmokeSolver::substep(float const dt) {
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 100; ++frame) {
+    for (int frame = 0; frame < 1; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
         substep(dt);
         writeVDBs(frame);
