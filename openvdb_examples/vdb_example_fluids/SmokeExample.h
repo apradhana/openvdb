@@ -46,6 +46,8 @@ private:
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
 
+    void updateEmitter();
+
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
@@ -242,6 +244,13 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     initialize();
 }
 
+void
+SmokeSolver::updateEmitter()
+{
+    std::cout << "update emitter begins" << std::endl;
+    std::cout << "update emitter ends" << std::endl;
+}
+
 
 void
 SmokeSolver::initialize() {
@@ -425,6 +434,7 @@ SmokeSolver::gridVelocityUpdate(float const dt) {
 
 void
 SmokeSolver::substep(float const dt) {
+    updateEmitter();
     // gridVelocityUpdate(dt);
 }
 
