@@ -136,42 +136,6 @@ private:
     };
 
 
-    struct FlipUpdateOp
-    {
-        explicit FlipUpdateOp(Index64 const velAtrIdx,
-                              Index64 const vPicAtrIdx,
-                              Index64 const vFlipAtrIdx,
-                              float const alpha)
-                              : velAtrIdx(velAtrIdx),
-                                vPicAtrIdx(vPicAtrIdx),
-                                vFlipAtrIdx(vFlipAtrIdx),
-                                alpha(alpha) { }
-
-        void operator()(const tree::LeafManager<points::PointDataTree>::LeafRange& range) const {
-            for (auto leafIter = range.begin(); leafIter; ++leafIter) {
-                points::AttributeArray& velArray = leafIter->attributeArray(velAtrIdx);
-                points::AttributeArray const& vPicArray = leafIter->constAttributeArray(vPicAtrIdx);
-                points::AttributeArray const& vFlipArray = leafIter->constAttributeArray(vFlipAtrIdx);
-                points::AttributeWriteHandle<Vec3s> velHandle(velArray);
-                points::AttributeHandle<Vec3s> vPicHandle(vPicArray);
-                points::AttributeHandle<Vec3s> vFlipHandle(vFlipArray);
-                // Iterate over active indices in the leaf.
-                for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
-                    auto vPic = vPicHandle.get(*indexIter);
-                    auto vFlip = vFlipHandle.get(*indexIter);
-                    auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
-                    velHandle.set(*indexIter, newVel);
-                }
-            }
-        }
-
-        Index64 velAtrIdx;
-        Index64 vPicAtrIdx;
-        Index64 vFlipAtrIdx;
-        float alpha;
-    };
-
-
     // Apply Gravity Functor. Meant to be used with
     // foreach in LeafManager
     struct ApplyGravityOp
@@ -211,38 +175,6 @@ private:
         FloatGrid::Ptr emitter;
         FloatGrid::Ptr density; // current density
     };// UpdateEmitterOp
-
-
-    // Compute the difference between vNext and the original rasterized
-    // vCurr (before the addition of gravity). To be used with foreach in LeafManager.
-    struct ComputeFlipVelocityOp
-    {
-        ComputeFlipVelocityOp(Vec3SGrid::Ptr vCurr,
-                              Vec3SGrid::Ptr vNext,
-                              float const dt,
-                              Vec3s const gravity) :
-                              vCurr(vCurr),
-                              vNext(vNext),
-                              dt(dt),
-                              gravity(gravity) {}
-
-        template <typename T>
-        void operator()(T &leaf, size_t) const
-        {
-            auto vCurrAcc = vCurr->getAccessor();
-            auto vNextAcc = vNext->getAccessor();
-            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
-                auto ijk = iter.getCoord();
-                Vec3s val = vNextAcc.getValue(ijk) - vCurrAcc.getValue(ijk) - dt * gravity;
-                iter.setValue(val);
-            }
-        }
-
-        Vec3SGrid::Ptr vCurr;
-        Vec3SGrid::Ptr vNext;
-        Vec3s const gravity;
-        float const dt;
-    };// ComputeFlipVelocityOp
 
 
     float mVoxelSize = 0.1f;
@@ -308,6 +240,12 @@ SmokeSolver::initialize() {
 
     // Create Dirichlet Velocity (Neumann-pressure)
     // DirichletVel
+    Vec3s const center(5.f, 3.f, 3.f);
+    float const radius = 1.f;
+    FloatGrid::Ptr sphere = tools::createLevelSetSphere<FloatGrid>(radius, center, mVoxelSize);
+    sphere->setTransform(mXform);
+    sphere->setName("sphere");
+
     auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -padding);
     auto maxDVBck = Vec3s(14.f + padding, 6.f, 0.f);
     Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
@@ -346,6 +284,7 @@ SmokeSolver::initialize() {
     mDirichletVelocity->topologyUnion(*frt);
     mDirichletVelocity->topologyUnion(*top);
     mDirichletVelocity->topologyUnion(*btm);
+    mDirichletVelocity->topologyUnion(*sphere);
     mDirichletVelocity->setGridClass(GRID_STAGGERED);
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setName("dirichlet_velocity");
@@ -361,11 +300,6 @@ SmokeSolver::initialize() {
     negativeSpace->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /*value = */ 1.0, /*active = */ true);
     negativeSpace->setTransform(mXform);
 
-    Vec3s const center(5.f, 3.f, 3.f);
-    float const radius = 1.f;
-    FloatGrid::Ptr sphere = tools::createLevelSetSphere<FloatGrid>(radius, center, mVoxelSize);
-    sphere->setTransform(mXform);
-    sphere->setName("sphere");
 
     Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
     Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 6.f + padding + mVoxelSize, 6.f + padding + mVoxelSize);
