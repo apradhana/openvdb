@@ -59,7 +59,7 @@ private:
 
     void writeVDBs(int const frame);
     struct BoundaryOp {
-        BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity;
+        BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity,
                    FloatGrid::ConstPtr collider,
                    float const voxelSize) :
                    dirichletVelocity(dirichletVelocity),
@@ -72,12 +72,12 @@ private:
                         double& diagonal) const
         {
             float const dirichletBC = 0.f;
-            bool isInsideNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
+            bool isNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
             auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
-            bool isInsideDirichletPressure = collider->tree().isValueOn(neighbor);
+            bool isDirichletPressure = collider->tree().isValueOn(neighbor);
 
             // TODO: Double check this:
-            if (isInsideNeumannBC) {
+            if (isNeumannPressure) {
                 double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -131,8 +131,8 @@ private:
             }
         }
 
-        Vec3SGrid::Ptr dirichletVelocity;
-        FloatGrid::Ptr collider;
+        Vec3SGrid::ConstPtr dirichletVelocity;
+        FloatGrid::ConstPtr collider;
         float voxelSize;
     };
 
