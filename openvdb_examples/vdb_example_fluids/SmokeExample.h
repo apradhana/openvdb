@@ -49,7 +49,7 @@ private:
 
     void updateEmitter();
 
-    void applyDirichletVelocity(Vec3SGrid::Ptr velocity);
+    void applyDirichletVelocity(Vec3SGrid& vecGrid);
 
     void gridVelocityUpdate(float const dt);
 
@@ -156,6 +156,28 @@ private:
     };// ApplyGravityOp
 
 
+    struct ApplyDirichletVelocityOp
+    {
+        ApplyDirichletVelocityOp(Vec3SGrid::Ptr dirichletVelocity) :
+            dirichletVelocity(dirichletVelocity) {}
+
+        template <typename T>
+        void operator()(T &leaf, size_t) const
+        {
+            auto drcVelAcc = dirichletVelocity->getConstAccessor();
+            for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto ijk = iter.getCoord();
+                if (drcVelAcc.isValueOn(ijk)) {
+                    iter.setValue(drcVelAcc.getValue(ijk));
+                }
+            }
+        }
+
+        Vec3SGrid::ConstPtr dirichletVelocity;
+
+    };// ApplyDirichletVelocityOp
+
+
     // Update the emitter by taking the maximum density with the current density.
     struct UpdateEmitterOp
     {
@@ -204,9 +226,12 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 
 
 void
-SmokeSolver::applyDirichletVelocity(Vec3SGrid::Ptr velocity)
+SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid)
 {
     std::cout << "apply dirichlet velocity begins" << std::endl;
+    tree::LeafManager<Vec3STree> lm(vecGrid.tree());
+    SmokeSolver::ApplyDirichletVelocityOp op(mDirichletVelocity);
+    lm.foreach(op);
     std::cout << "apply dirichlet velocity ends" << std::endl;
 }
 
@@ -335,6 +360,8 @@ SmokeSolver::initialize() {
     mVNext->setTransform(mXform);
     mVNext->setName("vel_next");
     mVNext->setGridClass(GRID_STAGGERED);
+
+    applyDirichletVelocity(*mVCurr);
 }
 
 
