@@ -253,7 +253,7 @@ private:
     FloatGrid::Ptr mDivAfter;
 
     FloatGrid::Ptr mEmitter;
-    Vec3SGrid::Ptr mEmitterVelocity;
+    Vec3SGrid::Ptr mDirichletVelocity;
 
     FloatGrid::Ptr mDensityCurr;
     FloatGrid::Ptr mDensityNext;
@@ -296,10 +296,15 @@ SmokeSolver::initialize() {
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
-    mEmitterVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mEmitterVelocity->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mEmitterVelocity->setTransform(mXform);
-    mEmitterVelocity->setName("emitter_velocity");
+    // Create Dirichlet Velocity (Neumann-pressure)
+    auto minDirichletVelW = Vec3s(0.f, 0.f, 0.f);
+    auto maxDirichletVelW = Vec3s(2 * mVoxelSize, 6.f, 6.f);
+    Coord minDirichletVelCoord = mXform->worldToIndexNodeCentered(minDirichletVelW);
+    Coord maxDirichletVelCoord = mXform->worldToIndexNodeCentered(maxDirichletVelW);
+    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    mDirichletVelocity->denseFill(CoordBBox(minDirichletVelCoord, maxDirichletVelCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->setTransform(mXform);
+    mDirichletVelocity->setName("dirichlet_velocity");
 
 
     // Create collider. Collider is bounding box minus interior plus sphere.
@@ -493,7 +498,7 @@ SmokeSolver::writeVDBs(int const frame) {
 
     openvdb::GridPtrVec grids;
     grids.push_back(mEmitter);
-    grids.push_back(mEmitterVelocity);
+    grids.push_back(mDirichletVelocity);
     grids.push_back(mDensityCurr);
     grids.push_back(mDensityNext);
     grids.push_back(mVCurr);
