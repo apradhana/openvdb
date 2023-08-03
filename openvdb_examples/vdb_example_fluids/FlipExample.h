@@ -63,6 +63,7 @@ private:
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
+    void velocityBCCorrectionDebug(Vec3SGrid& vecGrid);
 
     void addGravity(float const dt);
     void computeFlipVelocity(float const dt);
@@ -85,7 +86,7 @@ private:
         {
             float const dirichletBC = 0.f;
             bool isInsideCollider = collider->tree().isValueOn(neighbor);
-            auto vNgbr = vCurr->tree().getValue(neighbor);
+            auto vNgbr = Vec3s(0.f, 0.f, 0.f);// static collider//vCurr->tree().getValue(neighbor);
 
             // TODO: Double check this:
             if (isInsideCollider) {
@@ -525,6 +526,54 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
 
 
 void
+FlipSolver::velocityBCCorrectionDebug(Vec3SGrid& vecGrid) {
+    auto acc = vecGrid.getAccessor();
+    auto cldrAcc = mCollider->getAccessor();
+
+    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
+        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
+        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
+
+        if (cldrAcc.isValueOn(im1jk) && acc.getValue(ijk)[0] < 0) { 
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[0] > 0) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijm1k) && acc.getValue(ijk)[1] < 0) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[1] > 0) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijkm1) && acc.getValue(ijk)[2] < 0) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[2] > 0) {
+            auto val = acc.getValue(ijk);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            acc.setValue(ijk, newVal);
+        }
+    }
+}
+
+
+void
 FlipSolver::pressureProjection(bool print) {
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
@@ -533,14 +582,6 @@ FlipSolver::pressureProjection(bool print) {
 
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
-
-    BoolTree::Ptr interiorMask(new BoolTree(false));
-    interiorMask->topologyUnion(mVCurr->tree());
-    tools::erodeActiveValues(*interiorMask, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    BoolGrid::Ptr interiorGrid = BoolGrid::create(interiorMask);
-    interiorGrid->setTransform(mXform);
-    // mInterior = interiorGrid->copy();
-    // mInterior->setName("interior");
 
     mDivBefore = tools::divergence(*mVCurr);
     mDivBefore->setName("div_before");
@@ -678,7 +719,6 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    // grids.push_back(mInterior);
     file.write(grids);
     file.close();
 }

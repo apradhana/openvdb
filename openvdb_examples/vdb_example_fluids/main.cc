@@ -14,9 +14,9 @@ main(int argc, char *argv[])
 {
     openvdb::initialize();
 
-    // example::FlipSolver flipSim(0.1f /* voxel size */);
-    // flipSim.render();
+    example::FlipSolver flipSim(0.1f /* voxel size */);
+    flipSim.render();
 
-    example::SmokeSolver smokeSim(0.1f /* voxel size */);
-    smokeSim.render();
+    // example::SmokeSolver smokeSim(0.1f /* voxel size */);
+    // smokeSim.render();
 }
