@@ -37,6 +37,7 @@ public:
 private:
 
     void initialize();
+    void initialize2();
 
     void substep(float const dt, int const frame);
 
@@ -46,6 +47,7 @@ private:
     void updateEmitter();
 
     void createDirichletVelocity();
+    void createDirichletVelocity2();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
 
@@ -204,6 +206,10 @@ private:
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
     math::Transform::Ptr mXform;
+    float mPadding;
+    Coord mMin;
+    Coord mMax;
+    Coord mMaxStaggered;
 
     FloatGrid::Ptr mDirichletPressure;
 
@@ -291,10 +297,8 @@ SmokeSolver::updateEmitter()
 void
 SmokeSolver::createDirichletVelocity()
 {
-    float const padding = 4.f * mVoxelSize;
-
-    auto minDVLft = Vec3s(-padding, -padding, -padding);
-    auto maxDVLft = Vec3s(2 * mVoxelSize, 6.f, 6.f);
+    auto minDVLft = Vec3s(-mPadding, -mPadding, -mPadding);
+    auto maxDVLft = Vec3s(2 * mVoxelSize, mMax[1], mMax[2]);
     Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
     Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -303,8 +307,8 @@ SmokeSolver::createDirichletVelocity()
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setName("dirichlet_velocity");
 
-    auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -padding);
-    auto maxDVBck = Vec3s(14.f + padding, 6.f, 0.f);
+    auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -mPadding);
+    auto maxDVBck = Vec3s(14.f + mPadding, 6.f, 0.f);
     Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
     Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
     Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -312,7 +316,7 @@ SmokeSolver::createDirichletVelocity()
     bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
 
     auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
-    auto maxDVFrt = Vec3s(14.f + padding, 6.f, 6.f + padding);
+    auto maxDVFrt = Vec3s(14.f + mPadding, 6.f, 6.f + mPadding);
     Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
     Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
     Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -320,15 +324,15 @@ SmokeSolver::createDirichletVelocity()
     frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
 
     auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
-    auto maxDVTop = Vec3s(14.f + padding, 6.f + padding, 6.f);
+    auto maxDVTop = Vec3s(14.f + mPadding, 6.f + mPadding, 6.f);
     Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
     Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
     Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     top->setGridClass(GRID_STAGGERED);
     top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
 
-    auto minDVBtm = Vec3s(2 * mVoxelSize, -padding, 0.f);
-    auto maxDVBtm = Vec3s(14.f + padding, 0.f, 6.f);
+    auto minDVBtm = Vec3s(2 * mVoxelSize, -mPadding, 0.f);
+    auto maxDVBtm = Vec3s(14.f + mPadding, 0.f, 6.f);
     Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
     Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
     Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -342,13 +346,104 @@ SmokeSolver::createDirichletVelocity()
 }
 
 
+
+void
+SmokeSolver::createDirichletVelocity2()
+{
+    BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
+    interiorMaskGrid->topologyUnion(*mDomainMaskGrid);
+    tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    mDomainMaskGrid->setName("interior_mask_grid");
+
+    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    mDirichletVelocity->setName("dirichlet_velocity");
+    mDirichletVelocity->setTransform(mXform);
+    mDirichletVelocity->setGridClass(GRID_STAGGERED);
+    mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->topologyUnion(*mDomainMaskGrid);
+    tools::dilateActiveValues(mDirichletVelocity->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    mDirichletVelocity->topologyDifference(*interiorMaskGrid);
+
+    auto dirichletAcc = mDirichletVelocity->getAccessor();
+    for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        if (ijk[0] >= mMax[0])
+        dirichletAcc.setValueOff(ijk);
+    }
+    std::ostringstream ostr;
+    ostr << "debug_dirichlet_velocity" << ".vdb";
+    std::cerr << "Writing " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mDirichletVelocity);
+    grids.push_back(mDomainMaskGrid);
+    file.write(grids);
+    file.close();
+
+    //mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    //mDirichletVelocity->setGridClass(GRID_STAGGERED);
+    //mDirichletVelocity->setTransform(mXform);
+    //mDirichletVelocity->setName("dirichlet_velocity");
+
+    //auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -mPadding);
+    //auto maxDVBck = Vec3s(14.f + mPadding, 6.f, 0.f);
+    //Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
+    //Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
+    //Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //bck->setGridClass(GRID_STAGGERED);
+    //bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
+    //auto maxDVFrt = Vec3s(14.f + mPadding, 6.f, 6.f + mPadding);
+    //Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
+    //Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
+    //Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //frt->setGridClass(GRID_STAGGERED);
+    //frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
+    //auto maxDVTop = Vec3s(14.f + mPadding, 6.f + mPadding, 6.f);
+    //Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
+    //Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
+    //Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //top->setGridClass(GRID_STAGGERED);
+    //top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVBtm = Vec3s(2 * mVoxelSize, -mPadding, 0.f);
+    //auto maxDVBtm = Vec3s(14.f + mPadding, 0.f, 6.f);
+    //Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
+    //Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
+    //Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //btm->setGridClass(GRID_STAGGERED);
+    //btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //mDirichletVelocity->topologyUnion(*bck);
+    //mDirichletVelocity->topologyUnion(*frt);
+    //mDirichletVelocity->topologyUnion(*top);
+    //mDirichletVelocity->topologyUnion(*btm);
+}
+
+
 void
 SmokeSolver::initialize() {
+    std::cout << "initialize " << std::endl;
     using BBox = math::BBox<Vec3s>;
 
     mXform = math::Transform::createLinearTransform(mVoxelSize);
     float const padding = 4.f * mVoxelSize;
+    mPadding = padding;
     float const centerY = 3.f;
+    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    auto maxBBox = Vec3s(14.f, 6.f, 6.f);
+    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
+    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
+    mMin = minBBoxIntrCoord;
+    mMax = maxBBoxIntrCoord;
+    mMaxStaggered = mMax + Coord(1);
+    mDomainMaskGrid = BoolGrid::create(false /* background */);
+    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mDomainMaskGrid->setTransform(mXform);
+    mDomainMaskGrid->setName("domain_mask");
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -360,21 +455,8 @@ SmokeSolver::initialize() {
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
+    createDirichletVelocity2();
 
-    createDirichletVelocity();
-
-
-    // Create interior mask
-    auto minBBox = Vec3s(0.f, 0.f, 0.f);
-    auto maxBBox = Vec3s(14.f, 6.f, 6.f);
-    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
-    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
-    mDomainMaskGrid = BoolGrid::create(false /* background */);
-    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mDomainMaskGrid->setTransform(mXform);
-    mDomainMaskGrid->setName("domain_mask");
-
-    // Set up density and velocity grid. Need to take the collider out.
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->setTransform(mXform);
@@ -383,13 +465,75 @@ SmokeSolver::initialize() {
     mDensityCurr->topologyIntersection(*mDomainMaskGrid);
 
     mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
+    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
     mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->topologyUnion(*mDomainMaskGrid);
-    mVCurr->topologyIntersection(*mDomainMaskGrid);
     mVCurr->tree().voxelizeActiveTiles();
+
+    updateEmitter();
+    applyDirichletVelocity(*mVCurr, -1);
+}
+
+
+void
+SmokeSolver::initialize2() {
+    std::cout << "initialize 2" << std::endl;
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+    float const padding = 1.f * mVoxelSize;
+    mPadding = padding;
+    float const centerY = 3.f;
+    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    auto maxBBox = Vec3s(5.f * mVoxelSize, 4.f * mVoxelSize, 4.f * mVoxelSize);
+    // auto maxBBox = Vec3s(14.f, 6.f, 6.f);
+    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
+    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
+    mMin = minBBoxIntrCoord;
+    mMax = maxBBoxIntrCoord;
+    mMaxStaggered = mMax + Coord(1);
+    std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
+    mDomainMaskGrid = BoolGrid::create(false /* background */);
+    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mDomainMaskGrid->setTransform(mXform);
+    mDomainMaskGrid->setName("domain_mask");
+
+    // Create an emitter and an emitter velocity
+    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
+    auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
+    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
+    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
+    mEmitter = FloatGrid::create(/*bg = */0.f);
+    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
+    mEmitter->setTransform(mXform);
+    mEmitter->setName("emitter");
+
+    createDirichletVelocity2();
+
+    mDensityCurr = FloatGrid::create(/*bg = */0.f);
+    mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
+    mDensityCurr->setTransform(mXform);
+    mDensityCurr->setName("density_curr");
+    mDensityCurr->topologyUnion(*mDomainMaskGrid);
+    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
+
+    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
+    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
+    mVCurr->setTransform(mXform);
+    mVCurr->setName("vel_curr");
+    mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->tree().voxelizeActiveTiles();
+
+    std::ostringstream ostr;
+    ostr << "debug_initialize2.vdb";
+    std::cerr << "\tWriting " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mVCurr);
+    grids.push_back(mDensityCurr);
+    file.write(grids);
+    file.close();
 
     updateEmitter();
     applyDirichletVelocity(*mVCurr, -1);
@@ -500,12 +644,16 @@ SmokeSolver::pressureProjection(bool print) {
     double const epsilon = math::Delta<ValueType>::value();
 
     mDivBefore = tools::divergence(*mVCurr);
+    // 4 pm
+    mDivBefore->topologyIntersection(*mDensityCurr);
     mDivBefore->setName("div_before");
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    // 4 pm
+    domainMaskGrid->topologyIntersection(*mDensityCurr);
+    // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     // domainMaskGrid->topologyDifference(*mDirichletPressure);
-    domainMaskGrid->topologyDifference(*mDirichletVelocity);
+    // domainMaskGrid->topologyDifference(*mDirichletVelocity);
 
     float divBefore = 0.f;
     auto divBeforeAcc = mDivBefore->getAccessor();
@@ -531,7 +679,6 @@ SmokeSolver::pressureProjection(bool print) {
     std::cout << "Iterations: " << state.iterations << "\n";
     std::cout << "Relative error: " << state.relativeError << "\n";
     std::cout << "Absolute error: " << state.absoluteError << "\n";
-
 
     // Note: need to dilate in order to do one-sided difference
     // because we use a staggered grid velocity field.
@@ -580,10 +727,13 @@ SmokeSolver::pressureProjection(bool print) {
     openvdb::GridPtrVec grids;
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
+    grids.push_back(mPressure);
+    grids.push_back(mVCurr);
+    grids.push_back(mDensityCurr);
     file.write(grids);
     file.close();
 
-    exit(0);
+    //exit(0);
 
 
 
@@ -610,6 +760,7 @@ SmokeSolver::foobar() {
     for (int frame = 0; frame < 10; ++frame) {
         std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
         updateEmitter();
+        // addGravity(dt);
         pressureProjection(true /* print */);
         {
             std::ostringstream ostr;
