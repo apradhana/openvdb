@@ -365,49 +365,48 @@ SmokeSolver::advectDensity(float const dt)
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
     advection.setLimiter(tools::Scheme::REVERT);
-    advection.setSubSteps(10);
+    advection.setSubSteps(1);
 
     mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, dt);
     mDensityNext->setName("density_next");
 
+    // Debug
+    // {//test advect with a mask
+    //     Vec3fGrid velocity(Vec3f(1.0f, 0.0f, 0.0f));
+    //     FloatGrid::Ptr density0 = FloatGrid::create(0.0f), density1;
+    //     density0->fill(CoordBBox(Coord(0),Coord(6)), 1.0f);
 
-    {//test advect with a mask
-        Vec3fGrid velocity(Vec3f(1.0f, 0.0f, 0.0f));
-        FloatGrid::Ptr density0 = FloatGrid::create(0.0f), density1;
-        density0->fill(CoordBBox(Coord(0),Coord(6)), 1.0f);
+    //     BoolGrid::Ptr mask = BoolGrid::create(false);
+    //     mask->fill(CoordBBox(Coord(4,0,0),Coord(30,8,8)), true);
 
-        BoolGrid::Ptr mask = BoolGrid::create(false);
-        mask->fill(CoordBBox(Coord(4,0,0),Coord(30,8,8)), true);
-
-        AdvT a(*mVCurr);
-        a.setGrainSize(0);
-        a.setIntegrator(tools::Scheme::MAC);
-        //a.setIntegrator(tools::Scheme::BFECC);
-        //a.setIntegrator(tools::Scheme::RK4);
-        for (int i=1; i<=240; ++i) {
-            // density1 = a.advect<FloatGrid, BoolGrid, SamplerT>(*density0, *mask, 0.1f);
-            mDensityNext = a.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, 0.1f);
-            std::ostringstream ostr;
-            ostr << "debugAdvectMask" << "_" << i << ".vdb";
-            std::cerr << "Writing " << ostr.str() << std::endl;
-            openvdb::io::File file(ostr.str());
-            openvdb::GridPtrVec grids;
-            // grids.push_back(density1);
-            grids.push_back(mDensityNext);
-            file.write(grids);
-            // density0 = density1;
-            mDensityCurr = mDensityNext;
-        }
-    }
-
-    //std::ostringstream ostr;
-    //ostr << "densityAdvectMask" << ".vdb";
-    //std::cerr << "Writing " << ostr.str() << std::endl;
-    //openvdb::io::File file(ostr.str());
-    //openvdb::GridPtrVec grids;
-    //grids.push_back(mDensityNext);
-    //file.write(grids);
-    //file.close();
+    //     AdvT a(*mVCurr);
+    //     a.setGrainSize(0);
+    //     a.setIntegrator(tools::Scheme::MAC);
+    //     //a.setIntegrator(tools::Scheme::BFECC);
+    //     //a.setIntegrator(tools::Scheme::RK4);
+    //     for (int i=1; i<=240; ++i) {
+    //         // density1 = a.advect<FloatGrid, BoolGrid, SamplerT>(*density0, *mask, 0.1f);
+    //         mDensityNext = a.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, 0.1f);
+    //         std::ostringstream ostr;
+    //         ostr << "debugAdvectMask" << "_" << i << ".vdb";
+    //         std::cerr << "Writing " << ostr.str() << std::endl;
+    //         openvdb::io::File file(ostr.str());
+    //         openvdb::GridPtrVec grids;
+    //         // grids.push_back(density1);
+    //         grids.push_back(mDensityNext);
+    //         file.write(grids);
+    //         // density0 = density1;
+    //         mDensityCurr = mDensityNext;
+    //     }
+    // }
+    // std::ostringstream ostr;
+    // ostr << "densityAdvectMask" << ".vdb";
+    // std::cerr << "Writing " << ostr.str() << std::endl;
+    // openvdb::io::File file(ostr.str());
+    // openvdb::GridPtrVec grids;
+    // grids.push_back(mDensityNext);
+    // file.write(grids);
+    // file.close();
 }
 
 void
@@ -420,7 +419,7 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
     advection.setLimiter(tools::Scheme::REVERT);
-    advection.setSubSteps(10);
+    advection.setSubSteps(1);
 
     mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mDomainMaskGrid, dt);
     // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
@@ -438,9 +437,6 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     grids.push_back(mDomainMaskGrid);
     file.write(grids);
     file.close();
-
-    // std::cout << "mVNext = " << mVNext << std::endl;
-    // std::cout << "mVNext->activeVoxelCount = " << mVNext->activeVoxelCount() << std::endl;
 }
 
 
@@ -521,7 +517,6 @@ SmokeSolver::foobar() {
     for (int frame = 0; frame < 10; ++frame) {
         std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
         // updateEmitter();
-        // applyDirichletVelocity(*mVCurr, frame);
         {
             std::ostringstream ostr;
             ostr << "before advect density" << "_" << frame << ".vdb";
@@ -542,8 +537,9 @@ SmokeSolver::foobar() {
             file.close();
         }
         advectVelocity(dt, frame);
-        writeVDBs(frame);
         swap();
+        applyDirichletVelocity(*mVCurr, frame);
+        writeVDBs(frame);
     }
 }
 
