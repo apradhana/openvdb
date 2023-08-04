@@ -310,7 +310,7 @@ SmokeSolver::initialize() {
     Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    // mDirichletVelocity->setGridClass(GRID_STAGGERED);
+    mDirichletVelocity->setGridClass(GRID_STAGGERED);
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setName("dirichlet_velocity");
 
@@ -336,7 +336,7 @@ SmokeSolver::initialize() {
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
-    // mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->setGridClass(GRID_STAGGERED);
     mVCurr->topologyUnion(*mDomainMaskGrid);
     mVCurr->topologyIntersection(*mDomainMaskGrid);
     mVCurr->tree().voxelizeActiveTiles();
@@ -359,7 +359,7 @@ SmokeSolver::advectDensity(float const dt)
 {
     std::cout << "Advect Density" << std::endl;
     using MaskGridType = BoolGrid;
-    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid, false /* Staggered */>;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid, true /* Staggered */>;
     using SamplerT = openvdb::tools::Sampler<1>;
 
     AdvT advection(*mVCurr);
@@ -413,8 +413,8 @@ void
 SmokeSolver::advectVelocity(float const dt, const int frame)
 {
     std::cout << "Advect Velocity" << std::endl;
-    using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid, false /* staggered */>;
-    using SamplerT = openvdb::tools::Sampler<1, false /* staggered */>;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid, true /* staggered */>;
+    using SamplerT = openvdb::tools::Sampler<1, true /* staggered */>;
 
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
@@ -423,7 +423,7 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
 
     mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mDomainMaskGrid, dt);
     // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
-    // mVNext->setGridClass(GRID_STAGGERED);
+    mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setName("vel_next");
 
     std::ostringstream ostr;
