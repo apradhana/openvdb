@@ -516,7 +516,7 @@ SmokeSolver::foobar() {
     float const dt = 1.f/24.f;
     for (int frame = 0; frame < 10; ++frame) {
         std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
-        // updateEmitter();
+        updateEmitter();
         {
             std::ostringstream ostr;
             ostr << "before advect density" << "_" << frame << ".vdb";
