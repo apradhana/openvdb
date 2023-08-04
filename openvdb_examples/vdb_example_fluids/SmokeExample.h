@@ -395,7 +395,6 @@ SmokeSolver::initialize() {
     applyDirichletVelocity(*mVCurr, -1);
 }
 
-
 void
 SmokeSolver::addGravity(float const dt) {
     tree::LeafManager<Vec3STree> lm(mVCurr->tree());
@@ -508,6 +507,17 @@ SmokeSolver::pressureProjection(bool print) {
     // domainMaskGrid->topologyDifference(*mDirichletPressure);
     domainMaskGrid->topologyDifference(*mDirichletVelocity);
 
+    float divBefore = 0.f;
+    auto divBeforeAcc = mDivBefore->getAccessor();
+    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divBeforeAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divBefore)) {
+            divBefore = val;
+        }
+    }
+    std::cout << "\t== divergence before pp = " << divBefore << std::endl;
+
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
@@ -515,9 +525,17 @@ SmokeSolver::pressureProjection(bool print) {
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+
+
+    std::cout << "Projection Success: " << state.success << "\n";
+    std::cout << "Iterations: " << state.iterations << "\n";
+    std::cout << "Relative error: " << state.relativeError << "\n";
+    std::cout << "Absolute error: " << state.absoluteError << "\n";
+
+
     // Note: need to dilate in order to do one-sided difference
     // because we use a staggered grid velocity field.
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
 
     fluidPressureGrid->setTransform(mXform);
@@ -540,10 +558,35 @@ SmokeSolver::pressureProjection(bool print) {
         vCurrAcc.setValue(ijk, val);
     }
 
-    std::cout << "Projection Success: " << state.success << "\n";
-    std::cout << "Iterations: " << state.iterations << "\n";
-    std::cout << "Relative error: " << state.relativeError << "\n";
-    std::cout << "Absolute error: " << state.absoluteError << "\n";
+    applyDirichletVelocity(*mVCurr, -2);
+    mDivAfter = tools::divergence(*mVCurr);
+    mDivAfter->setName("div_after");
+    (mDivAfter->tree()).topologyIntersection(domainMaskGrid->tree());
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
+
+    std::ostringstream ostr;
+    ostr << "debug_divergence.vdb";
+    std::cerr << "\tWriting " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mDivBefore);
+    grids.push_back(mDivAfter);
+    file.write(grids);
+    file.close();
+
+    exit(0);
+
+
+
 }
 
 
@@ -567,7 +610,7 @@ SmokeSolver::foobar() {
     for (int frame = 0; frame < 10; ++frame) {
         std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
         updateEmitter();
-        //pressureProjection(true /* print */);
+        pressureProjection(true /* print */);
         {
             std::ostringstream ostr;
             ostr << "before advect density" << "_" << frame << ".vdb";
