@@ -11,12 +11,6 @@
 #include <string>
 
 #include <openvdb/openvdb.h>
-#include <openvdb/points/PointAdvect.h> // for advectPoints
-#include <openvdb/points/PointAttribute.h> // for appendAttribute
-#include <openvdb/points/PointDataGrid.h> // for PointDataGrid
-#include <openvdb/points/PointRasterizeTrilinear.h> // for rasterizing to the grid
-#include <openvdb/points/PointSample.h> // for PointSample
-#include <openvdb/points/PointScatter.h> // for point sampling
 #include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tools/GridOperators.h> // for divergence and gradient
 #include <openvdb/tools/LevelSetSphere.h> // for createLevelSetSphere
@@ -38,11 +32,13 @@ public:
 
     void render();
 
+    void foobar();
+
 private:
 
     void initialize();
 
-    void substep(float const dt);
+    void substep(float const dt, int const frame);
 
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
@@ -57,7 +53,7 @@ private:
 
     void advectDensity(float const dt);
 
-    void advectVelocity(float const dt);
+    void advectVelocity(float const dt, int const frame);
 
     void writeVDBs(int const frame);
     struct BoundaryOp {
@@ -177,7 +173,6 @@ private:
         }
 
         Vec3SGrid::ConstPtr dirichletVelocity;
-
     };// ApplyDirichletVelocityOp
 
 
@@ -234,7 +229,9 @@ SmokeSolver::swap()
 {
     std::cout << "swap begins" << std::endl;
     mDensityCurr = mDensityNext;
+    mDensityCurr->setName("density_curr");
     mVCurr = mVNext;
+    mVCurr->setName("vel_curr");
     // std::swap(mDensityCurr, mDensityNext);
     // std::swap(mVCurr, mVNext);
     std::cout << "swap ends" << std::endl;
@@ -254,6 +251,7 @@ SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid)
 void
 SmokeSolver::updateEmitter()
 {
+    std::cout << "mEmitter = " << mEmitter << "\tmDensityCurr = " << mDensityCurr << std::endl;
     tree::LeafManager<FloatTree> lm(mEmitter->tree());
     UpdateEmitterOp op(mEmitter, mDensityCurr);
     lm.foreach(op);
@@ -316,11 +314,11 @@ SmokeSolver::initialize() {
     btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
 
     auto minDVLft = Vec3s(-padding, -padding, -padding);
-    auto maxDVLft = Vec3s(2 * mVoxelSize, 6.f, 6.f);
+    auto maxDVLft = Vec3s(8 * mVoxelSize, 6.f, 6.f);
     Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
     Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(50.f, 0.f, 0.f), /*active = */ true);
     mDirichletVelocity->topologyUnion(*bck);
     mDirichletVelocity->topologyUnion(*frt);
     mDirichletVelocity->topologyUnion(*top);
@@ -330,13 +328,17 @@ SmokeSolver::initialize() {
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setName("dirichlet_velocity");
 
-
-    // Create collider. Collider is bounding box minus interior plus sphere.
-    auto minBBox = Vec3s(14.f, -padding, -padding);
-    auto maxBBox = Vec3s(14.f + padding, 6.f + padding, 6.f + padding);
+    // Create interior
+    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    auto maxBBox = Vec3s(14.f, 6.f, 6.f);
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
+    mDomainMaskGrid = BoolGrid::create(false /* background */);
+    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mDomainMaskGrid->setTransform(mXform);
+    mDomainMaskGrid->setName("domain_mask");
 
+    // Create collider. Collider is bounding box minus interior plus sphere.
     // FloatGrid::Ptr negativeSpace = FloatGrid::create(/*bg = */0.f);
     // negativeSpace->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /*value = */ 1.0, /*active = */ true);
     // negativeSpace->setTransform(mXform);
@@ -363,27 +365,19 @@ SmokeSolver::initialize() {
     // Set up density and velocity grid. Need to take the collider out.
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
-    mDensityCurr->topologyDifference(*mDirichletVelocity);
     mDensityCurr->setTransform(mXform);
     mDensityCurr->setName("density_curr");
+    mDensityCurr->topologyUnion(*mDomainMaskGrid);
+    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
 
-    // mDensityNext = FloatGrid::create(/*bg = */0.f);
-    // mDensityNext->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
-    // mDensityNext->setTransform(mXform);
-    // mDensityNext->setName("density_next");
-
-    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
+    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(1.f, 0.f, 0.f));
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
-    mVCurr->topologyDifference(*mDirichletVelocity);
     mVCurr->setName("vel_curr");
     mVCurr->setGridClass(GRID_STAGGERED);
-
-    // mVNext = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    // mVNext->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
-    // mVNext->setTransform(mXform);
-    // mVNext->setName("vel_next");
-    // mVNext->setGridClass(GRID_STAGGERED);
+    mVCurr->topologyUnion(*mDomainMaskGrid);
+    mVCurr->topologyIntersection(*mDomainMaskGrid);
+    mVCurr->tree().voxelizeActiveTiles();
 
     applyDirichletVelocity(*mVCurr);
 }
@@ -406,18 +400,42 @@ SmokeSolver::advectDensity(float const dt)
 
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
-    MaskGridType::Ptr domainMaskGrid = MaskGridType::create(*mDensityCurr); // match input grid's topology
-    domainMaskGrid->topologyUnion(*mDensityCurr);
-    mDomainMaskGrid = MaskGridType::create(*mDensityCurr);
-    mDomainMaskGrid->topologyUnion(*mDensityCurr);
-    mDomainMaskGrid->setTransform(mXform);
-    mDomainMaskGrid->setName("domain_mask");
+    advection.setLimiter(tools::Scheme::REVERT);
+    advection.setSubSteps(10);
 
-    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *domainMaskGrid, dt);
+    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, dt);
     mDensityNext->setName("density_next");
 
-
     //// writeVDBs(0);
+
+
+
+
+    // {//test advect with a mask
+    // Vec3fGrid velocity(Vec3f(1.0f, 0.0f, 0.0f));
+    //     FloatGrid::Ptr density0 = FloatGrid::create(0.0f), density1;
+    //     density0->fill(CoordBBox(Coord(0),Coord(6)), 1.0f);
+
+    //     BoolGrid::Ptr mask = BoolGrid::create(false);
+    //     mask->fill(CoordBBox(Coord(4,0,0),Coord(30,8,8)), true);
+
+    //     AdvT a(velocity);
+    //     a.setGrainSize(0);
+    //     a.setIntegrator(tools::Scheme::MAC);
+    //     //a.setIntegrator(tools::Scheme::BFECC);
+    //     //a.setIntegrator(tools::Scheme::RK4);
+    //     for (int i=1; i<=240; ++i) {
+    //         density1 = a.advect<FloatGrid, BoolGrid, SamplerT>(*density0, *mask, 0.1f);
+    //         std::ostringstream ostr;
+    //         ostr << "debugAdvectMask" << "_" << i << ".vdb";
+    //         std::cerr << "Writing " << ostr.str() << std::endl;
+    //         openvdb::io::File file(ostr.str());
+    //         openvdb::GridPtrVec grids;
+    //         grids.push_back(density1);
+    //         file.write(grids);
+    //         density0 = density1;
+    //     }
+    // }
 
     //std::ostringstream ostr;
     //ostr << "densityAdvectMask" << ".vdb";
@@ -433,24 +451,33 @@ SmokeSolver::advectDensity(float const dt)
 }
 
 void
-SmokeSolver::advectVelocity(float const dt)
+SmokeSolver::advectVelocity(float const dt, const int frame)
 {
-    using MaskGridType = BoolGrid;
     using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid, true /* Staggered */>;
-    using SamplerT = openvdb::tools::Sampler<1>;
+    using SamplerT = openvdb::tools::Sampler<1, true>;
 
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
+    advection.setLimiter(tools::Scheme::REVERT);
+    advection.setSubSteps(10);
 
-    MaskGridType* domainMaskGrid = new MaskGridType(*mDensityCurr); // match input grid's topology
-    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *domainMaskGrid, dt);
+    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mDomainMaskGrid, dt);
+    // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
     mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setName("vel_next");
+
+    std::ostringstream ostr;
+    ostr << "densityAdvectMask" << "_" << frame << ".vdb";
+    std::cerr << "Writing " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mVNext);
+    grids.push_back(mDomainMaskGrid);
+    file.write(grids);
+
     std::cout << "mVNext = " << mVNext << std::endl;
     std::cout << "mVNext->activeVoxelCount = " << mVNext->activeVoxelCount() << std::endl;
 }
-
-
 
 
 void
@@ -511,14 +538,15 @@ SmokeSolver::pressureProjection(bool print) {
 
 
 void
-SmokeSolver::substep(float const dt) {
-    updateEmitter();
-    addGravity(dt);
+SmokeSolver::substep(float const dt, int const frame) {
+    mVCurr->setName("vel_curr");
+    // updateEmitter();
+    // addGravity(dt);
     applyDirichletVelocity(*mVCurr);
-    pressureProjection(true /* print */);
-    applyDirichletVelocity(*mVCurr);
-    advectDensity(dt);
-    advectVelocity(dt);
+    //pressureProjection(true /* print */);
+    //applyDirichletVelocity(*mVCurr);
+    //advectDensity(dt);
+    advectVelocity(dt, frame);
     applyDirichletVelocity(*mVNext);
 }
 
@@ -531,11 +559,24 @@ SmokeSolver::render() {
         int const numSubstep = 4;
         for (int i = 0; i < numSubstep; ++i) {
             std::cout << "\tsubstep = " << i << std::endl;
-            substep(dt / numSubstep);
-            if (i < 99) {
-                swap();
-            }
+            substep(dt / numSubstep, frame);
+            //if (i < numSubstep - 1) {
+            swap();
+            //}
         }
+        writeVDBs(frame);
+    }
+}
+
+
+void
+SmokeSolver::foobar() {
+    float const dt = 1.f/24.f;
+    for (int frame = 0; frame < 20; ++frame) {
+        // applyDirichletVelocity(*mVCurr);
+        updateEmitter();
+        advectDensity(dt);
+        advectVelocity(dt, frame);
         writeVDBs(frame);
         swap();
     }
@@ -555,7 +596,7 @@ SmokeSolver::writeVDBs(int const frame) {
     grids.push_back(mDensityCurr);
     grids.push_back(mDensityNext);
     grids.push_back(mVCurr);
-    grids.push_back(mVNext);
+    // grids.push_back(mVNext);
     // grids.push_back(mDirichletPressure);
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
