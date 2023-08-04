@@ -45,6 +45,8 @@ private:
 
     void updateEmitter();
 
+    void createDirichletVelocity();
+
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
 
     void swap();
@@ -287,6 +289,60 @@ SmokeSolver::updateEmitter()
 
 
 void
+SmokeSolver::createDirichletVelocity()
+{
+    float const padding = 4.f * mVoxelSize;
+
+    auto minDVLft = Vec3s(-padding, -padding, -padding);
+    auto maxDVLft = Vec3s(2 * mVoxelSize, 6.f, 6.f);
+    Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
+    Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
+    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->setGridClass(GRID_STAGGERED);
+    mDirichletVelocity->setTransform(mXform);
+    mDirichletVelocity->setName("dirichlet_velocity");
+
+    auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -padding);
+    auto maxDVBck = Vec3s(14.f + padding, 6.f, 0.f);
+    Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
+    Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
+    Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    bck->setGridClass(GRID_STAGGERED);
+    bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
+    auto maxDVFrt = Vec3s(14.f + padding, 6.f, 6.f + padding);
+    Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
+    Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
+    Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    frt->setGridClass(GRID_STAGGERED);
+    frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
+    auto maxDVTop = Vec3s(14.f + padding, 6.f + padding, 6.f);
+    Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
+    Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
+    Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    top->setGridClass(GRID_STAGGERED);
+    top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    auto minDVBtm = Vec3s(2 * mVoxelSize, -padding, 0.f);
+    auto maxDVBtm = Vec3s(14.f + padding, 0.f, 6.f);
+    Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
+    Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
+    Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    btm->setGridClass(GRID_STAGGERED);
+    btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    mDirichletVelocity->topologyUnion(*bck);
+    mDirichletVelocity->topologyUnion(*frt);
+    mDirichletVelocity->topologyUnion(*top);
+    mDirichletVelocity->topologyUnion(*btm);
+}
+
+
+void
 SmokeSolver::initialize() {
     using BBox = math::BBox<Vec3s>;
 
@@ -304,15 +360,9 @@ SmokeSolver::initialize() {
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
-    auto minDVLft = Vec3s(-padding, -padding, -padding);
-    auto maxDVLft = Vec3s(2 * mVoxelSize, 6.f, 6.f);
-    Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
-    Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
-    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->setGridClass(GRID_STAGGERED);
-    mDirichletVelocity->setTransform(mXform);
-    mDirichletVelocity->setName("dirichlet_velocity");
+
+    createDirichletVelocity();
+
 
     // Create interior mask
     auto minBBox = Vec3s(0.f, 0.f, 0.f);
@@ -517,6 +567,7 @@ SmokeSolver::foobar() {
     for (int frame = 0; frame < 10; ++frame) {
         std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
         updateEmitter();
+        //pressureProjection(true /* print */);
         {
             std::ostringstream ostr;
             ostr << "before advect density" << "_" << frame << ".vdb";
