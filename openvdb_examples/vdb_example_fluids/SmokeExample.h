@@ -108,23 +108,23 @@ private:
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
-                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
