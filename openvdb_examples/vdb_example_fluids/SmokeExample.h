@@ -51,6 +51,7 @@ private:
     void createDirichletVelocity();
     void createDirichletVelocity2();
     void createDirichletVelocity4();
+    void createFlags4();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
 
@@ -227,7 +228,8 @@ private:
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
     FloatGrid::Ptr mPressure;
-    BoolGrid::Ptr mDomainMaskGrid;
+    BoolGrid::Ptr mCollocatedMaskGrid;
+    Int32Grid::Ptr mFlags;
 };
 
 
@@ -236,6 +238,36 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     initialize4();
 }
 
+ void
+ SmokeSolver::createFlags4()
+ {
+    mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
+    mFlags->denseFill(CoordBBox(mMin, mMax), /* value = */ 1, /* active = */ true);
+    mFlags->setTransform(mXform);
+    mFlags->setName("flags");
+    auto flagsAcc = mFlags->getAccessor();
+    for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        if (ijk[0] == mMin[0] /* left face */ ||
+            ijk[1] == mMin[1] /* bottom face */ ||
+            ijk[1] == mMax[1] /* top face */ ||
+            ijk[2] == mMin[2] /* back face */ ||
+            ijk[2] == mMax[2] /* front face */) {
+            flagsAcc.setValue(ijk, 0); // Neumann
+        }
+        if (ijk[0] == mMax[0]) {
+            flagsAcc.setValue(ijk, 4); // Dirichlet
+        }
+    }
+    std::ostringstream ostr;
+    ostr << "flags.vdb";
+    std::cerr << "\tWriting " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mFlags);
+    file.write(grids);
+    file.close();
+ }
 
  void
  SmokeSolver::initialize4()
@@ -248,18 +280,20 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     mPadding = padding;
     float const centerY = 3.f;
     auto minBBox = Vec3s(0.f, 0.f, 0.f);
-    auto maxBBox = Vec3s(5.f * mVoxelSize, 4.f * mVoxelSize, 4.f * mVoxelSize);
-    // auto maxBBox = Vec3s(14.f, 6.f, 6.f);
+    //auto maxBBox = Vec3s(1.f + mVoxelSize, 0.4f + mVoxelSize, 0.4f + mVoxelSize);
+    auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
     mMin = minBBoxIntrCoord;
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
     std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
-    mDomainMaskGrid = BoolGrid::create(false /* background */);
-    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mDomainMaskGrid->setTransform(mXform);
-    mDomainMaskGrid->setName("domain_mask");
+    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
+    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mCollocatedMaskGrid->setTransform(mXform);
+    mCollocatedMaskGrid->setName("domain_mask");
+
+    createFlags4();
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -277,8 +311,8 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->setTransform(mXform);
     mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mDomainMaskGrid);
-    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
+    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
+    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
 
     mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
@@ -299,7 +333,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 
     updateEmitter();
     applyDirichletVelocity(*mVCurr, -1);
-
+    exit(0);
  }
 
  void
@@ -409,16 +443,16 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
  SmokeSolver::createDirichletVelocity4() {
     std::cout << "create dirichlet velocity 4" << std::endl;
     BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
-    interiorMaskGrid->topologyUnion(*mDomainMaskGrid);
+    interiorMaskGrid->topologyUnion(*mCollocatedMaskGrid);
     tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mDomainMaskGrid->setName("interior_mask_grid");
+    mCollocatedMaskGrid->setName("interior_mask_grid");
 
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     mDirichletVelocity->setName("dirichlet_velocity");
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setGridClass(GRID_STAGGERED);
     mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->topologyUnion(*mDomainMaskGrid);
+    mDirichletVelocity->topologyUnion(*mCollocatedMaskGrid);
     tools::dilateActiveValues(mDirichletVelocity->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     mDirichletVelocity->topologyDifference(*interiorMaskGrid);
 
@@ -434,7 +468,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     openvdb::io::File file(ostr.str());
     openvdb::GridPtrVec grids;
     grids.push_back(mDirichletVelocity);
-    grids.push_back(mDomainMaskGrid);
+    grids.push_back(mCollocatedMaskGrid);
     file.write(grids);
     file.close();
 
@@ -559,16 +593,16 @@ void
 SmokeSolver::createDirichletVelocity2()
 {
     BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
-    interiorMaskGrid->topologyUnion(*mDomainMaskGrid);
+    interiorMaskGrid->topologyUnion(*mCollocatedMaskGrid);
     tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mDomainMaskGrid->setName("interior_mask_grid");
+    mCollocatedMaskGrid->setName("interior_mask_grid");
 
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     mDirichletVelocity->setName("dirichlet_velocity");
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->setGridClass(GRID_STAGGERED);
     mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->topologyUnion(*mDomainMaskGrid);
+    mDirichletVelocity->topologyUnion(*mCollocatedMaskGrid);
     tools::dilateActiveValues(mDirichletVelocity->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     mDirichletVelocity->topologyDifference(*interiorMaskGrid);
 
@@ -584,7 +618,7 @@ SmokeSolver::createDirichletVelocity2()
     openvdb::io::File file(ostr.str());
     openvdb::GridPtrVec grids;
     grids.push_back(mDirichletVelocity);
-    grids.push_back(mDomainMaskGrid);
+    grids.push_back(mCollocatedMaskGrid);
     file.write(grids);
     file.close();
 
@@ -648,10 +682,10 @@ SmokeSolver::initialize() {
     mMin = minBBoxIntrCoord;
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
-    mDomainMaskGrid = BoolGrid::create(false /* background */);
-    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mDomainMaskGrid->setTransform(mXform);
-    mDomainMaskGrid->setName("domain_mask");
+    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
+    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mCollocatedMaskGrid->setTransform(mXform);
+    mCollocatedMaskGrid->setName("domain_mask");
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -669,8 +703,8 @@ SmokeSolver::initialize() {
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->setTransform(mXform);
     mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mDomainMaskGrid);
-    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
+    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
+    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
 
     mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
@@ -702,10 +736,10 @@ SmokeSolver::initialize2() {
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
     std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
-    mDomainMaskGrid = BoolGrid::create(false /* background */);
-    mDomainMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mDomainMaskGrid->setTransform(mXform);
-    mDomainMaskGrid->setName("domain_mask");
+    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
+    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
+    mCollocatedMaskGrid->setTransform(mXform);
+    mCollocatedMaskGrid->setName("domain_mask");
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -723,8 +757,8 @@ SmokeSolver::initialize2() {
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->setTransform(mXform);
     mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mDomainMaskGrid);
-    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
+    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
+    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
 
     mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
     mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
@@ -768,7 +802,7 @@ SmokeSolver::advectDensity(float const dt)
     advection.setLimiter(tools::Scheme::REVERT);
     advection.setSubSteps(1);
 
-    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, dt);
+    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mCollocatedMaskGrid, dt);
     mDensityNext->setName("density_next");
 
     // Debug
@@ -787,7 +821,7 @@ SmokeSolver::advectDensity(float const dt)
     //     //a.setIntegrator(tools::Scheme::RK4);
     //     for (int i=1; i<=240; ++i) {
     //         // density1 = a.advect<FloatGrid, BoolGrid, SamplerT>(*density0, *mask, 0.1f);
-    //         mDensityNext = a.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mDomainMaskGrid, 0.1f);
+    //         mDensityNext = a.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mCollocatedMaskGrid, 0.1f);
     //         std::ostringstream ostr;
     //         ostr << "debugAdvectMask" << "_" << i << ".vdb";
     //         std::cerr << "Writing " << ostr.str() << std::endl;
@@ -822,7 +856,7 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     advection.setLimiter(tools::Scheme::REVERT);
     advection.setSubSteps(1);
 
-    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mDomainMaskGrid, dt);
+    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mCollocatedMaskGrid, dt);
     // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
     mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setName("vel_next");
@@ -835,7 +869,7 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     openvdb::GridPtrVec grids;
     grids.push_back(mVNext);
     grids.push_back(mVCurr);
-    grids.push_back(mDomainMaskGrid);
+    grids.push_back(mCollocatedMaskGrid);
     file.write(grids);
     file.close();
 }
@@ -1036,7 +1070,7 @@ SmokeSolver::writeVDBs(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    grids.push_back(mDomainMaskGrid);
+    grids.push_back(mCollocatedMaskGrid);
 
     file.write(grids);
     file.close();
