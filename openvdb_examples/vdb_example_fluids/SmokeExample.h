@@ -57,6 +57,8 @@ private:
     void createInteriorPressure4();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
+    // going over mDirichletVelocity
+    void applyDirichletVelocity4(Vec3SGrid& vecGrid, int frame);
 
     void swap();
 
@@ -451,7 +453,7 @@ SmokeSolver::createInteriorPressure4()
     createDirichletVelocity4();
 
     updateEmitter();
-    applyDirichletVelocity(*mVCurr, -1);
+    applyDirichletVelocity4(*mVCurr, -1);
     writeVDBsDebug(-1);
     exit(0);
  }
@@ -567,7 +569,7 @@ SmokeSolver::createInteriorPressure4()
     mDirichletVelocity->setTransform(mXform);
     mDirichletVelocity->topologyUnion(*mFlags);
 
-    Vec3s const pushVelocity(1.f, 0.f, 0.f);
+    Vec3s const pushVelocity(3.f, 0.f, 0.f);
 
     auto flagsAcc = mFlags->getConstAccessor();
     auto drcAcc = mDirichletVelocity->getAccessor();
@@ -635,6 +637,41 @@ SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid, int frame)
     // tree::LeafManager<Vec3STree> lm(vecGrid.tree());
     // SmokeSolver::ApplyDirichletVelocityOp op(mDirichletVelocity);
     // lm.foreach(op);
+}
+
+
+void
+SmokeSolver::applyDirichletVelocity4(Vec3SGrid& vecGrid, int frame)
+{
+    std::cout << "apply dirichlet velocity begins" << std::endl;
+    auto vecAcc = vecGrid.getAccessor();
+    auto drcAcc = mDirichletVelocity->getConstAccessor();
+    bool print = true;
+    for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto ip1jk = ijk.offsetBy(1, 0, 0);
+        auto ijp1k = ijk.offsetBy(0, 1, 0);
+        auto ijkp1 = ijk.offsetBy(0, 0, 1);
+
+        Vec3s val = *iter;
+
+        vecAcc.setValue(ijk, *iter);
+        if (vecAcc.isValueOn(ip1jk)) {
+            auto oldVel = vecAcc.getValue(ip1jk);
+            auto newVel = Vec3s(val[0], oldVel[1], oldVel[2]);
+            vecAcc.setValue(ip1jk, newVel);
+        }
+        if (vecAcc.isValueOn(ijp1k)) {
+            auto oldVel = vecAcc.getValue(ijp1k);
+            auto newVel = Vec3s(oldVel[0], val[1], oldVel[2]);
+            vecAcc.setValue(ijp1k, newVel);
+        }
+        if (vecAcc.isValueOn(ijkp1)) {
+            auto oldVel = vecAcc.getValue(ijkp1);
+            auto newVel = Vec3s(oldVel[0], oldVel[1], val[2]);
+            vecAcc.setValue(ijkp1, newVel);
+        }
+    }
 }
 
 void
