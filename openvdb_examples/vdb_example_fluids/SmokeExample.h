@@ -146,6 +146,85 @@ private:
         float voxelSize;
     };
 
+    struct BoundaryOp4 {
+        BoundaryOp4(Vec3SGrid::ConstPtr dirichletVelocity,
+                   FloatGrid::ConstPtr dirichletPressure,
+                   float const voxelSize) :
+                   dirichletVelocity(dirichletVelocity),
+                   dirichletPressure(dirichletPressure),
+                   voxelSize(voxelSize) {}
+
+        void operator()(const openvdb::Coord& ijk,
+                        const openvdb::Coord& neighbor,
+                        double& source,
+                        double& diagonal) const
+        {
+            float const dirichletBC = 0.f;
+            bool isNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
+            auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
+            // bool isDirichletPressure = dirichletPressure->tree().isValueOn(neighbor);
+
+            // TODO: Double check this:
+            if (isNeumannPressure) {
+                double delta = 0.0;
+                // Neumann pressure from bbox
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    delta += vNgbr[0];
+                }
+                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    delta -= vNgbr[0];
+                }
+                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    delta += vNgbr[1];
+                }
+                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    delta -= vNgbr[1];
+                }
+                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    delta +=  vNgbr[2];
+                }
+                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    delta -=  vNgbr[2];
+                }
+                // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
+                // this by 0.5, because the gradient that's used is using
+                // central-differences in a collocated grid, instead of the staggered one.
+                source += delta / voxelSize;
+            } else {
+                // Dirichlet pressure
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+            }
+        }
+
+        Vec3SGrid::ConstPtr dirichletVelocity;
+        FloatGrid::ConstPtr dirichletPressure;
+        float voxelSize;
+    };
+
+
 
     // Apply Gravity Functor. Meant to be used with
     // foreach in LeafManager
@@ -481,37 +560,29 @@ SmokeSolver::createInteriorPressure4()
  void
  SmokeSolver::createDirichletVelocity4() {
     std::cout << "create dirichlet velocity 4" << std::endl;
-    BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
-    interiorMaskGrid->topologyUnion(*mCollocatedMaskGrid);
-    tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mCollocatedMaskGrid->setName("interior_mask_grid");
-
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     mDirichletVelocity->setName("dirichlet_velocity");
     mDirichletVelocity->setTransform(mXform);
-    mDirichletVelocity->setGridClass(GRID_STAGGERED);
-    mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->topologyUnion(*mCollocatedMaskGrid);
-    tools::dilateActiveValues(mDirichletVelocity->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mDirichletVelocity->topologyDifference(*interiorMaskGrid);
+    mDirichletVelocity->topologyUnion(*mFlags);
 
-    auto dirichletAcc = mDirichletVelocity->getAccessor();
+    Vec3s const pushVelocity(1.f, 0.f, 0.f);
+
+    auto flagsAcc = mFlags->getConstAccessor();
+    auto drcAcc = mDirichletVelocity->getAccessor();
+
     for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        if (ijk[0] >= mMax[0])
-        dirichletAcc.setValueOff(ijk);
+        auto ijk = iter.getCoord();
+        // Neumann voxel
+        if (flagsAcc.getValue(ijk) == 0) {
+            if (ijk[0] == 0) {
+                drcAcc.setValue(ijk, pushVelocity);
+            } else {
+                drcAcc.setValue(ijk, Vec3s::zero());
+            }
+        } else {
+            iter.setValueOff();
+        }
     }
-    std::ostringstream ostr;
-    ostr << "debug_dirichlet_velocity" << ".vdb";
-    std::cerr << "Writing " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mDirichletVelocity);
-    grids.push_back(mCollocatedMaskGrid);
-    file.write(grids);
-    file.close();
-
-
  }
 
 
@@ -1127,6 +1198,7 @@ SmokeSolver::writeVDBsDebug(int const frame) {
     openvdb::GridPtrVec grids;
     grids.push_back(mFlags);
     grids.push_back(mInteriorPressure);
+    grids.push_back(mDirichletVelocity);
 
     file.write(grids);
     file.close();
