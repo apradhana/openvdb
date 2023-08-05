@@ -51,6 +51,8 @@ private:
     void createDirichletVelocity();
     void createDirichletVelocity2();
     void createDirichletVelocity4();
+    void createVCurr4();
+    void createDensityCurr4();
     void createFlags4();
     void createInteriorPressure4();
 
@@ -375,6 +377,23 @@ SmokeSolver::createInteriorPressure4()
 }
 
  void
+ SmokeSolver::createDensityCurr4()
+ {
+ }
+
+
+ void
+ SmokeSolver::createVCurr4()
+ {
+    mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
+    mVCurr->setGridClass(GRID_STAGGERED);
+    mVCurr->denseFill(CoordBBox(mMin, mMaxStaggered), /* value = */ Vec3s(1.0, 0.f, 0.f), /* active = */ true);
+    mVCurr->setTransform(mXform);
+    mVCurr->setName("vel_curr");
+ }
+
+
+ void
  SmokeSolver::initialize4()
  {
     std::cout << "initialize 4" << std::endl;
@@ -409,8 +428,6 @@ SmokeSolver::createInteriorPressure4()
     mCollocatedMaskGrid->setTransform(mXform);
     mCollocatedMaskGrid->setName("domain_mask");
 
-    createFlags4();
-    createInteriorPressure4();
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -422,7 +439,13 @@ SmokeSolver::createInteriorPressure4()
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
+    createFlags4();
+    createInteriorPressure4();
+    createVCurr4();
+    createDensityCurr4();
     createDirichletVelocity4();
+
+
 
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
     mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
@@ -430,23 +453,6 @@ SmokeSolver::createInteriorPressure4()
     mDensityCurr->setName("density_curr");
     mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
     mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
-
-    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
-    mVCurr->setTransform(mXform);
-    mVCurr->setName("vel_curr");
-    mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->tree().voxelizeActiveTiles();
-
-    std::ostringstream ostr;
-    ostr << "debug_initialize2.vdb";
-    std::cerr << "\tWriting " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mVCurr);
-    grids.push_back(mDensityCurr);
-    file.write(grids);
-    file.close();
 
     updateEmitter();
     applyDirichletVelocity(*mVCurr, -1);
@@ -1199,6 +1205,7 @@ SmokeSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mFlags);
     grids.push_back(mInteriorPressure);
     grids.push_back(mDirichletVelocity);
+    grids.push_back(mVCurr);
 
     file.write(grids);
     file.close();
