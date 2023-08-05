@@ -38,6 +38,7 @@ private:
 
     void initialize();
     void initialize2();
+    void initialize3();
 
     void substep(float const dt, int const frame);
 
@@ -48,6 +49,7 @@ private:
 
     void createDirichletVelocity();
     void createDirichletVelocity2();
+    void createDirichletVelocity3();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
 
@@ -103,7 +105,7 @@ private:
                 // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
                 // this by 0.5, because the gradient that's used is using
                 // central-differences in a collocated grid, instead of the staggered one.
-                source += delta / voxelSize;
+                source += delta / voxelSize * 0.5;
             } else {
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -230,7 +232,7 @@ private:
 
 SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initialize();
+    initialize3();
 }
 
 
@@ -425,6 +427,82 @@ SmokeSolver::createDirichletVelocity2()
 
 
 void
+SmokeSolver::createDirichletVelocity3()
+{
+    BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
+    interiorMaskGrid->topologyUnion(*mDomainMaskGrid);
+    tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    mDomainMaskGrid->setName("interior_mask_grid");
+
+    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    mDirichletVelocity->setName("dirichlet_velocity");
+    mDirichletVelocity->setTransform(mXform);
+    mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    mDirichletVelocity->topologyUnion(*mDomainMaskGrid);
+    mDirichletVelocity->topologyDifference(*interiorMaskGrid);
+
+    auto dirichletAcc = mDirichletVelocity->getAccessor();
+    for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        if (ijk[0] >= mMax[0] - 1)
+        dirichletAcc.setValueOff(ijk);
+    }
+    std::ostringstream ostr;
+    ostr << "debug_dirichlet_velocity_THREE" << ".vdb";
+    std::cerr << "Writing " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mDirichletVelocity);
+    grids.push_back(mDomainMaskGrid);
+    file.write(grids);
+    file.close();
+
+    //mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
+    //mDirichletVelocity->setGridClass(GRID_STAGGERED);
+    //mDirichletVelocity->setTransform(mXform);
+    //mDirichletVelocity->setName("dirichlet_velocity");
+
+    //auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -mPadding);
+    //auto maxDVBck = Vec3s(14.f + mPadding, 6.f, 0.f);
+    //Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
+    //Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
+    //Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //bck->setGridClass(GRID_STAGGERED);
+    //bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
+    //auto maxDVFrt = Vec3s(14.f + mPadding, 6.f, 6.f + mPadding);
+    //Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
+    //Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
+    //Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //frt->setGridClass(GRID_STAGGERED);
+    //frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
+    //auto maxDVTop = Vec3s(14.f + mPadding, 6.f + mPadding, 6.f);
+    //Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
+    //Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
+    //Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //top->setGridClass(GRID_STAGGERED);
+    //top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //auto minDVBtm = Vec3s(2 * mVoxelSize, -mPadding, 0.f);
+    //auto maxDVBtm = Vec3s(14.f + mPadding, 0.f, 6.f);
+    //Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
+    //Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
+    //Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    //btm->setGridClass(GRID_STAGGERED);
+    //btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
+
+    //mDirichletVelocity->topologyUnion(*bck);
+    //mDirichletVelocity->topologyUnion(*frt);
+    //mDirichletVelocity->topologyUnion(*top);
+    //mDirichletVelocity->topologyUnion(*btm);
+}
+
+
+
+void
 SmokeSolver::initialize() {
     std::cout << "initialize " << std::endl;
     using BBox = math::BBox<Vec3s>;
@@ -539,6 +617,67 @@ SmokeSolver::initialize2() {
     applyDirichletVelocity(*mVCurr, -1);
 }
 
+
+void
+SmokeSolver::initialize3() {
+    std::cout << "initialize 3" << std::endl;
+    using BBox = math::BBox<Vec3s>;
+
+    mXform = math::Transform::createLinearTransform(mVoxelSize);
+    float const padding = 1.f * mVoxelSize;
+    mPadding = padding;
+    float const centerY = 3.f;
+    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    auto maxBBox = Vec3s(14.f, 6.f, 6.f);
+    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
+    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
+    mMin = minBBoxIntrCoord;
+    mMax = maxBBoxIntrCoord;
+    mMaxStaggered = mMax + Coord(1);
+    mDomainMaskGrid = BoolGrid::create(false /* background */);
+    mDomainMaskGrid->denseFill(CoordBBox(mMin, mMax), /* value = */ true, /* active = */ true);
+    mDomainMaskGrid->setTransform(mXform);
+    mDomainMaskGrid->setName("domain_mask");
+
+    // Create an emitter and an emitter velocity
+    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
+    auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
+    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
+    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
+    mEmitter = FloatGrid::create(/*bg = */0.f);
+    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
+    mEmitter->setTransform(mXform);
+    mEmitter->setName("emitter");
+
+    createDirichletVelocity3();
+
+    mDensityCurr = FloatGrid::create(/*bg = */0.f);
+    mDensityCurr->denseFill(CoordBBox(mMin, mMax), /* value = */ 0.f, /* active = */ true);
+    mDensityCurr->setTransform(mXform);
+    mDensityCurr->setName("density_curr");
+    mDensityCurr->topologyUnion(*mDomainMaskGrid);
+    mDensityCurr->topologyIntersection(*mDomainMaskGrid);
+
+    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
+    mVCurr->denseFill(CoordBBox(mMin, mMax), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
+    mVCurr->setTransform(mXform);
+    mVCurr->setName("vel_curr");
+    mVCurr->tree().voxelizeActiveTiles();
+
+    // std::ostringstream ostr;
+    // ostr << "debug_initialize3.vdb";
+    // std::cerr << "\tWriting " << ostr.str() << std::endl;
+    // openvdb::io::File file(ostr.str());
+    // openvdb::GridPtrVec grids;
+    // grids.push_back(mVCurr);
+    // grids.push_back(mDensityCurr);
+    // file.write(grids);
+    // file.close();
+
+    updateEmitter();
+    applyDirichletVelocity(*mVCurr, -1);
+}
+
 void
 SmokeSolver::addGravity(float const dt) {
     tree::LeafManager<Vec3STree> lm(mVCurr->tree());
@@ -552,7 +691,7 @@ SmokeSolver::advectDensity(float const dt)
 {
     std::cout << "Advect Density" << std::endl;
     using MaskGridType = BoolGrid;
-    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid, true /* Staggered */>;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid, false /* Staggered */>;
     using SamplerT = openvdb::tools::Sampler<1>;
 
     AdvT advection(*mVCurr);
@@ -606,8 +745,8 @@ void
 SmokeSolver::advectVelocity(float const dt, const int frame)
 {
     std::cout << "Advect Velocity" << std::endl;
-    using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid, true /* staggered */>;
-    using SamplerT = openvdb::tools::Sampler<1, true /* staggered */>;
+    using AdvT = openvdb::tools::VolumeAdvection<Vec3SGrid, false /* staggered */>;
+    using SamplerT = openvdb::tools::Sampler<1, false /* staggered */>;
 
     AdvT advection(*mVCurr);
     advection.setIntegrator(tools::Scheme::MAC);
@@ -616,7 +755,6 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
 
     mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mDomainMaskGrid, dt);
     // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
-    mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setName("vel_next");
 
     std::ostringstream ostr;
@@ -649,8 +787,10 @@ SmokeSolver::pressureProjection(bool print) {
     mDivBefore->setName("div_before");
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
+    // 5 pm
+    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     // 4 pm
-    domainMaskGrid->topologyIntersection(*mDensityCurr);
+    //domainMaskGrid->topologyIntersection(*mDensityCurr);
     // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     // domainMaskGrid->topologyDifference(*mDirichletPressure);
     // domainMaskGrid->topologyDifference(*mDirichletVelocity);
@@ -672,7 +812,7 @@ SmokeSolver::pressureProjection(bool print) {
     SmokeSolver::BoundaryOp bop(mDirichletVelocity, mDirichletPressure, mVoxelSize);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
+        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/false);
 
 
     std::cout << "Projection Success: " << state.success << "\n";
@@ -680,30 +820,41 @@ SmokeSolver::pressureProjection(bool print) {
     std::cout << "Relative error: " << state.relativeError << "\n";
     std::cout << "Absolute error: " << state.absoluteError << "\n";
 
-    // Note: need to dilate in order to do one-sided difference
-    // because we use a staggered grid velocity field.
+
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-
     fluidPressureGrid->setTransform(mXform);
-    mPressure = fluidPressureGrid->copy();
-    mPressure->setName("pressure");
+    Vec3SGrid::Ptr grad = tools::gradient(*fluidPressureGrid, *domainMaskGrid);
 
+    auto gradAcc = grad->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
-    // auto vNextAcc = mVNext->getAccessor();
-    auto pressureAcc = fluidPressureGrid->getAccessor();
-    // Note: I'm modifying vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        Vec3s gradijk;
-        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-
-        // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
-        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+        auto val = vCurrAcc.getValue(ijk) - 4.0 * gradAcc.getValue(ijk) * mVoxelSize * mVoxelSize;
         vCurrAcc.setValue(ijk, val);
     }
+
+    //// Note: need to dilate in order to do one-sided difference
+    //// because we use a staggered grid velocity field.
+
+    //mPressure = fluidPressureGrid->copy();
+    //mPressure->setName("pressure");
+
+    //auto vCurrAcc = mVCurr->getAccessor();
+    //// auto vNextAcc = mVNext->getAccessor();
+    //auto pressureAcc = fluidPressureGrid->getAccessor();
+    //// Note: I'm modifying vCurr
+    //for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+    //    math::Coord ijk = iter.getCoord();
+    //    Vec3s gradijk;
+    //    gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+    //    gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+    //    gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+
+    //    // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
+    //    auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+    //    vCurrAcc.setValue(ijk, val);
+    //}
 
     applyDirichletVelocity(*mVCurr, -2);
     mDivAfter = tools::divergence(*mVCurr);
