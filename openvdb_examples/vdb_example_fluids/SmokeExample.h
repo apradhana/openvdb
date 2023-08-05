@@ -230,6 +230,7 @@ private:
     FloatGrid::Ptr mPressure;
     BoolGrid::Ptr mCollocatedMaskGrid;
     Int32Grid::Ptr mFlags;
+    FloatGrid::Ptr mSphere;
 };
 
 
@@ -246,13 +247,15 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     mFlags->setTransform(mXform);
     mFlags->setName("flags");
     auto flagsAcc = mFlags->getAccessor();
+    auto sphereAcc = mSphere->getAccessor();
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         if (ijk[0] == mMin[0] /* left face */ ||
             ijk[1] == mMin[1] /* bottom face */ ||
             ijk[1] == mMax[1] /* top face */ ||
             ijk[2] == mMin[2] /* back face */ ||
-            ijk[2] == mMax[2] /* front face */) {
+            ijk[2] == mMax[2] /* front face */ ||
+            sphereAcc.getValue(ijk) < 0) {
             flagsAcc.setValue(ijk, 0); // Neumann
         }
         if (ijk[0] == mMax[0]) {
@@ -287,6 +290,17 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     mMin = minBBoxIntrCoord;
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
+
+
+    const float radius = 0.3 * maxBBox[1];
+    const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
+    mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
+
+
+
+
+
+
     std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
     mCollocatedMaskGrid = BoolGrid::create(false /* background */);
     mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
