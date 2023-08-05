@@ -500,23 +500,20 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ip1jk)) {
+        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijp1k)) {
+        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijkp1)) {
+        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             acc.setValue(ijk, newVal);
