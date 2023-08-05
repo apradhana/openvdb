@@ -52,6 +52,7 @@ private:
     void createDirichletVelocity2();
     void createDirichletVelocity4();
     void createFlags4();
+    void createInteriorPressure4();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
 
@@ -64,6 +65,9 @@ private:
     void advectVelocity(float const dt, int const frame);
 
     void writeVDBs(int const frame);
+
+    void writeVDBsDebug(int const frame);
+
     struct BoundaryOp {
         BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity,
                    FloatGrid::ConstPtr dirichletPressure,
@@ -231,6 +235,7 @@ private:
     BoolGrid::Ptr mCollocatedMaskGrid;
     Int32Grid::Ptr mFlags;
     FloatGrid::Ptr mSphere;
+    BoolGrid::Ptr mInteriorPressure;
 };
 
 
@@ -272,6 +277,24 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     file.close();
  }
 
+
+void
+SmokeSolver::createInteriorPressure4()
+{
+    mInteriorPressure = BoolGrid::create(false);
+    mInteriorPressure->denseFill(CoordBBox(mMin, mMax), /* value = */ true, /* active = */ true);
+    mInteriorPressure->setTransform(mXform);
+    mInteriorPressure->setName("interior_pressure");
+
+    auto flagsAcc = mFlags->getConstAccessor();
+    for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        if (flagsAcc.getValue(ijk) != 1) {
+            iter.setValueOff();
+        }
+    }
+}
+
  void
  SmokeSolver::initialize4()
  {
@@ -308,6 +331,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     mCollocatedMaskGrid->setName("domain_mask");
 
     createFlags4();
+    createInteriorPressure4();
 
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
@@ -347,6 +371,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 
     updateEmitter();
     applyDirichletVelocity(*mVCurr, -1);
+    writeVDBsDebug(-1);
     exit(0);
  }
 
@@ -1085,6 +1110,23 @@ SmokeSolver::writeVDBs(int const frame) {
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
     grids.push_back(mCollocatedMaskGrid);
+
+    file.write(grids);
+    file.close();
+}
+
+
+void
+SmokeSolver::writeVDBsDebug(int const frame) {
+    std::cout << "Write VDBs Debug" << std::endl;
+    std::ostringstream ss;
+    ss << "INIT_DEBUG" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    std::string fileName(ss.str());
+    io::File file(fileName.c_str());
+
+    openvdb::GridPtrVec grids;
+    grids.push_back(mFlags);
+    grids.push_back(mInteriorPressure);
 
     file.write(grids);
     file.close();
