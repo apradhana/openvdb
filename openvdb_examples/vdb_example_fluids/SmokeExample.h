@@ -151,12 +151,14 @@ private:
     };
 
     struct BoundaryOp4 {
-        BoundaryOp4(Vec3SGrid::ConstPtr dirichletVelocity,
-                   FloatGrid::ConstPtr dirichletPressure,
-                   float const voxelSize) :
-                   dirichletVelocity(dirichletVelocity),
-                   dirichletPressure(dirichletPressure),
-                   voxelSize(voxelSize) {}
+        BoundaryOp4(Int32Grid::ConstPtr flags,
+                    Vec3SGrid::ConstPtr dirichletVelocity,
+                    FloatGrid::ConstPtr dirichletPressure,
+                    float const voxelSize) :
+                    flags(flags),
+                    dirichletVelocity(dirichletVelocity),
+                    dirichletPressure(dirichletPressure),
+                    voxelSize(voxelSize) {}
 
         void operator()(const openvdb::Coord& ijk,
                         const openvdb::Coord& neighbor,
@@ -164,9 +166,9 @@ private:
                         double& diagonal) const
         {
             float const dirichletBC = 0.f;
-            bool isNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
+            int flag = flags->tree().getValue(neighbor);
+            bool isNeumannPressure = (flag == 0);
             auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
-            // bool isDirichletPressure = dirichletPressure->tree().isValueOn(neighbor);
 
             // TODO: Double check this:
             if (isNeumannPressure) {
@@ -195,34 +197,12 @@ private:
                 // central-differences in a collocated grid, instead of the staggered one.
                 source += delta / voxelSize;
             } else {
-                // Dirichlet pressure
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
+                diagonal -= 1.0;
+                source -= dirichletBC;
             }
         }
 
+        Int32Grid::ConstPtr flags;
         Vec3SGrid::ConstPtr dirichletVelocity;
         FloatGrid::ConstPtr dirichletPressure;
         float voxelSize;
@@ -421,13 +401,8 @@ SmokeSolver::createInteriorPressure4()
     mMaxStaggered = mMax + Coord(1);
 
     const float radius = 0.3 * maxBBox[1];
-    const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
+    const openvdb::Vec3f center(100 + 2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
     mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
-
-
-
-
-
 
     std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
     mCollocatedMaskGrid = BoolGrid::create(false /* background */);
@@ -454,6 +429,11 @@ SmokeSolver::createInteriorPressure4()
 
     updateEmitter();
     applyDirichletVelocity4(*mVCurr, -1);
+
+    addGravity(1.f/24.f);
+    applyDirichletVelocity4(*mVCurr, -1);
+    pressureProjection4(true);
+
     writeVDBsDebug(-1);
     exit(0);
  }
@@ -471,16 +451,8 @@ SmokeSolver::createInteriorPressure4()
     double const epsilon = math::Delta<ValueType>::value();
 
     mDivBefore = tools::divergence(*mVCurr);
-    // 4 pm
-    mDivBefore->topologyIntersection(*mDensityCurr);
+    mDivBefore->topologyIntersection(*mInteriorPressure);
     mDivBefore->setName("div_before");
-
-    MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    // 4 pm
-    domainMaskGrid->topologyIntersection(*mDensityCurr);
-    // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    // domainMaskGrid->topologyDifference(*mDirichletPressure);
-    // domainMaskGrid->topologyDifference(*mDirichletVelocity);
 
     float divBefore = 0.f;
     auto divBeforeAcc = mDivBefore->getAccessor();
@@ -496,10 +468,10 @@ SmokeSolver::createInteriorPressure4()
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    SmokeSolver::BoundaryOp bop(mDirichletVelocity, mDirichletPressure, mVoxelSize);
+    SmokeSolver::BoundaryOp4 bop(mFlags, mDirichletVelocity, mDirichletPressure, mVoxelSize);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
+        mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
 
 
     std::cout << "Projection Success: " << state.success << "\n";
@@ -517,25 +489,34 @@ SmokeSolver::createInteriorPressure4()
     mPressure->setName("pressure");
 
     auto vCurrAcc = mVCurr->getAccessor();
-    // auto vNextAcc = mVNext->getAccessor();
-    auto pressureAcc = fluidPressureGrid->getAccessor();
+    auto pressureAcc = fluidPressureGrid->getConstAccessor();
+    auto flagsAcc = mFlags->getConstAccessor(); 
     // Note: I'm modifying vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        Vec3s gradijk;
-        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+        auto ijk = iter.getCoord();
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
 
-        // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
-        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-        vCurrAcc.setValue(ijk, val);
+        // Only updates velocity if it is a face of fluid cell
+
+        if (flagsAcc.getValue(ijk) == 1 ||
+            flagsAcc.getValue(im1jk) == 1 || 
+            flagsAcc.getValue(ijm1k) == 1 || 
+            flagsAcc.getValue(ijkm1) == 1) {
+            Vec3s gradijk;
+            gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+            gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+            gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+            auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+            vCurrAcc.setValue(ijk, val);
+        }
     }
 
-    applyDirichletVelocity(*mVCurr, -2);
+    applyDirichletVelocity4(*mVCurr, -2);
     mDivAfter = tools::divergence(*mVCurr);
     mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(domainMaskGrid->tree());
+    (mDivAfter->tree()).topologyIntersection(mInteriorPressure->tree());
     float divAfter = 0.f;
     auto divAfterAcc = mDivAfter->getAccessor();
     for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
@@ -547,18 +528,18 @@ SmokeSolver::createInteriorPressure4()
     }
     std::cout << "\t== divergence after pp = " << divAfter << std::endl;
 
-    std::ostringstream ostr;
-    ostr << "debug_divergence.vdb";
-    std::cerr << "\tWriting " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mDivBefore);
-    grids.push_back(mDivAfter);
-    grids.push_back(mPressure);
-    grids.push_back(mVCurr);
-    grids.push_back(mDensityCurr);
-    file.write(grids);
-    file.close();
+    // std::ostringstream ostr;
+    // ostr << "debug_divergence.vdb";
+    // std::cerr << "\tWriting " << ostr.str() << std::endl;
+    // openvdb::io::File file(ostr.str());
+    // openvdb::GridPtrVec grids;
+    // grids.push_back(mDivBefore);
+    // grids.push_back(mDivAfter);
+    // grids.push_back(mPressure);
+    // grids.push_back(mVCurr);
+    // grids.push_back(mDensityCurr);
+    // file.write(grids);
+    // file.close();
  }
 
  void
@@ -1240,6 +1221,8 @@ SmokeSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mDirichletVelocity);
     grids.push_back(mVCurr);
     grids.push_back(mDensityCurr);
+    grids.push_back(mDivBefore);
+    grids.push_back(mPressure);
 
     file.write(grids);
     file.close();
