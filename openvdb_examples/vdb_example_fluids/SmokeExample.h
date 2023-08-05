@@ -379,6 +379,12 @@ SmokeSolver::createInteriorPressure4()
  void
  SmokeSolver::createDensityCurr4()
  {
+    mDensityCurr = FloatGrid::create(/*bg = */0.f);
+    mDensityCurr->setTransform(mXform);
+    mDensityCurr->setName("density_curr");
+    mDensityCurr->denseFill(CoordBBox(mMin, mMax), /* value = */ 0.f, /* active = */ true);
+    mDensityCurr->topologyUnion(*mFlags);
+    mDensityCurr->topologyIntersection(*mFlags);
  }
 
 
@@ -412,7 +418,6 @@ SmokeSolver::createInteriorPressure4()
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
 
-
     const float radius = 0.3 * maxBBox[1];
     const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
     mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
@@ -444,15 +449,6 @@ SmokeSolver::createInteriorPressure4()
     createVCurr4();
     createDensityCurr4();
     createDirichletVelocity4();
-
-
-
-    mDensityCurr = FloatGrid::create(/*bg = */0.f);
-    mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
-    mDensityCurr->setTransform(mXform);
-    mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
-    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
 
     updateEmitter();
     applyDirichletVelocity(*mVCurr, -1);
@@ -1206,6 +1202,7 @@ SmokeSolver::writeVDBsDebug(int const frame) {
     grids.push_back(mInteriorPressure);
     grids.push_back(mDirichletVelocity);
     grids.push_back(mVCurr);
+    grids.push_back(mDensityCurr);
 
     file.write(grids);
     file.close();
