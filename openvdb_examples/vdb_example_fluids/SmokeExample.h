@@ -53,9 +53,9 @@ private:
     void createDirichletVelocity();
     void createDirichletVelocity2();
     void createDirichletVelocity4();
-    void createVCurr4();
+    void createVCurr4(bool print);
     void createDensityCurr4();
-    void createFlags4();
+    void createFlags4(bool print);
     void createInteriorPressure4();
 
     void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
@@ -180,57 +180,57 @@ private:
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     delta += vNgbr[0];
 
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\tleft x face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\tleft x face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
                     delta -= vNgbr[0];
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\tright x face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\tright x face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
                     delta += vNgbr[1];
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\tbottom y face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\tbottom y face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
                     delta -= vNgbr[1];
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\ttop y face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\ttop y face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
                     delta +=  vNgbr[2];
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\tback z face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\tback z face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     delta -=  vNgbr[2];
-                    std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                              << "\tneumann = " << isNeumannPressure
-                              << "\tvngbr = " << vNgbr
-                              << "\tfront z face"
-                              << "\tdelta = " << delta
-                              << std::endl;
+                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
+                    //           << "\tneumann = " << isNeumannPressure
+                    //           << "\tvngbr = " << vNgbr
+                    //           << "\tfront z face"
+                    //           << "\tdelta = " << delta
+                    //           << std::endl;
                 }
                 // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
                 // this by 0.5, because the gradient that's used is using
@@ -379,7 +379,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 }
 
  void
- SmokeSolver::createFlags4()
+ SmokeSolver::createFlags4(bool print)
  {
     mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
     mFlags->denseFill(CoordBBox(mMin, mMax), /* value = */ 1, /* active = */ true);
@@ -401,7 +401,9 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
             sphereAcc.getValue(ijk) < 0) {
             flagsAcc.setValue(ijk, 0); // Neumann
         }
-        std::cout << "flags" << ijk << " = " << flagsAcc.getValue(ijk) << std::endl;
+        if (print) {
+            std::cout << "flags" << ijk << " = " << flagsAcc.getValue(ijk) << std::endl;
+        }
     }
     std::ostringstream ostr;
     ostr << "flags.vdb";
@@ -430,11 +432,11 @@ SmokeSolver::createInteriorPressure4()
         }
     }
 
-    std::cout << "\ninterior pressure" << std::endl;
-    auto ipAcc = mInteriorPressure->getAccessor();
-    for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
-        std::cout << "int pres ijk = " << iter.getCoord() << std::endl;
-    }
+    // std::cout << "\ninterior pressure" << std::endl;
+    // auto ipAcc = mInteriorPressure->getAccessor();
+    // for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
+    //     std::cout << "int pres ijk = " << iter.getCoord() << std::endl;
+    // }
 }
 
  void
@@ -450,7 +452,7 @@ SmokeSolver::createInteriorPressure4()
 
 
  void
- SmokeSolver::createVCurr4()
+ SmokeSolver::createVCurr4(bool print)
  {
     mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
     mVCurr->setGridClass(GRID_STAGGERED);
@@ -460,11 +462,13 @@ SmokeSolver::createInteriorPressure4()
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
 
-    std::cout << "\ncreate vcurr4 velocity" << std::endl;
-    auto velAcc = mVCurr->getAccessor();
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        std::cout << "vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
+    if (print) {
+        std::cout << "\ncreate vcurr4 velocity" << std::endl;
+        auto velAcc = mVCurr->getAccessor();
+        for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            std::cout << "vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
+        }
     }
 
  }
@@ -481,9 +485,10 @@ SmokeSolver::createInteriorPressure4()
     mPadding = padding;
     float const centerY = 3.f;
     auto minBBox = Vec3s(0.f, 0.f, 0.f);
+    // works:
     auto maxBBox = Vec3s(3 * mVoxelSize, 3 * mVoxelSize, 3 * mVoxelSize);
     //auto maxBBox = Vec3s(1.f + mVoxelSize, 0.4f + mVoxelSize, 0.4f + mVoxelSize);
-    //auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
+    // auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
     mMin = minBBoxIntrCoord;
@@ -510,9 +515,9 @@ SmokeSolver::createInteriorPressure4()
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
-    createFlags4();
+    createFlags4(false);
     createInteriorPressure4();
-    createVCurr4();
+    createVCurr4(false);
     // createDensityCurr4();
     createDirichletVelocity4();
 
@@ -521,7 +526,7 @@ SmokeSolver::createInteriorPressure4()
 
     addGravity(1.f/24.f);
     applyDirichletVelocity4(*mVCurr, -1);
-    pressureProjection4(true);
+    pressureProjection4(false);
 
     writeVDBsDebug(-1);
     exit(0);
@@ -535,14 +540,6 @@ SmokeSolver::createInteriorPressure4()
     using ValueType = TreeType::ValueType;
     using MaskGridType = BoolGrid;
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
-
-    std::cout << "\nvelocity BEFORE pressure projection" << std::endl;
-    auto velAcc = mVCurr->getAccessor();
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        std::cout << "vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
-    }
 
 
     ValueType const zero = zeroVal<ValueType>();
@@ -570,11 +567,13 @@ SmokeSolver::createInteriorPressure4()
         Vec3s vup(vCurrAcc.getValue(ip1jk)[0],
                   vCurrAcc.getValue(ijp1k)[1],
                   vCurrAcc.getValue(ijkp1)[2]);
-        std::cout << "div before " << ijk << " = " << val
-            << " vdown = " << vdown
-            << " vup = " << vup
-            << "flags[ijk]" << flagAcc.getValue(ijk)
-            << std::endl;
+                  if (print) {
+                    std::cout << "div before " << ijk << " = " << val
+                              << " vdown = " << vdown
+                              << " vup = " << vup
+                              << "flags[ijk]" << flagAcc.getValue(ijk)
+                              << std::endl;
+                  }
 
         if (std::abs(val) > std::abs(divBefore)) {
             divBefore = val;
@@ -612,7 +611,7 @@ SmokeSolver::createInteriorPressure4()
 
     for (auto iter = mPressure->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        std::cout << "p[" << ijk << "] = " << pressureAcc.getValue(ijk) << std::endl;
+        std::cout << "p" << ijk << " = " << pressureAcc.getValue(ijk) << std::endl;
     }
 
 
