@@ -170,6 +170,7 @@ private:
             float const dirichletBC = 0.f;
             int flag = flags->tree().getValue(neighbor);
             bool isNeumannPressure = (flag == 0);
+            bool isDirichletPressure = (flag == 4);
             auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
 
             // TODO: Double check this:
@@ -198,7 +199,7 @@ private:
                 // this by 0.5, because the gradient that's used is using
                 // central-differences in a collocated grid, instead of the staggered one.
                 source += delta / voxelSize;
-            } else {
+            } else if (isDirichletPressure) {
                 std::cout << "dirichlet" << std::endl;
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
@@ -240,19 +241,25 @@ private:
     // foreach in LeafManager
     struct ApplyGravityOp
     {
-        ApplyGravityOp(float const dt, Vec3s const gravity) : dt(dt), gravity(gravity) {}
+        ApplyGravityOp(float const dt, Vec3s const gravity, Int32Grid::Ptr flags) :
+            dt(dt), gravity(gravity), flags(flags) {}
 
         template <typename T>
         void operator()(T &leaf, size_t) const
         {
+            auto flagsAcc = flags->getConstAccessor(); 
             for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
+                auto ijk = iter.getCoord();
                 Vec3s newVal = *iter  + dt * gravity;
-                iter.setValue(newVal);
+                //if (flagsAcc.getValue(ijk) == 1) {
+                    iter.setValue(newVal);
+                //}
             }
         }
 
         Vec3s const gravity;
         float const dt;
+        Int32Grid::Ptr flags;
     };// ApplyGravityOp
 
 
@@ -344,6 +351,10 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     auto sphereAcc = mSphere->getAccessor();
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
+
+        if (/* ijk[0] == mMax[0] */ ijk[1] == mMax[1]) {
+            flagsAcc.setValue(ijk, 4); // Dirichlet
+        }
         if (ijk[0] == mMin[0] /* left face */ ||
             ijk[1] == mMin[1] /* bottom face */ ||
             /*ijk[1] == mMax[1]*/ /* top face */ ijk[0] == mMax[0]||
@@ -352,9 +363,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
             sphereAcc.getValue(ijk) < 0) {
             flagsAcc.setValue(ijk, 0); // Neumann
         }
-        if (/* ijk[0] == mMax[0] */ ijk[1] == mMax[1]) {
-            flagsAcc.setValue(ijk, 4); // Dirichlet
-        }
+        std::cout << "flags" << ijk << " = " << flagsAcc.getValue(ijk) << std::endl;
     }
     std::ostringstream ostr;
     ostr << "flags.vdb";
@@ -382,6 +391,12 @@ SmokeSolver::createInteriorPressure4()
             iter.setValueOff();
         }
     }
+
+    std::cout << "\ninterior pressure" << std::endl;
+    auto ipAcc = mInteriorPressure->getAccessor();
+    for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
+        std::cout << "int pres ijk = " << iter.getCoord() << std::endl;
+    }
 }
 
  void
@@ -401,9 +416,19 @@ SmokeSolver::createInteriorPressure4()
  {
     mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
     mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->denseFill(CoordBBox(mMin, mMaxStaggered), /* value = */ Vec3s(1.0, 0.f, 0.f), /* active = */ true);
+    // mVCurr->denseFill(CoordBBox(mMin, mMaxStaggered), /* value = */ Vec3s(1.0, 0.f, 0.f), /* active = */ true);
+    // 5.15 am
+    mVCurr->denseFill(CoordBBox(mMin, mMax), /* value = */ Vec3s(0.0, 0.f, 0.f), /* active = */ true);
     mVCurr->setTransform(mXform);
     mVCurr->setName("vel_curr");
+
+    // std::cout << "\nvelocity" << std::endl;
+    // auto velAcc = mVCurr->getAccessor();
+    // for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+    //     auto ijk = iter.getCoord();
+    //     std::cout << "vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
+    // }
+
  }
 
 
@@ -437,7 +462,6 @@ SmokeSolver::createInteriorPressure4()
     mCollocatedMaskGrid->setTransform(mXform);
     mCollocatedMaskGrid->setName("domain_mask");
 
-
     // Create an emitter and an emitter velocity
     auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
     auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
@@ -451,10 +475,10 @@ SmokeSolver::createInteriorPressure4()
     createFlags4();
     createInteriorPressure4();
     createVCurr4();
-    createDensityCurr4();
+    // createDensityCurr4();
     createDirichletVelocity4();
 
-    updateEmitter();
+    // updateEmitter();
     applyDirichletVelocity4(*mVCurr, -1);
 
     addGravity(1.f/24.f);
@@ -483,13 +507,33 @@ SmokeSolver::createInteriorPressure4()
 
     float divBefore = 0.f;
     auto divBeforeAcc = mDivBefore->getAccessor();
-    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
+    auto flagAcc = mFlags->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
+    //for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
+    for (int kk = 1; kk <= 2; ++kk)
+    for (int jj = 1; jj <= 2; ++jj)
+    for (int ii = 1; ii <= 2; ++ii) {
+        math::Coord ijk(ii, jj, kk); //= iter.getCoord();
+        auto ip1jk = ijk.offsetBy(1, 0, 0);
+        auto ijp1k = ijk.offsetBy(0, 1, 0);
+        auto ijkp1 = ijk.offsetBy(0, 0, 1);
         auto val = divBeforeAcc.getValue(ijk);
+
+        Vec3s vdown(vCurrAcc.getValue(ijk));
+        Vec3s vup(vCurrAcc.getValue(ip1jk)[0],
+                  vCurrAcc.getValue(ijp1k)[1],
+                  vCurrAcc.getValue(ijkp1)[2]);
+        std::cout << "div before " << ijk << " = " << val
+            << " vdown = " << vdown
+            << " vup = " << vup
+            << "flags[ijk]" << flagAcc.getValue(ijk)
+            << std::endl;
+
         if (std::abs(val) > std::abs(divBefore)) {
             divBefore = val;
         }
     }
+
     std::cout << "\t== divergence before pp = " << divBefore << std::endl;
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
@@ -515,7 +559,6 @@ SmokeSolver::createInteriorPressure4()
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
 
-    auto vCurrAcc = mVCurr->getAccessor();
     auto pressureAcc = fluidPressureGrid->getConstAccessor();
     auto flagsAcc = mFlags->getConstAccessor();
 
@@ -584,10 +627,12 @@ SmokeSolver::createInteriorPressure4()
  void
  SmokeSolver::createDirichletVelocity4() {
     std::cout << "create dirichlet velocity 4" << std::endl;
+
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
     mDirichletVelocity->setName("dirichlet_velocity");
     mDirichletVelocity->setTransform(mXform);
-    mDirichletVelocity->topologyUnion(*mFlags);
+    mDirichletVelocity->topologyUnion(*mVCurr);
+    mDirichletVelocity->setGridClass(GRID_STAGGERED);
 
     Vec3s const pushVelocity(0.f, 0.f, 0.f);
 
@@ -596,17 +641,55 @@ SmokeSolver::createInteriorPressure4()
 
     for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        // Neumann voxel
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
+
+        Vec3s val;
+
         if (flagsAcc.getValue(ijk) == 0) {
-            if (ijk[0] == 0) {
-                drcAcc.setValue(ijk, pushVelocity);
-            } else {
-                drcAcc.setValue(ijk, Vec3s::zero());
-            }
+            // is a full Neumann
+            val = pushVelocity;
         } else {
-            iter.setValueOff();
+            if(flagsAcc.getValue(im1jk) == 0) {
+                // neighboring a Neumann pressure in the x face
+                val[0] = pushVelocity[0];
+            }
+            if(flagsAcc.getValue(ijm1k) == 0) {
+                // neighboring a Neumann pressure in the y face
+                val[1] = pushVelocity[1];
+            }
+            if(flagsAcc.getValue(ijkm1) == 0) {
+                // neighboring a Neumann pressure in the z face
+                val[2] = pushVelocity[2];
+            }
         }
+        drcAcc.setValue(ijk, val);
     }
+
+    // mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
+    // mDirichletVelocity->setName("dirichlet_velocity");
+    // mDirichletVelocity->setTransform(mXform);
+    // mDirichletVelocity->topologyUnion(*mFlags);
+
+    // Vec3s const pushVelocity(0.f, 0.f, 0.f);
+
+    // auto flagsAcc = mFlags->getConstAccessor();
+    // auto drcAcc = mDirichletVelocity->getAccessor();
+
+    // for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+    //     auto ijk = iter.getCoord();
+    //     // Neumann voxel
+    //     if (flagsAcc.getValue(ijk) == 0) {
+    //         if (ijk[0] == 0) {
+    //             drcAcc.setValue(ijk, pushVelocity);
+    //         } else {
+    //             drcAcc.setValue(ijk, Vec3s::zero());
+    //         }
+    //     } else {
+    //         iter.setValueOff();
+    //     }
+    // }
  }
 
 
@@ -663,36 +746,78 @@ SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid, int frame)
 void
 SmokeSolver::applyDirichletVelocity4(Vec3SGrid& vecGrid, int frame)
 {
-    // First attempt
     std::cout << "apply dirichlet velocity begins" << std::endl;
     auto vecAcc = vecGrid.getAccessor();
     auto drcAcc = mDirichletVelocity->getConstAccessor();
+    auto flagsAcc = mFlags->getConstAccessor();
     bool print = true;
-    for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        auto ip1jk = ijk.offsetBy(1, 0, 0);
-        auto ijp1k = ijk.offsetBy(0, 1, 0);
-        auto ijkp1 = ijk.offsetBy(0, 0, 1);
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
 
         Vec3s val = *iter;
 
-        vecAcc.setValue(ijk, *iter);
-        if (vecAcc.isValueOn(ip1jk)) {
-            auto oldVel = vecAcc.getValue(ip1jk);
-            auto newVel = Vec3s(val[0], oldVel[1], oldVel[2]);
-            vecAcc.setValue(ip1jk, newVel);
+        if (flagsAcc.getValue(ijk) == 0) {
+            // is a full Neumann
+            val = drcAcc.getValue(ijk);
+        } else {
+            if(flagsAcc.getValue(im1jk) == 0) {
+                // neighboring a Neumann pressure in the x face
+                // not looking at getValue(im1jk),
+                // because that's how we set dirichlet velocity being staggered
+                val[0] = drcAcc.getValue(ijk)[0];
+            }
+            if(flagsAcc.getValue(ijm1k) == 0) {
+                // neighboring a Neumann pressure in the y face
+                val[1] = drcAcc.getValue(ijk)[1];
+            }
+            if(flagsAcc.getValue(ijkm1) == 0) {
+                // neighboring a Neumann pressure in the z face
+                val[2] = drcAcc.getValue(ijk)[2];
+            }
         }
-        if (vecAcc.isValueOn(ijp1k)) {
-            auto oldVel = vecAcc.getValue(ijp1k);
-            auto newVel = Vec3s(oldVel[0], val[1], oldVel[2]);
-            vecAcc.setValue(ijp1k, newVel);
-        }
-        if (vecAcc.isValueOn(ijkp1)) {
-            auto oldVel = vecAcc.getValue(ijkp1);
-            auto newVel = Vec3s(oldVel[0], oldVel[1], val[2]);
-            vecAcc.setValue(ijkp1, newVel);
-        }
+        iter.setValue(val);
     }
+
+    std::cout << "\nafter boundary correction" << std::endl;
+    auto velAcc = mVCurr->getAccessor();
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        std::cout << "bdry corrected vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
+    }
+    
+
+    // // First attempt
+    // auto vecAcc = vecGrid.getAccessor();
+    // auto drcAcc = mDirichletVelocity->getConstAccessor();
+    // bool print = true;
+    // for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
+    //     auto ijk = iter.getCoord();
+    //     auto ip1jk = ijk.offsetBy(1, 0, 0);
+    //     auto ijp1k = ijk.offsetBy(0, 1, 0);
+    //     auto ijkp1 = ijk.offsetBy(0, 0, 1);
+
+    //     Vec3s val = *iter;
+
+    //     vecAcc.setValue(ijk, *iter);
+    //     if (vecAcc.isValueOn(ip1jk)) {
+    //         auto oldVel = vecAcc.getValue(ip1jk);
+    //         auto newVel = Vec3s(val[0], oldVel[1], oldVel[2]);
+    //         vecAcc.setValue(ip1jk, newVel);
+    //     }
+    //     if (vecAcc.isValueOn(ijp1k)) {
+    //         auto oldVel = vecAcc.getValue(ijp1k);
+    //         auto newVel = Vec3s(oldVel[0], val[1], oldVel[2]);
+    //         vecAcc.setValue(ijp1k, newVel);
+    //     }
+    //     if (vecAcc.isValueOn(ijkp1)) {
+    //         auto oldVel = vecAcc.getValue(ijkp1);
+    //         auto newVel = Vec3s(oldVel[0], oldVel[1], val[2]);
+    //         vecAcc.setValue(ijkp1, newVel);
+    //     }
+    // }
 
 
     // std::cout << "apply dirichlet velocity begins" << std::endl;
@@ -995,7 +1120,7 @@ SmokeSolver::initialize2() {
 void
 SmokeSolver::addGravity(float const dt) {
     tree::LeafManager<Vec3STree> lm(mVCurr->tree());
-    SmokeSolver::ApplyGravityOp op(dt, mGravity);
+    SmokeSolver::ApplyGravityOp op(dt, mGravity, mFlags);
     lm.foreach(op);
 }
 
