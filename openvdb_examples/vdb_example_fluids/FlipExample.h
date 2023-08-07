@@ -64,6 +64,7 @@ private:
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
     void extrapolateToCollider(Vec3SGrid& vecGrid);
+    void extrapolateToCollider3(Vec3SGrid& vecGrid);
     void extrapolateToCollider2(Vec3SGrid& vecGrid);
     void velocityBCCorrectionDebug(Vec3SGrid& vecGrid);
 
@@ -254,18 +255,20 @@ private:
 
 
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
+    Vec3s mGravity = Vec3s(0.f, -9.8f/9.f, 0.f);
     int mPointsPerVoxel = 8;
     math::Transform::Ptr mXform;
 
     points::PointDataGrid::Ptr mPoints;
     FloatGrid::Ptr mCollider;
-    FloatGrid::Ptr mDivBefore;
-    FloatGrid::Ptr mDivAfter;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
     Vec3SGrid::Ptr mVDiff; // For FlIP (Fluid Implicit Particle)
+
+    // For verbose/debugging output
     FloatGrid::Ptr mPressure;
+    FloatGrid::Ptr mDivBefore;
+    FloatGrid::Ptr mDivAfter;
 };
 
 
@@ -473,10 +476,84 @@ FlipSolver::computeFlipVelocity(float const dt) {
 
 
 void
-FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
-    // tools::dilateActiveValues(vecGrid.tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+FlipSolver::extrapolateToCollider3(Vec3SGrid& vecGrid) {
     auto velAcc = vecGrid.getAccessor();
     auto cldrAcc = mCollider->getAccessor();
+    vecGrid.topologyDifference(*mCollider);
+    
+    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        math::Coord im2jk = ijk.offsetBy(-2, 0, 0);
+        math::Coord ijm2k = ijk.offsetBy(0, -2, 0);
+        math::Coord ijkm2 = ijk.offsetBy(0, 0, -2);
+        math::Coord ip1jk = ijk.offsetBy(2, 0, 0);
+        math::Coord ijp1k = ijk.offsetBy(0, 2, 0);
+        math::Coord ijkp1 = ijk.offsetBy(0, 0, 2);
+        math::Coord ip2jk = ijk.offsetBy(3, 0, 0);
+        math::Coord ijp2k = ijk.offsetBy(0, 3, 0);
+        math::Coord ijkp2 = ijk.offsetBy(0, 0, 3);
+
+
+        if (cldrAcc.isValueOn(im1jk) && cldrAcc.isValueOn(im2jk)) {
+            auto val = velAcc.getValue(ijk);
+            auto newval = velAcc.getValue(im1jk);
+            newval[1] = val[1];
+            newval[2] = val[2];
+            velAcc.setValue(im1jk, newval);
+        }
+        if (cldrAcc.isValueOn(ijm1k) && cldrAcc.isValueOn(ijm2k)) {
+            auto val = velAcc.getValue(ijk);
+            auto newval = velAcc.getValue(ijm1k);
+            newval[0] = val[0];
+            newval[2] = val[2];
+            velAcc.setValue(ijm1k, newval);
+        }
+        if (cldrAcc.isValueOn(ijkm1) && cldrAcc.isValueOn(ijkm2)) {
+            auto val = velAcc.getValue(ijk);
+            auto newval = velAcc.getValue(ijkm1);
+            newval[0] = val[0];
+            newval[1] = val[1];
+            velAcc.setValue(ijkm1, newval);
+        }
+        if (cldrAcc.isValueOn(ip1jk) && cldrAcc.isValueOn(ip2jk)) {
+            auto val = velAcc.getValue(im1jk);
+            auto newval = velAcc.getValue(ip1jk);
+            newval[1] = val[1];
+            newval[2] = val[2];
+            velAcc.setValue(ip1jk, newval);
+        }
+        if (cldrAcc.isValueOn(ijp1k) && cldrAcc.isValueOn(ijp2k)) {
+            auto val = velAcc.getValue(ijm1k);
+            auto newval = velAcc.getValue(ijp1k);
+            newval[0] = val[0];
+            newval[2] = val[2];
+            velAcc.setValue(ijp1k, newval);
+        }
+        if (cldrAcc.isValueOn(ijk) && cldrAcc.isValueOn(ijkp1)) {
+            auto val = velAcc.getValue(ijkm1);
+            auto newval = velAcc.getValue(ijkm1);
+            newval[0] = val[0];
+            newval[1] = val[1];
+            velAcc.setValue(ijkp1, newval);
+        }
+    }
+}
+
+
+void
+FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
+    // tools::dilateActiveValues(vecGrid.tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    vecGrid.topologyDifference(*mCollider);
+    mCollider->topologyDifference(vecGrid);
+    BoolGrid::Ptr maskGrid = BoolGrid::create(false);
+    maskGrid->topologyUnion(vecGrid);
+    auto velAcc = vecGrid.getAccessor();
+    auto cldrAcc = mCollider->getAccessor();
+    auto boolAcc = maskGrid->getAccessor();
+    
 
     for (auto iter = mCollider->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -490,44 +567,69 @@ FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
         math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
         math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        auto val = velAcc.getValue(ijk);
+        // auto val = velAcc.getValue(ijk);
+        // if (velAcc.isValueOn(ip1jk)) {
+        //     auto nbgVal = velAcc.getValue(ip1jk);
+        //     val[1] = nbgVal[1];
+        //     val[2] = nbgVal[2];
+        // } else if (velAcc.isValueOn(im1jk)) {
+        //     auto nbgVal = velAcc.getValue(im1jk);
+        //     val[1] = nbgVal[1];
+        //     val[2] = nbgVal[2];
+        // }
 
-        if (velAcc.isValueOn(ip1jk)) {
+        // if (velAcc.isValueOn(ijm1k)) {
+        //     auto nbgVal = velAcc.getValue(ijm1k);
+        //     val[0] = nbgVal[0];
+        //     val[2] = nbgVal[2];
+        // } else if (velAcc.isValueOn(ijp1k)) {
+        //     auto nbgVal = velAcc.getValue(ijp1k);
+        //     val[0] = nbgVal[0];
+        //     val[2] = nbgVal[2];
+        // }
+
+        // if (velAcc.isValueOn(ijkm1)) {
+        //     auto nbgVal = velAcc.getValue(ijkm1);
+        //     val[0] = nbgVal[0];
+        //     val[1] = nbgVal[1];
+        // } else if (velAcc.isValueOn(ijp1k)) {
+        //     auto nbgVal = velAcc.getValue(ijkp1);
+        //     val[0] = nbgVal[0];
+        //     val[1] = nbgVal[1];
+        // }
+        // velAcc.setValue(ijk, val);
+        // this kinda works
+        auto val = velAcc.getValue(ijk);
+        if (boolAcc.isValueOn(ip1jk)) {
             auto nbgVal = velAcc.getValue(ip1jk);
             val[1] = nbgVal[1];
             val[2] = nbgVal[2];
-        } else if (velAcc.isValueOn(im1jk)) {
+        }
+        if (boolAcc.isValueOn(im1jk)) {
             auto nbgVal = velAcc.getValue(im1jk);
             val[1] = nbgVal[1];
             val[2] = nbgVal[2];
         }
-
-        if (velAcc.isValueOn(ijm1k)) {
+        if (boolAcc.isValueOn(ijm1k)) {
             auto nbgVal = velAcc.getValue(ijm1k);
             val[0] = nbgVal[0];
             val[2] = nbgVal[2];
-        } else if (velAcc.isValueOn(ijp1k)) {
+        }
+        if (boolAcc.isValueOn(ijp1k)) {
             auto nbgVal = velAcc.getValue(ijp1k);
             val[0] = nbgVal[0];
             val[2] = nbgVal[2];
         }
-
-        if (velAcc.isValueOn(ijkm1)) {
+        if (boolAcc.isValueOn(ijkm1)) {
             auto nbgVal = velAcc.getValue(ijkm1);
             val[0] = nbgVal[0];
             val[1] = nbgVal[1];
-        } else if (velAcc.isValueOn(ijp1k)) {
+        }
+        if (boolAcc.isValueOn(ijkp1)) {
             auto nbgVal = velAcc.getValue(ijkp1);
             val[0] = nbgVal[0];
             val[1] = nbgVal[1];
         }
-        velAcc.setValue(ijk, val);
-
-        // if (velAcc.isValueOn(im1jk)) {
-        //     auto val = velAcc.getValue(im1jk);
-        //     auto oldVal = velAcc.getValue(ijk);
-        //     velAcc.setValue(ijk, Vec3s(val[0], val[1], val[2]));
-        // }
 
         // if (velAcc.isValueOn(ijp1k)) {
         //     auto val = velAcc.getValue(ijp1k);
@@ -547,18 +649,24 @@ FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
         //     auto val = velAcc.getValue(ijkm1);
         //     velAcc.setValue(ijk, val);
         // }
+        velAcc.setValue(ijk, val);
     }
 }
 
 
 void
 FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
+    vecGrid.topologyDifference(*mCollider);
     BoolGrid::Ptr narrowBand = BoolGrid::create(false);
     (narrowBand->tree()).topologyUnion(vecGrid.tree());
     tools::dilateActiveValues(narrowBand->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     narrowBand->topologyDifference(vecGrid);
+    Vec3SGrid::Ptr copyVel = vecGrid.deepCopy();
+    // trial monday
+    mCollider->topologyDifference(vecGrid);
 
     auto velAcc = vecGrid.getAccessor();
+    auto copyAcc = copyVel->getAccessor();
     auto cldrAcc = mCollider->getConstAccessor();
     auto nbAcc = narrowBand->getConstAccessor();
 
@@ -574,30 +682,38 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
         auto val = velAcc.getValue(ijk);
 
         if (nbAcc.isValueOn(im1jk)) {
-            float v[4] = {velAcc.getValue(ijm1k)[0],
-                          velAcc.getValue(ijp1k)[0],
-                          velAcc.getValue(ijkm1)[0],
-                          velAcc.getValue(ijkp1)[0]};
-            float w[4] = {static_cast<float>(velAcc.isValueOn(ijm1k)),
-                          static_cast<float>(velAcc.isValueOn(ijp1k)), 
-                          static_cast<float>(velAcc.isValueOn(ijkm1)), 
-                          static_cast<float>(velAcc.isValueOn(ijkp1))};
+            float v[4] = {copyAcc.getValue(ijm1k)[0],
+                          copyAcc.getValue(ijp1k)[0],
+                          copyAcc.getValue(ijkm1)[0],
+                          copyAcc.getValue(ijkp1)[0]};
+            float w[4] = {static_cast<float>(copyAcc.isValueOn(ijm1k)),
+                          static_cast<float>(copyAcc.isValueOn(ijp1k)), 
+                          static_cast<float>(copyAcc.isValueOn(ijkm1)), 
+                          static_cast<float>(copyAcc.isValueOn(ijkp1))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[0] = extrapolate;
         }
 
+
+        // float wy[4] = {static_cast<float>(velAcc.isValueOn(im1jk)),
+        //               static_cast<float>(velAcc.isValueOn(ip1jk)), 
+        //               static_cast<float>(velAcc.isValueOn(ijkm1)), 
+        //               static_cast<float>(velAcc.isValueOn(ijkp1))};
+        // float wysum = (wy[0] + wy[1] + wy[2] + wy[3]);
+
+        // if (wysum >= 0.5 && wysum <= 1.5) {
         if (nbAcc.isValueOn(ijm1k)) {
-            float v[4] = {velAcc.getValue(im1jk)[1],
-                          velAcc.getValue(ip1jk)[1],
-                          velAcc.getValue(ijkm1)[1],
-                          velAcc.getValue(ijkp1)[1]};
-            float w[4] = {static_cast<float>(velAcc.isValueOn(im1jk)),
-                          static_cast<float>(velAcc.isValueOn(ip1jk)), 
-                          static_cast<float>(velAcc.isValueOn(ijkm1)), 
-                          static_cast<float>(velAcc.isValueOn(ijkp1))};
+            float v[4] = {copyAcc.getValue(im1jk)[1],
+                          copyAcc.getValue(ip1jk)[1],
+                          copyAcc.getValue(ijkm1)[1],
+                          copyAcc.getValue(ijkp1)[1]};
+            float w[4] = {static_cast<float>(copyAcc.isValueOn(im1jk)),
+                          static_cast<float>(copyAcc.isValueOn(ip1jk)), 
+                          static_cast<float>(copyAcc.isValueOn(ijkm1)), 
+                          static_cast<float>(copyAcc.isValueOn(ijkp1))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
-            float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
+            float extrapolate = normalize * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[1] = extrapolate;
             // if (normalize < 1.f) {
             //     std::cout << "warning! ijk = " << ijk << "1./normalize = " << 1.f/normalize << std::endl;
@@ -605,14 +721,14 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
         }
 
         if (nbAcc.isValueOn(ijkm1)) {
-            float v[4] = {velAcc.getValue(im1jk)[2],
-                          velAcc.getValue(ip1jk)[2],
-                          velAcc.getValue(ijm1k)[2],
-                          velAcc.getValue(ijp1k)[2]};
-            float w[4] = {static_cast<float>(velAcc.isValueOn(im1jk)),
-                          static_cast<float>(velAcc.isValueOn(ip1jk)), 
-                          static_cast<float>(velAcc.isValueOn(ijm1k)), 
-                          static_cast<float>(velAcc.isValueOn(ijp1k))};
+            float v[4] = {copyAcc.getValue(im1jk)[2],
+                          copyAcc.getValue(ip1jk)[2],
+                          copyAcc.getValue(ijm1k)[2],
+                          copyAcc.getValue(ijp1k)[2]};
+            float w[4] = {static_cast<float>(copyAcc.isValueOn(im1jk)),
+                          static_cast<float>(copyAcc.isValueOn(ip1jk)), 
+                          static_cast<float>(copyAcc.isValueOn(ijm1k)), 
+                          static_cast<float>(copyAcc.isValueOn(ijp1k))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[2] = extrapolate;
@@ -798,7 +914,10 @@ FlipSolver::render() {
     float const dt = 1.f/24.f;
     for (int frame = 0; frame < 100; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
-        substep(dt);
+        float numSubStep = 10.f;
+        for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
+            substep(dt/numSubStep);
+        }
         writeVDBs(frame);
         writeVDBsVerbose(frame);
     }
