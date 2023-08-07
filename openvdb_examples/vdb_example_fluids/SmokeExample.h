@@ -486,9 +486,9 @@ SmokeSolver::createInteriorPressure4()
     float const centerY = 3.f;
     auto minBBox = Vec3s(0.f, 0.f, 0.f);
     // works:
-    auto maxBBox = Vec3s(3 * mVoxelSize, 3 * mVoxelSize, 3 * mVoxelSize);
+    // auto maxBBox = Vec3s(3 * mVoxelSize, 3 * mVoxelSize, 3 * mVoxelSize);
     //auto maxBBox = Vec3s(1.f + mVoxelSize, 0.4f + mVoxelSize, 0.4f + mVoxelSize);
-    // auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
+    auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
     mMin = minBBoxIntrCoord;
@@ -496,7 +496,7 @@ SmokeSolver::createInteriorPressure4()
     mMaxStaggered = mMax + Coord(1);
 
     const float radius = 0.3 * maxBBox[1];
-    const openvdb::Vec3f center(100 + 2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
+    const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
     mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
 
     std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
