@@ -62,7 +62,7 @@ private:
     // going over mDirichletVelocity
     void applyDirichletVelocity4(Vec3SGrid& vecGrid, int frame);
 
-    void swap();
+    void swapGrids();
 
     void addGravity(float const dt);
 
@@ -237,7 +237,6 @@ private:
                 // central-differences in a collocated grid, instead of the staggered one.
                 source += delta / voxelSize;
             } else if (isDirichletPressure) {
-                std::cout << "dirichlet" << std::endl;
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     diagonal -= 1.0;
@@ -345,7 +344,7 @@ private:
 
 
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, -48.f, 0.f);
+    Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
     Vec3s mPushVelocity = Vec3s(1.f, 0.f, 0.f);
     math::Transform::Ptr mXform;
     float mPadding;
@@ -488,7 +487,7 @@ SmokeSolver::createInteriorPressure4()
     // works:
     // auto maxBBox = Vec3s(3 * mVoxelSize, 3 * mVoxelSize, 3 * mVoxelSize);
     //auto maxBBox = Vec3s(1.f + mVoxelSize, 0.4f + mVoxelSize, 0.4f + mVoxelSize);
-    auto maxBBox = Vec3s(7.f + mVoxelSize, 3.f + mVoxelSize, 3.f + mVoxelSize);
+    auto maxBBox = Vec3s(5.f + mVoxelSize, 1.5f + mVoxelSize, 1.5f + mVoxelSize);
     Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
     Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
     mMin = minBBoxIntrCoord;
@@ -499,15 +498,9 @@ SmokeSolver::createInteriorPressure4()
     const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
     mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
 
-    std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
-    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
-    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mCollocatedMaskGrid->setTransform(mXform);
-    mCollocatedMaskGrid->setName("domain_mask");
-
     // Create an emitter and an emitter velocity
-    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
-    auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
+    auto minEmtW = Vec3s(0.f, 0.5f*maxBBox[1]-0.1*maxBBox[1], 0.5f*maxBBox[2]-0.1*maxBBox[2]);
+    auto maxEmtW = Vec3s(10 * mVoxelSize, 0.5f*maxBBox[1]+0.2*maxBBox[1], 0.5f*maxBBox[2]+0.2*maxBBox[2]);
     Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
     Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
     mEmitter = FloatGrid::create(/*bg = */0.f);
@@ -515,19 +508,23 @@ SmokeSolver::createInteriorPressure4()
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
+    std::ostringstream ostr;
+    ostr << "emitter.vdb";
+    std::cerr << "\tWriting " << ostr.str() << std::endl;
+    openvdb::io::File file(ostr.str());
+    openvdb::GridPtrVec grids;
+    grids.push_back(mEmitter);
+    file.write(grids);
+    file.close();
+
+
+
     createFlags4(false);
     createInteriorPressure4();
     createVCurr4(false);
-    // createDensityCurr4();
+    createDensityCurr4();
     createDirichletVelocity4();
 
-    // updateEmitter();
-    addGravity(1.f/24.f);
-    applyDirichletVelocity4(*mVCurr, -1);
-    pressureProjection4(false);
-
-    writeVDBsDebug(-1);
-    exit(0);
  }
 
  void
@@ -607,10 +604,10 @@ SmokeSolver::createInteriorPressure4()
     auto flagsAcc = mFlags->getConstAccessor();
 
 
-    for (auto iter = mPressure->beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        std::cout << "p" << ijk << " = " << pressureAcc.getValue(ijk) << std::endl;
-    }
+    // for (auto iter = mPressure->beginValueOn(); iter; ++iter) {
+    //     auto ijk = iter.getCoord();
+    //     std::cout << "p" << ijk << " = " << pressureAcc.getValue(ijk) << std::endl;
+    // }
 
 
 
@@ -733,9 +730,8 @@ SmokeSolver::createInteriorPressure4()
 
 
 void
-SmokeSolver::swap()
+SmokeSolver::swapGrids()
 {
-    std::cout << "Swap" << std::endl;
     mDensityCurr = mDensityNext;
     mDensityCurr->setName("density_curr");
     mVCurr = mVNext;
@@ -1178,7 +1174,7 @@ SmokeSolver::advectDensity(float const dt)
     advection.setLimiter(tools::Scheme::REVERT);
     advection.setSubSteps(1);
 
-    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mCollocatedMaskGrid, dt);
+    mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mInteriorPressure, dt);
     mDensityNext->setName("density_next");
 
     // Debug
@@ -1232,22 +1228,10 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     advection.setLimiter(tools::Scheme::REVERT);
     advection.setSubSteps(1);
 
-    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mCollocatedMaskGrid, dt);
+    mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mInteriorPressure, dt);
     // mVNext = advection.advect<Vec3SGrid, SamplerT>(*mVCurr, dt);
     mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setName("vel_next");
-
-    std::ostringstream ostr;
-    ostr << "debug_velocity_advection" << "_" << frame << ".vdb";
-    std::cerr << "\tvelocity advection::Writing " << ostr.str() << std::endl;
-    std::cout << "\tvelocity advection::mVCurr->background() = " << mVCurr->background() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mVNext);
-    grids.push_back(mVCurr);
-    grids.push_back(mCollocatedMaskGrid);
-    file.write(grids);
-    file.close();
 }
 
 
@@ -1361,15 +1345,13 @@ SmokeSolver::pressureProjection(bool print) {
 
 void
 SmokeSolver::substep(float const dt, int const frame) {
-    mVCurr->setName("vel_curr");
-    // updateEmitter();
-    // addGravity(dt);
-    applyDirichletVelocity(*mVCurr, frame);
-    //pressureProjection(true /* print */);
-    //applyDirichletVelocity(*mVCurr);
-    //advectDensity(dt);
+    updateEmitter();
+    addGravity(dt);
+    applyDirichletVelocity4(*mVCurr, -1);
+    pressureProjection4(false);
+    advectDensity(dt);
     advectVelocity(dt, frame);
-    applyDirichletVelocity(*mVNext, frame);
+    swapGrids();
 }
 
 
@@ -1401,7 +1383,7 @@ SmokeSolver::foobar() {
             file.close();
         }
         advectVelocity(dt, frame);
-        swap();
+        swapGrids();
         applyDirichletVelocity(*mVCurr, frame);
         writeVDBs(frame);
     }
@@ -1411,17 +1393,25 @@ SmokeSolver::foobar() {
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 10; ++frame) {
-        std::cout << "\nframe = " << frame << "\n";
-        int const numSubstep = 4;
-        for (int i = 0; i < numSubstep; ++i) {
-            std::cout << "\tsubstep = " << i << std::endl;
-            substep(dt / numSubstep, frame);
-            //if (i < numSubstep - 1) {
-            swap();
-            //}
-        }
+    for (int frame = 0; frame < 1; ++frame) {
+        float const numSubStep = 100.f;
+
+        substep(dt / numSubStep, frame);
+        // for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
+        //     std::cout << "FRAME = " << frame << std::endl;
+        //     std::cout << "FRAME = " << frame << std::endl;
+        //     std::cout << "FRAME = " << frame << std::endl;
+        //     substep(dt / numSubStep, frame);
+        //     substep(dt / numSubStep, frame);
+        // }
         writeVDBs(frame);
+        // std::cout << "\nframe = " << frame << "\n";
+        // int const numSubstep = 4;
+        // for (int i = 0; i < numSubstep; ++i) {
+        //     std::cout << "\tsubstep = " << i << std::endl;
+        //     substep(dt / numSubstep, frame);
+        //     writeVDBs(frame);
+        // }
     }
 }
 
@@ -1437,17 +1427,11 @@ SmokeSolver::writeVDBs(int const frame) {
     io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
-    grids.push_back(mEmitter);
-    grids.push_back(mDirichletVelocity);
     grids.push_back(mDensityCurr);
-    grids.push_back(mDensityNext);
     grids.push_back(mVCurr);
-    // grids.push_back(mVNext);
-    // grids.push_back(mDirichletPressure);
-    grids.push_back(mDivBefore);
-    grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    grids.push_back(mCollocatedMaskGrid);
+
+    grids.push_back(mEmitter);
 
     file.write(grids);
     file.close();
@@ -1463,12 +1447,15 @@ SmokeSolver::writeVDBsDebug(int const frame) {
     io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
+    grids.push_back(mEmitter);
+    grids.push_back(mDirichletVelocity);
     grids.push_back(mFlags);
     grids.push_back(mInteriorPressure);
     grids.push_back(mDirichletVelocity);
     grids.push_back(mVCurr);
     grids.push_back(mDensityCurr);
     grids.push_back(mDivBefore);
+    grids.push_back(mDivAfter);
     grids.push_back(mPressure);
 
     file.write(grids);
