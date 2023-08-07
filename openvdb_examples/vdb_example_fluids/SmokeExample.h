@@ -390,12 +390,12 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
 
-        if (/* ijk[0] == mMax[0] */ ijk[1] == mMax[1]) {
+        if (ijk[0] == mMax[0]) {
             flagsAcc.setValue(ijk, 4); // Dirichlet
         }
         if (ijk[0] == mMin[0] /* left face */ ||
             ijk[1] == mMin[1] /* bottom face */ ||
-            /*ijk[1] == mMax[1]*/ /* top face */ ijk[0] == mMax[0]||
+            ijk[1] == mMax[1] /* top face */ ||
             ijk[2] == mMin[2] /* back face */ ||
             ijk[2] == mMax[2] /* front face */ ||
             sphereAcc.getValue(ijk) < 0) {
