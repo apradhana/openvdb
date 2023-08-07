@@ -1170,11 +1170,12 @@ SmokeSolver::advectDensity(float const dt)
     using SamplerT = openvdb::tools::Sampler<1>;
 
     AdvT advection(*mVCurr);
-    advection.setIntegrator(tools::Scheme::MAC);
+    advection.setIntegrator(tools::Scheme::SEMI);
     advection.setLimiter(tools::Scheme::REVERT);
     advection.setSubSteps(1);
 
     mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mInteriorPressure, dt);
+    // mDensityNext = advection.advect<FloatGrid, SamplerT>(*mDensityCurr, dt);
     mDensityNext->setName("density_next");
 
     // Debug
@@ -1224,8 +1225,7 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     using SamplerT = openvdb::tools::Sampler<1, true /* staggered */>;
 
     AdvT advection(*mVCurr);
-    advection.setIntegrator(tools::Scheme::MAC);
-    advection.setLimiter(tools::Scheme::REVERT);
+    advection.setIntegrator(tools::Scheme::SEMI);
     advection.setSubSteps(1);
 
     mVNext = advection.advect<Vec3SGrid, BoolGrid, SamplerT>(*mVCurr, *mInteriorPressure, dt);
@@ -1393,17 +1393,17 @@ SmokeSolver::foobar() {
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 1; ++frame) {
-        float const numSubStep = 100.f;
-
-        substep(dt / numSubStep, frame);
-        // for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
-        //     std::cout << "FRAME = " << frame << std::endl;
-        //     std::cout << "FRAME = " << frame << std::endl;
-        //     std::cout << "FRAME = " << frame << std::endl;
-        //     substep(dt / numSubStep, frame);
-        //     substep(dt / numSubStep, frame);
-        // }
+    for (int frame = 0; frame < 20; ++frame) {
+        float const numSubStep = 50.f;
+        // substep(dt / numSubStep, frame);
+        // writeVDBs(frame);
+        for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
+             std::cout << "FRAME = " << frame << std::endl;
+             std::cout << "FRAME = " << frame << std::endl;
+             std::cout << "FRAME = " << frame << std::endl;
+             std::cout << "FRAME = " << frame << std::endl;
+             substep(dt / numSubStep, frame);
+        }
         writeVDBs(frame);
         // std::cout << "\nframe = " << frame << "\n";
         // int const numSubstep = 4;
