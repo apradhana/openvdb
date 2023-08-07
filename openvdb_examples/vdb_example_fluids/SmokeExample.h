@@ -522,8 +522,6 @@ SmokeSolver::createInteriorPressure4()
     createDirichletVelocity4();
 
     // updateEmitter();
-    applyDirichletVelocity4(*mVCurr, -1);
-
     addGravity(1.f/24.f);
     applyDirichletVelocity4(*mVCurr, -1);
     pressureProjection4(false);
