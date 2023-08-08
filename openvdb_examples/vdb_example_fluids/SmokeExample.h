@@ -344,8 +344,8 @@ private:
 
 
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
-    Vec3s mPushVelocity = Vec3s(1.f, 0.f, 0.f);
+    Vec3s mGravity = Vec3s(0.f, 0.f, 0.f);
+    Vec3s mPushVelocity = Vec3s(0.2f, 0.f, 0.f);
     math::Transform::Ptr mXform;
     float mPadding;
     Coord mMin;
@@ -446,7 +446,7 @@ SmokeSolver::createInteriorPressure4()
     mDensityCurr->setName("density_curr");
     mDensityCurr->denseFill(CoordBBox(mMin, mMax), /* value = */ 0.f, /* active = */ true);
     mDensityCurr->topologyUnion(*mFlags);
-    mDensityCurr->topologyIntersection(*mFlags);
+    mDensityCurr->topologyIntersection(*mInteriorPressure);
  }
 
 
@@ -467,6 +467,23 @@ SmokeSolver::createInteriorPressure4()
         for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
             auto ijk = iter.getCoord();
             std::cout << "vel" << ijk  << " = " << velAcc.getValue(ijk) << std::endl;
+        }
+    }
+
+    auto flagsAcc = mFlags->getConstAccessor();
+    auto velAcc = mVCurr->getAccessor();
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
+
+        if (flagsAcc.getValue(ijk) == 0) {
+            if (flagsAcc.getValue(im1jk) == 0 ||
+                flagsAcc.getValue(ijm1k) == 0 ||
+                flagsAcc.getValue(ijkm1) == 0) {
+                    velAcc.setValueOff(ijk);
+                }
         }
     }
 
@@ -509,22 +526,21 @@ SmokeSolver::createInteriorPressure4()
     mEmitter->setName("emitter");
 
     std::ostringstream ostr;
-    ostr << "emitter.vdb";
+    ostr << "debug_emitter_and_sphere.vdb";
     std::cerr << "\tWriting " << ostr.str() << std::endl;
     openvdb::io::File file(ostr.str());
     openvdb::GridPtrVec grids;
     grids.push_back(mEmitter);
+    grids.push_back(mSphere);
     file.write(grids);
     file.close();
-
-
 
     createFlags4(false);
     createInteriorPressure4();
     createVCurr4(false);
     createDensityCurr4();
     createDirichletVelocity4();
-
+    writeVDBsDebug(0);
  }
 
  void
@@ -548,7 +564,6 @@ SmokeSolver::createInteriorPressure4()
     auto divBeforeAcc = mDivBefore->getAccessor();
     auto flagAcc = mFlags->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
-    //for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
     for (int kk = 1; kk <= 2; ++kk)
     for (int jj = 1; jj <= 2; ++jj)
     for (int ii = 1; ii <= 2; ++ii) {
@@ -584,6 +599,7 @@ SmokeSolver::createInteriorPressure4()
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
+
 
 
     std::cout << "Projection Success: " << state.success << "\n";
@@ -648,18 +664,17 @@ SmokeSolver::createInteriorPressure4()
     }
     std::cout << "\t== divergence after pp = " << divAfter << std::endl;
 
-    // std::ostringstream ostr;
-    // ostr << "debug_divergence.vdb";
-    // std::cerr << "\tWriting " << ostr.str() << std::endl;
-    // openvdb::io::File file(ostr.str());
-    // openvdb::GridPtrVec grids;
-    // grids.push_back(mDivBefore);
-    // grids.push_back(mDivAfter);
-    // grids.push_back(mPressure);
-    // grids.push_back(mVCurr);
-    // grids.push_back(mDensityCurr);
-    // file.write(grids);
-    // file.close();
+    // if (!state.success) {
+    //     std::ostringstream ostr;
+    //     ostr << "debug_velocity_fail.vdb";
+    //     std::cerr << "\tWriting " << ostr.str() << std::endl;
+    //     openvdb::io::File file(ostr.str());
+    //     openvdb::GridPtrVec grids;
+    //     grids.push_back(mVCurr);
+    //     grids.push_back(mPressure);
+    //     file.write(grids);
+    //     exit(0);
+    // }
  }
 
  void
@@ -677,30 +692,33 @@ SmokeSolver::createInteriorPressure4()
 
     for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        auto im1jk = ijk.offsetBy(-1, 0, 0);
-        auto ijm1k = ijk.offsetBy(0, -1, 0);
-        auto ijkm1 = ijk.offsetBy(0, 0, -1);
-
-        Vec3s val;
-
-        if (flagsAcc.getValue(ijk) == 0) {
-            // is a full Neumann
-            val = mPushVelocity;
-        } else {
-            if(flagsAcc.getValue(im1jk) == 0) {
-                // neighboring a Neumann pressure in the x face
-                val[0] = mPushVelocity[0];
-            }
-            if(flagsAcc.getValue(ijm1k) == 0) {
-                // neighboring a Neumann pressure in the y face
-                val[1] = mPushVelocity[1];
-            }
-            if(flagsAcc.getValue(ijkm1) == 0) {
-                // neighboring a Neumann pressure in the z face
-                val[2] = mPushVelocity[2];
-            }
+        if (ijk[0] == 0) {
+            drcAcc.setValue(ijk, mPushVelocity);
         }
-        drcAcc.setValue(ijk, val);
+        // auto im1jk = ijk.offsetBy(-1, 0, 0);
+        // auto ijm1k = ijk.offsetBy(0, -1, 0);
+        // auto ijkm1 = ijk.offsetBy(0, 0, -1);
+
+        // Vec3s val;
+
+        // if (flagsAcc.getValue(ijk) == 0) {
+        //     // is a full Neumann
+        //     val = mPushVelocity;
+        // } else {
+        //     if(flagsAcc.getValue(im1jk) == 0) {
+        //         // neighboring a Neumann pressure in the x face
+        //         val[0] = mPushVelocity[0];
+        //     }
+        //     if(flagsAcc.getValue(ijm1k) == 0) {
+        //         // neighboring a Neumann pressure in the y face
+        //         val[1] = mPushVelocity[1];
+        //     }
+        //     if(flagsAcc.getValue(ijkm1) == 0) {
+        //         // neighboring a Neumann pressure in the z face
+        //         val[2] = mPushVelocity[2];
+        //     }
+        // }
+        // drcAcc.setValue(ijk, val);
     }
 
     // mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -1393,7 +1411,7 @@ SmokeSolver::foobar() {
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 20; ++frame) {
+    for (int frame = 0; frame < 200; ++frame) {
         float const numSubStep = 50.f;
         // substep(dt / numSubStep, frame);
         // writeVDBs(frame);
@@ -1404,6 +1422,7 @@ SmokeSolver::render() {
              std::cout << "FRAME = " << frame << std::endl;
              substep(dt / numSubStep, frame);
         }
+        writeVDBsDebug(frame);
         writeVDBs(frame);
         // std::cout << "\nframe = " << frame << "\n";
         // int const numSubstep = 4;
