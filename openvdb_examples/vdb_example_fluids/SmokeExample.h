@@ -16,7 +16,6 @@
 #include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tools/GridOperators.h> // for divergence and gradient
 #include <openvdb/tools/LevelSetSphere.h> // for createLevelSetSphere
-#include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
 #include <openvdb/tools/VolumeAdvect.h> // for tools::VolumeAdvection
@@ -46,6 +45,8 @@ private:
     void updateEmitter();
     void createDirichletVelocity();
     void createVCurr(bool print);
+    void createSphereCollider();
+    void createEmitter();
     void createDensityCurr();
     void createFlags(bool print);
     void createInteriorPressure();
@@ -218,9 +219,9 @@ private:
     Vec3s mGravity = Vec3s(0.f, -2.f, 0.f);
     Vec3s mPushVelocity = Vec3s(0.2f, 0.f, 0.f);
     math::Transform::Ptr mXform;
-    float mPadding;
-    Coord mMin;
-    Coord mMax;
+
+    Vec3s mMaxBBox, mMinBBox;
+    Coord mMin, mMax;
     Coord mMaxStaggered;
 
     Int32Grid::Ptr mFlags;
@@ -282,6 +283,27 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
     file.write(grids);
     file.close();
  }
+
+
+void
+SmokeSolver::createSphereCollider() {
+    const float radius = 0.2 * mMaxBBox[1];
+    const openvdb::Vec3f center(2.5f / 7.f * mMaxBBox[0], 0.5f * mMaxBBox[1], 0.5f * mMaxBBox[2]);
+    mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
+}
+
+
+void
+SmokeSolver::createEmitter() {
+    auto minEmtW = Vec3s(0.f, 0.5f * mMaxBBox[1]-0.1 * mMaxBBox[1], 0.5f * mMaxBBox[2] -  0.1 * mMaxBBox[2]);
+    auto maxEmtW = Vec3s(10 * mVoxelSize, 0.5f * mMaxBBox[1] + 0.2 * mMaxBBox[1], 0.5f * mMaxBBox[2] + 0.2 * mMaxBBox[2]);
+    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
+    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
+    mEmitter = FloatGrid::create(/*bg = */0.f);
+    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
+    mEmitter->setTransform(mXform);
+    mEmitter->setName("emitter");
+}
 
 
 void
@@ -362,38 +384,22 @@ SmokeSolver::createInteriorPressure()
  void
  SmokeSolver::initialize()
  {
-    std::cout << "initialize 4" << std::endl;
+    std::cout << "initialize" << std::endl;
     using BBox = math::BBox<Vec3s>;
     mPushVelocity = Vec3s(3.f, 0.f, 0.f);
     mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 1.f * mVoxelSize;
-    mPadding = padding;
-    float const centerY = 3.f;
-    auto minBBox = Vec3s(0.f, 0.f, 0.f);
+
     // works:
     // auto maxBBox = Vec3s(3 * mVoxelSize, 3 * mVoxelSize, 3 * mVoxelSize);
     //auto maxBBox = Vec3s(1.f + mVoxelSize, 0.4f + mVoxelSize, 0.4f + mVoxelSize);
-    auto maxBBox = Vec3s(5.f + mVoxelSize, 1.5f + mVoxelSize, 1.5f + mVoxelSize);
-    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
-    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
-    mMin = minBBoxIntrCoord;
-    mMax = maxBBoxIntrCoord;
+    mMinBBox = Vec3s(0.f, 0.f, 0.f);
+    mMaxBBox = Vec3s(5.f + mVoxelSize, 1.5f + mVoxelSize, 1.5f + mVoxelSize);
+    mMin = mXform->worldToIndexNodeCentered(mMinBBox);
+    mMax = mXform->worldToIndexNodeCentered(mMaxBBox);
     mMaxStaggered = mMax + Coord(1);
 
-    const float radius = 0.2 * maxBBox[1];
-    const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
-    mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
-
-    // Create an emitter and an emitter velocity
-    auto minEmtW = Vec3s(0.f, 0.5f*maxBBox[1]-0.1*maxBBox[1], 0.5f*maxBBox[2]-0.1*maxBBox[2]);
-    auto maxEmtW = Vec3s(10 * mVoxelSize, 0.5f*maxBBox[1]+0.2*maxBBox[1], 0.5f*maxBBox[2]+0.2*maxBBox[2]);
-    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
-    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
-    mEmitter = FloatGrid::create(/*bg = */0.f);
-    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
-    mEmitter->setTransform(mXform);
-    mEmitter->setName("emitter");
-
+    createSphereCollider();
+    createEmitter();
     createFlags(false);
     createInteriorPressure();
     createVCurr(false);
@@ -681,8 +687,9 @@ void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
     for (int frame = 0; frame < 600; ++frame) {
-        float const numSubStep = 50.f;
+        float const numSubStep = 10.f;
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
+            std::cout << "frame = " << frame << " substep = " << numSubStep << std::endl;
              substep(dt / numSubStep, frame);
         }
         writeVDBsDebug(frame);
