@@ -45,7 +45,7 @@ private:
     void substep(float const dt, int const frame);
 
     // Make the velocity on the grid to be divergence free
-    void pressureProjection4(bool print);
+    void pressureProjection(bool print);
 
     void updateEmitter();
 
@@ -506,7 +506,7 @@ SmokeSolver::createInteriorPressure4()
  }
 
  void
- SmokeSolver::pressureProjection4(bool print)
+ SmokeSolver::pressureProjection(bool print)
  {
     std::cout << "pressure projection 4" << std::endl;
     using TreeType = FloatTree;
@@ -1214,12 +1214,13 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     mVNext->setName("vel_next");
 }
 
+
 void
 SmokeSolver::substep(float const dt, int const frame) {
     updateEmitter();
     addGravity(dt);
     applyDirichletVelocity4(*mVCurr, -1);
-    pressureProjection4(false);
+    pressureProjection(false);
     advectVelocity(dt, frame);
     advectDensity(dt);
     swapGrids();
