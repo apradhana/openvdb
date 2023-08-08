@@ -307,7 +307,7 @@ private:
 
 
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, 0.f, 0.f);
+    Vec3s mGravity = Vec3s(0.f, -2.f, 0.f);
     Vec3s mPushVelocity = Vec3s(0.2f, 0.f, 0.f);
     math::Transform::Ptr mXform;
     float mPadding;
@@ -458,7 +458,7 @@ SmokeSolver::createInteriorPressure4()
  {
     std::cout << "initialize 4" << std::endl;
     using BBox = math::BBox<Vec3s>;
-    mPushVelocity = Vec3s(1.f, 0.f, 0.f);
+    mPushVelocity = Vec3s(3.f, 0.f, 0.f);
     mXform = math::Transform::createLinearTransform(mVoxelSize);
     float const padding = 1.f * mVoxelSize;
     mPadding = padding;
@@ -1337,67 +1337,17 @@ SmokeSolver::substep(float const dt, int const frame) {
 
 
 void
-SmokeSolver::foobar() {
-    float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 10; ++frame) {
-        std::cout << "\n====== foobar frame " << frame << " ======" << std::endl;
-        updateEmitter();
-        // addGravity(dt);
-        pressureProjection4(true /* print */);
-        {
-            std::ostringstream ostr;
-            ostr << "before advect density" << "_" << frame << ".vdb";
-            openvdb::io::File file(ostr.str());
-            openvdb::GridPtrVec grids;
-            grids.push_back(mVCurr);
-            file.write(grids);
-            file.close();
-        }
-        advectDensity(dt);
-        {
-            std::ostringstream ostr;
-            ostr << "before advect velocity" << "_" << frame << ".vdb";
-            openvdb::io::File file(ostr.str());
-            openvdb::GridPtrVec grids;
-            grids.push_back(mVCurr);
-            file.write(grids);
-            file.close();
-        }
-        advectVelocity(dt, frame);
-        swapGrids();
-        applyDirichletVelocity(*mVCurr, frame);
-        writeVDBs(frame);
-    }
-}
-
-
-void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
     for (int frame = 0; frame < 600; ++frame) {
-        float const numSubStep = 1.f;
-        // substep(dt / numSubStep, frame);
-        // writeVDBs(frame);
+        float const numSubStep = 50.f;
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
-             std::cout << "FRAME = " << frame << std::endl;
-             std::cout << "FRAME = " << frame << std::endl;
-             std::cout << "FRAME = " << frame << std::endl;
-             std::cout << "FRAME = " << frame << std::endl;
              substep(dt / numSubStep, frame);
         }
         writeVDBsDebug(frame);
         writeVDBs(frame);
-        // std::cout << "\nframe = " << frame << "\n";
-        // int const numSubstep = 4;
-        // for (int i = 0; i < numSubstep; ++i) {
-        //     std::cout << "\tsubstep = " << i << std::endl;
-        //     substep(dt / numSubstep, frame);
-        //     writeVDBs(frame);
-        // }
     }
 }
-
-
 
 
 void
