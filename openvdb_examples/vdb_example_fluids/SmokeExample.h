@@ -45,7 +45,6 @@ private:
     void substep(float const dt, int const frame);
 
     // Make the velocity on the grid to be divergence free
-    void pressureProjection(bool print);
     void pressureProjection4(bool print);
 
     void updateEmitter();
@@ -1215,115 +1214,6 @@ SmokeSolver::advectVelocity(float const dt, const int frame)
     mVNext->setName("vel_next");
 }
 
-
-void
-SmokeSolver::pressureProjection(bool print) {
-    using TreeType = FloatTree;
-    using ValueType = TreeType::ValueType;
-    using MaskGridType = BoolGrid;
-    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
-    ValueType const zero = zeroVal<ValueType>();
-    double const epsilon = math::Delta<ValueType>::value();
-
-    mDivBefore = tools::divergence(*mVCurr);
-    // 4 pm
-    mDivBefore->topologyIntersection(*mDensityCurr);
-    mDivBefore->setName("div_before");
-
-    MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    // 4 pm
-    domainMaskGrid->topologyIntersection(*mDensityCurr);
-    // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    // domainMaskGrid->topologyDifference(*mDirichletPressure);
-    // domainMaskGrid->topologyDifference(*mDirichletVelocity);
-
-    float divBefore = 0.f;
-    auto divBeforeAcc = mDivBefore->getAccessor();
-    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divBeforeAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divBefore)) {
-            divBefore = val;
-        }
-    }
-    std::cout << "\t== divergence before pp = " << divBefore << std::endl;
-
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100000;
-    state.relativeError = state.absoluteError = epsilon;
-    SmokeSolver::BoundaryOp bop(mDirichletVelocity, mDirichletPressure, mVoxelSize);
-    util::NullInterrupter interrupter;
-    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
-
-
-    std::cout << "Projection Success: " << state.success << "\n";
-    std::cout << "Iterations: " << state.iterations << "\n";
-    std::cout << "Relative error: " << state.relativeError << "\n";
-    std::cout << "Absolute error: " << state.absoluteError << "\n";
-
-    // Note: need to dilate in order to do one-sided difference
-    // because we use a staggered grid velocity field.
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-
-    fluidPressureGrid->setTransform(mXform);
-    mPressure = fluidPressureGrid->copy();
-    mPressure->setName("pressure");
-
-    auto vCurrAcc = mVCurr->getAccessor();
-    auto pressureAcc = fluidPressureGrid->getAccessor();
-
-
-    // Note: I'm modifying vCurr
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        Vec3s gradijk;
-        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-
-        // This is only multiplied by mVoxelSize because in the computation of gradijk, I don't divide by mVoxelSize.
-        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-        vCurrAcc.setValue(ijk, val);
-    }
-
-    applyDirichletVelocity(*mVCurr, -2);
-    mDivAfter = tools::divergence(*mVCurr);
-    mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(domainMaskGrid->tree());
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
-
-    std::ostringstream ostr;
-    ostr << "debug_divergence.vdb";
-    std::cerr << "\tWriting " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mDivBefore);
-    grids.push_back(mDivAfter);
-    grids.push_back(mPressure);
-    grids.push_back(mVCurr);
-    grids.push_back(mDensityCurr);
-    file.write(grids);
-    file.close();
-
-    //exit(0);
-
-
-
-}
-
-
 void
 SmokeSolver::substep(float const dt, int const frame) {
     updateEmitter();
@@ -1362,8 +1252,6 @@ SmokeSolver::writeVDBs(int const frame) {
     grids.push_back(mDensityCurr);
     grids.push_back(mVCurr);
     grids.push_back(mPressure);
-
-    grids.push_back(mEmitter);
 
     file.write(grids);
     file.close();
