@@ -18,6 +18,6 @@ main(int argc, char *argv[])
     // flipSim.render();
 
     example::SmokeSolver smokeSim(0.1f /* voxel size */);
-    // smokeSim.render();
-    smokeSim.foobar();
+    smokeSim.render();
+    // smokeSim.foobar();
 }
