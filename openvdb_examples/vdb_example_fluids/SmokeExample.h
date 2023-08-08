@@ -1330,8 +1330,8 @@ SmokeSolver::substep(float const dt, int const frame) {
     addGravity(dt);
     applyDirichletVelocity4(*mVCurr, -1);
     pressureProjection4(false);
-    advectDensity(dt);
     advectVelocity(dt, frame);
+    advectDensity(dt);
     swapGrids();
 }
 
