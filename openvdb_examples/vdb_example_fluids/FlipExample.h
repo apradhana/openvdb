@@ -750,21 +750,39 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
+        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
+        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ijk)) {
+        if (cldrAcc.isValueOn(im1jk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijk)) {
+        if (cldrAcc.isValueOn(ip1jk)) {
+            auto val = acc.getValue(ip1jk);
+            Vec3s newVal = Vec3s(0, val[1], val[2]);
+            acc.setValue(ip1jk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijm1k)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijk)) {
+        if (cldrAcc.isValueOn(ijp1k)) {
+            auto val = acc.getValue(ijp1k);
+            Vec3s newVal = Vec3s(val[0], 0, val[2]);
+            acc.setValue(ijp1k, newVal);
+        }
+        if (cldrAcc.isValueOn(ijkm1)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             acc.setValue(ijk, newVal);
+        }
+        if (cldrAcc.isValueOn(ijkp1)) {
+            auto val = acc.getValue(ijkp1);
+            Vec3s newVal = Vec3s(val[0], val[1], 0);
+            acc.setValue(ijkp1, newVal);
         }
     }
 }
@@ -869,7 +887,7 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     velocityBCCorrection(*mVCurr);
     pressureProjection(false /* print */);
     velocityBCCorrection(*mVNext);
-    extrapolateToCollider2(*mVNext);
+    // extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
 
