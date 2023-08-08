@@ -179,58 +179,21 @@ private:
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     delta += vNgbr[0];
-
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\tleft x face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
                     delta -= vNgbr[0];
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\tright x face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
                     delta += vNgbr[1];
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\tbottom y face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
                     delta -= vNgbr[1];
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\ttop y face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
                     delta +=  vNgbr[2];
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\tback z face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
                     delta -=  vNgbr[2];
-                    // std::cout << "ijk = " << ijk << "\tneighbor = " << neighbor
-                    //           << "\tneumann = " << isNeumannPressure
-                    //           << "\tvngbr = " << vNgbr
-                    //           << "\tfront z face"
-                    //           << "\tdelta = " << delta
-                    //           << std::endl;
                 }
                 // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
                 // this by 0.5, because the gradient that's used is using
@@ -479,8 +442,8 @@ SmokeSolver::createInteriorPressure4()
         auto ijkm1 = ijk.offsetBy(0, 0, -1);
 
         if (flagsAcc.getValue(ijk) == 0) {
-            if (flagsAcc.getValue(im1jk) == 0 ||
-                flagsAcc.getValue(ijm1k) == 0 ||
+            if (flagsAcc.getValue(im1jk) == 0 &&
+                flagsAcc.getValue(ijm1k) == 0 &&
                 flagsAcc.getValue(ijkm1) == 0) {
                     velAcc.setValueOff(ijk);
                 }
@@ -511,7 +474,7 @@ SmokeSolver::createInteriorPressure4()
     mMax = maxBBoxIntrCoord;
     mMaxStaggered = mMax + Coord(1);
 
-    const float radius = 0.3 * maxBBox[1];
+    const float radius = 0.2 * maxBBox[1];
     const openvdb::Vec3f center(2.5f / 7.f * maxBBox[0], 0.5f * maxBBox[1], 0.5f * maxBBox[2]);
     mSphere = tools::createLevelSetSphere<openvdb::FloatGrid>(radius, center, mVoxelSize, 2 /* width */);
 
@@ -692,7 +655,7 @@ SmokeSolver::createInteriorPressure4()
 
     for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
-        if (ijk[0] == 0) {
+        if (ijk[0] == 1) {
             drcAcc.setValue(ijk, mPushVelocity);
         }
         // auto im1jk = ijk.offsetBy(-1, 0, 0);
@@ -1411,8 +1374,8 @@ SmokeSolver::foobar() {
 void
 SmokeSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 200; ++frame) {
-        float const numSubStep = 50.f;
+    for (int frame = 0; frame < 600; ++frame) {
+        float const numSubStep = 1.f;
         // substep(dt / numSubStep, frame);
         // writeVDBs(frame);
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
