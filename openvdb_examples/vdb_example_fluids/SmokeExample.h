@@ -38,8 +38,6 @@ public:
 
 private:
 
-    void initialize();
-    void initialize2();
     void initialize4();
 
     void substep(float const dt, int const frame);
@@ -48,17 +46,11 @@ private:
     void pressureProjection(bool print);
 
     void updateEmitter();
-
     void createDirichletVelocity();
-    void createDirichletVelocity2();
-    void createDirichletVelocity4();
-    void createVCurr4(bool print);
-    void createDensityCurr4();
-    void createFlags4(bool print);
-    void createInteriorPressure4();
-
-    void applyDirichletVelocity(Vec3SGrid& vecGrid, int frame);
-    // going over mDirichletVelocity
+    void createVCurr(bool print);
+    void createDensityCurr();
+    void createFlags(bool print);
+    void createInteriorPressure();
     void applyDirichletVelocity4(Vec3SGrid& vecGrid, int frame);
 
     void swapGrids();
@@ -73,92 +65,12 @@ private:
 
     void writeVDBsDebug(int const frame);
 
-    struct BoundaryOp {
-        BoundaryOp(Vec3SGrid::ConstPtr dirichletVelocity,
-                   FloatGrid::ConstPtr dirichletPressure,
-                   float const voxelSize) :
-                   dirichletVelocity(dirichletVelocity),
-                   dirichletPressure(dirichletPressure),
-                   voxelSize(voxelSize) {}
-
-        void operator()(const openvdb::Coord& ijk,
-                        const openvdb::Coord& neighbor,
-                        double& source,
-                        double& diagonal) const
-        {
-            float const dirichletBC = 0.f;
-            bool isNeumannPressure = dirichletVelocity->tree().isValueOn(neighbor);
-            auto vNgbr = dirichletVelocity->tree().getValue(neighbor);
-            // bool isDirichletPressure = dirichletPressure->tree().isValueOn(neighbor);
-
-            // TODO: Double check this:
-            if (isNeumannPressure) {
-                double delta = 0.0;
-                // Neumann pressure from bbox
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    delta += vNgbr[0];
-                }
-                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    delta -= vNgbr[0];
-                }
-                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    delta += vNgbr[1];
-                }
-                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    delta -= vNgbr[1];
-                }
-                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    delta +=  vNgbr[2];
-                }
-                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    delta -=  vNgbr[2];
-                }
-                // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
-                // this by 0.5, because the gradient that's used is using
-                // central-differences in a collocated grid, instead of the staggered one.
-                source += delta / voxelSize;
-            } else {
-                // Dirichlet pressure
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-            }
-        }
-
-        Vec3SGrid::ConstPtr dirichletVelocity;
-        FloatGrid::ConstPtr dirichletPressure;
-        float voxelSize;
-    };
-
     struct BoundaryOp4 {
         BoundaryOp4(Int32Grid::ConstPtr flags,
                     Vec3SGrid::ConstPtr dirichletVelocity,
-                    FloatGrid::ConstPtr dirichletPressure,
                     float const voxelSize) :
                     flags(flags),
                     dirichletVelocity(dirichletVelocity),
-                    dirichletPressure(dirichletPressure),
                     voxelSize(voxelSize) {}
 
         void operator()(const openvdb::Coord& ijk,
@@ -229,7 +141,6 @@ private:
 
         Int32Grid::ConstPtr flags;
         Vec3SGrid::ConstPtr dirichletVelocity;
-        FloatGrid::ConstPtr dirichletPressure;
         float voxelSize;
     };
 
@@ -314,23 +225,21 @@ private:
     Coord mMax;
     Coord mMaxStaggered;
 
-    FloatGrid::Ptr mDirichletPressure;
-
-    FloatGrid::Ptr mDivBefore;
-    FloatGrid::Ptr mDivAfter;
-
-    FloatGrid::Ptr mEmitter;
-    Vec3SGrid::Ptr mDirichletVelocity;
-
+    Int32Grid::Ptr mFlags;
     FloatGrid::Ptr mDensityCurr;
     FloatGrid::Ptr mDensityNext;
     Vec3SGrid::Ptr mVCurr;
     Vec3SGrid::Ptr mVNext;
-    FloatGrid::Ptr mPressure;
-    BoolGrid::Ptr mCollocatedMaskGrid;
-    Int32Grid::Ptr mFlags;
-    FloatGrid::Ptr mSphere;
+
     BoolGrid::Ptr mInteriorPressure;
+
+    FloatGrid::Ptr mSphere;
+    FloatGrid::Ptr mEmitter;
+    Vec3SGrid::Ptr mDirichletVelocity;
+
+    FloatGrid::Ptr mDivBefore;
+    FloatGrid::Ptr mDivAfter;
+    FloatGrid::Ptr mPressure;
 };
 
 
@@ -340,7 +249,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 }
 
  void
- SmokeSolver::createFlags4(bool print)
+ SmokeSolver::createFlags(bool print)
  {
     mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
     mFlags->denseFill(CoordBBox(mMin, mMax), /* value = */ 1, /* active = */ true);
@@ -378,7 +287,7 @@ SmokeSolver::SmokeSolver(float const voxelSize) : mVoxelSize(voxelSize)
 
 
 void
-SmokeSolver::createInteriorPressure4()
+SmokeSolver::createInteriorPressure()
 {
     mInteriorPressure = BoolGrid::create(false);
     mInteriorPressure->denseFill(CoordBBox(mMin, mMax), /* value = */ true, /* active = */ true);
@@ -401,7 +310,7 @@ SmokeSolver::createInteriorPressure4()
 }
 
  void
- SmokeSolver::createDensityCurr4()
+ SmokeSolver::createDensityCurr()
  {
     mDensityCurr = FloatGrid::create(/*bg = */0.f);
     mDensityCurr->setTransform(mXform);
@@ -413,7 +322,7 @@ SmokeSolver::createInteriorPressure4()
 
 
  void
- SmokeSolver::createVCurr4(bool print)
+ SmokeSolver::createVCurr(bool print)
  {
     mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
     mVCurr->setGridClass(GRID_STAGGERED);
@@ -487,21 +396,11 @@ SmokeSolver::createInteriorPressure4()
     mEmitter->setTransform(mXform);
     mEmitter->setName("emitter");
 
-    std::ostringstream ostr;
-    ostr << "debug_emitter_and_sphere.vdb";
-    std::cerr << "\tWriting " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mEmitter);
-    grids.push_back(mSphere);
-    file.write(grids);
-    file.close();
-
-    createFlags4(false);
-    createInteriorPressure4();
-    createVCurr4(false);
-    createDensityCurr4();
-    createDirichletVelocity4();
+    createFlags(false);
+    createInteriorPressure();
+    createVCurr(false);
+    createDensityCurr();
+    createDirichletVelocity();
     writeVDBsDebug(0);
  }
 
@@ -511,7 +410,6 @@ SmokeSolver::createInteriorPressure4()
     std::cout << "pressure projection 4" << std::endl;
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
-    using MaskGridType = BoolGrid;
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
 
 
@@ -557,7 +455,7 @@ SmokeSolver::createInteriorPressure4()
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
-    SmokeSolver::BoundaryOp4 bop(mFlags, mVCurr, mDirichletPressure, mVoxelSize);
+    SmokeSolver::BoundaryOp4 bop(mFlags, mVCurr, mVoxelSize);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
@@ -640,7 +538,7 @@ SmokeSolver::createInteriorPressure4()
  }
 
  void
- SmokeSolver::createDirichletVelocity4() {
+ SmokeSolver::createDirichletVelocity() {
     std::cout << "create dirichlet velocity 4" << std::endl;
 
     mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
@@ -716,45 +614,6 @@ SmokeSolver::swapGrids()
     mDensityCurr->setName("density_curr");
     mVCurr = mVNext;
     mVCurr->setName("vel_curr");
-}
-
-
-void
-SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid, int frame)
-{
-    std::cout << "apply dirichlet velocity begins" << std::endl;
-    auto vecAcc = vecGrid.getAccessor();
-    // mVNext = mVCurr->deepCopy();
-    //auto vNextAcc = mVNext->getAccessor();
-    auto drcAcc = mDirichletVelocity->getConstAccessor();
-    bool print = true;
-    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
-        auto ijk = iter.getCoord();
-        if (drcAcc.isValueOn(ijk)) {
-           // vecAcc.setValue(ijk, *iter);
-           //if (print) {
-           //std::cout << "\t\tdebug apply dirichlet velocity frame = " << frame << "\tijk = " << ijk << "\t *drc val = " << drcAcc.getValue(ijk) << "\tbefore val = " << vNextAcc.getValue(ijk) << "\n";
-           //}
-           print = false;
-           //vNextAcc.setValue(ijk, drcAcc.getValue(ijk));
-           vecAcc.setValue(ijk, drcAcc.getValue(ijk));
-        }
-    }
-
-    //std::ostringstream ostr;
-    //ostr << "debug_apply_dirichet_velocity" << "_" << frame << ".vdb";
-    //std::cerr << "\tWriting " << ostr.str() << std::endl;
-    //openvdb::io::File file(ostr.str());
-    //openvdb::GridPtrVec grids;
-    //grids.push_back(mVCurr);
-    //grids.push_back(mVNext);
-    //mVCurr->setName("vel_curr");
-    //mVCurr->setName("vel_next");
-    //file.write(grids);
-    //file.close();
-    // tree::LeafManager<Vec3STree> lm(vecGrid.tree());
-    // SmokeSolver::ApplyDirichletVelocityOp op(mDirichletVelocity);
-    // lm.foreach(op);
 }
 
 
@@ -889,251 +748,6 @@ SmokeSolver::updateEmitter()
 
 
 void
-SmokeSolver::createDirichletVelocity()
-{
-    auto minDVLft = Vec3s(-mPadding, -mPadding, -mPadding);
-    auto maxDVLft = Vec3s(2 * mVoxelSize, mMax[1], mMax[2]);
-    Coord minDVLftCoord = mXform->worldToIndexNodeCentered(minDVLft);
-    Coord maxDVLftCoord = mXform->worldToIndexNodeCentered(maxDVLft);
-    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->setGridClass(GRID_STAGGERED);
-    mDirichletVelocity->setTransform(mXform);
-    mDirichletVelocity->setName("dirichlet_velocity");
-
-    auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -mPadding);
-    auto maxDVBck = Vec3s(14.f + mPadding, 6.f, 0.f);
-    Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
-    Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
-    Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    bck->setGridClass(GRID_STAGGERED);
-    bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
-    auto maxDVFrt = Vec3s(14.f + mPadding, 6.f, 6.f + mPadding);
-    Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
-    Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
-    Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    frt->setGridClass(GRID_STAGGERED);
-    frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
-    auto maxDVTop = Vec3s(14.f + mPadding, 6.f + mPadding, 6.f);
-    Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
-    Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
-    Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    top->setGridClass(GRID_STAGGERED);
-    top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    auto minDVBtm = Vec3s(2 * mVoxelSize, -mPadding, 0.f);
-    auto maxDVBtm = Vec3s(14.f + mPadding, 0.f, 6.f);
-    Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
-    Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
-    Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    btm->setGridClass(GRID_STAGGERED);
-    btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    mDirichletVelocity->topologyUnion(*bck);
-    mDirichletVelocity->topologyUnion(*frt);
-    mDirichletVelocity->topologyUnion(*top);
-    mDirichletVelocity->topologyUnion(*btm);
-}
-
-
-
-void
-SmokeSolver::createDirichletVelocity2()
-{
-    BoolGrid::Ptr interiorMaskGrid = BoolGrid::create(false);
-    interiorMaskGrid->topologyUnion(*mCollocatedMaskGrid);
-    tools::erodeActiveValues(interiorMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mCollocatedMaskGrid->setName("interior_mask_grid");
-
-    mDirichletVelocity = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    mDirichletVelocity->setName("dirichlet_velocity");
-    mDirichletVelocity->setTransform(mXform);
-    mDirichletVelocity->setGridClass(GRID_STAGGERED);
-    mDirichletVelocity->denseFill(CoordBBox(mMin, Coord(1, mMax[1], mMax[2])), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    mDirichletVelocity->topologyUnion(*mCollocatedMaskGrid);
-    tools::dilateActiveValues(mDirichletVelocity->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mDirichletVelocity->topologyDifference(*interiorMaskGrid);
-
-    auto dirichletAcc = mDirichletVelocity->getAccessor();
-    for (auto iter = mDirichletVelocity->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        if (ijk[0] >= mMax[0])
-        dirichletAcc.setValueOff(ijk);
-    }
-    std::ostringstream ostr;
-    ostr << "debug_dirichlet_velocity" << ".vdb";
-    std::cerr << "Writing " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mDirichletVelocity);
-    grids.push_back(mCollocatedMaskGrid);
-    file.write(grids);
-    file.close();
-
-    //mDirichletVelocity->denseFill(CoordBBox(minDVLftCoord, maxDVLftCoord), /* value = */ Vec3s(1.f, 0.f, 0.f), /*active = */ true);
-    //mDirichletVelocity->setGridClass(GRID_STAGGERED);
-    //mDirichletVelocity->setTransform(mXform);
-    //mDirichletVelocity->setName("dirichlet_velocity");
-
-    //auto minDVBck = Vec3s(2 * mVoxelSize, 0.f, -mPadding);
-    //auto maxDVBck = Vec3s(14.f + mPadding, 6.f, 0.f);
-    //Coord minDVBckCoord = mXform->worldToIndexNodeCentered(minDVBck);
-    //Coord maxDVBckCoord = mXform->worldToIndexNodeCentered(maxDVBck);
-    //Vec3SGrid::Ptr bck = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    //bck->setGridClass(GRID_STAGGERED);
-    //bck->denseFill(CoordBBox(minDVBckCoord, maxDVBckCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    //auto minDVFrt = Vec3s(2 * mVoxelSize, 0.f, 6.f);
-    //auto maxDVFrt = Vec3s(14.f + mPadding, 6.f, 6.f + mPadding);
-    //Coord minDVFrtCoord = mXform->worldToIndexNodeCentered(minDVFrt);
-    //Coord maxDVFrtCoord = mXform->worldToIndexNodeCentered(maxDVFrt);
-    //Vec3SGrid::Ptr frt = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    //frt->setGridClass(GRID_STAGGERED);
-    //frt->denseFill(CoordBBox(minDVFrtCoord, maxDVFrtCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    //auto minDVTop = Vec3s(2 * mVoxelSize, 6.f, 0.f);
-    //auto maxDVTop = Vec3s(14.f + mPadding, 6.f + mPadding, 6.f);
-    //Coord minDVTopCoord = mXform->worldToIndexNodeCentered(minDVTop);
-    //Coord maxDVTopCoord = mXform->worldToIndexNodeCentered(maxDVTop);
-    //Vec3SGrid::Ptr top = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    //top->setGridClass(GRID_STAGGERED);
-    //top->denseFill(CoordBBox(minDVTopCoord, maxDVTopCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    //auto minDVBtm = Vec3s(2 * mVoxelSize, -mPadding, 0.f);
-    //auto maxDVBtm = Vec3s(14.f + mPadding, 0.f, 6.f);
-    //Coord minDVBtmCoord = mXform->worldToIndexNodeCentered(minDVBtm);
-    //Coord maxDVBtmCoord = mXform->worldToIndexNodeCentered(maxDVBtm);
-    //Vec3SGrid::Ptr btm = Vec3SGrid::create(/* bg = */ Vec3s(0.f, 0.f, 0.f));
-    //btm->setGridClass(GRID_STAGGERED);
-    //btm->denseFill(CoordBBox(minDVBtmCoord, maxDVBtmCoord), /* value = */ Vec3s(0.f, 0.f, 0.f), /*active = */ true);
-
-    //mDirichletVelocity->topologyUnion(*bck);
-    //mDirichletVelocity->topologyUnion(*frt);
-    //mDirichletVelocity->topologyUnion(*top);
-    //mDirichletVelocity->topologyUnion(*btm);
-}
-
-
-void
-SmokeSolver::initialize() {
-    std::cout << "initialize " << std::endl;
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 4.f * mVoxelSize;
-    mPadding = padding;
-    float const centerY = 3.f;
-    auto minBBox = Vec3s(0.f, 0.f, 0.f);
-    auto maxBBox = Vec3s(14.f, 6.f, 6.f);
-    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
-    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
-    mMin = minBBoxIntrCoord;
-    mMax = maxBBoxIntrCoord;
-    mMaxStaggered = mMax + Coord(1);
-    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
-    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mCollocatedMaskGrid->setTransform(mXform);
-    mCollocatedMaskGrid->setName("domain_mask");
-
-    // Create an emitter and an emitter velocity
-    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
-    auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
-    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
-    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
-    mEmitter = FloatGrid::create(/*bg = */0.f);
-    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
-    mEmitter->setTransform(mXform);
-    mEmitter->setName("emitter");
-
-    createDirichletVelocity2();
-
-    mDensityCurr = FloatGrid::create(/*bg = */0.f);
-    mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
-    mDensityCurr->setTransform(mXform);
-    mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
-    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
-
-    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
-    mVCurr->setTransform(mXform);
-    mVCurr->setName("vel_curr");
-    mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->tree().voxelizeActiveTiles();
-
-    updateEmitter();
-    applyDirichletVelocity(*mVCurr, -1);
-}
-
-
-void
-SmokeSolver::initialize2() {
-    std::cout << "initialize 2" << std::endl;
-    using BBox = math::BBox<Vec3s>;
-
-    mXform = math::Transform::createLinearTransform(mVoxelSize);
-    float const padding = 1.f * mVoxelSize;
-    mPadding = padding;
-    float const centerY = 3.f;
-    auto minBBox = Vec3s(0.f, 0.f, 0.f);
-    auto maxBBox = Vec3s(5.f * mVoxelSize, 4.f * mVoxelSize, 4.f * mVoxelSize);
-    // auto maxBBox = Vec3s(14.f, 6.f, 6.f);
-    Coord minBBoxIntrCoord = mXform->worldToIndexNodeCentered(minBBox);
-    Coord maxBBoxIntrCoord = mXform->worldToIndexNodeCentered(maxBBox);
-    mMin = minBBoxIntrCoord;
-    mMax = maxBBoxIntrCoord;
-    mMaxStaggered = mMax + Coord(1);
-    std::cout << "mMax = " << mMax << "\tmMaxStaggered = " << mMaxStaggered << std::endl;
-    mCollocatedMaskGrid = BoolGrid::create(false /* background */);
-    mCollocatedMaskGrid->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ true, /* active = */ true);
-    mCollocatedMaskGrid->setTransform(mXform);
-    mCollocatedMaskGrid->setName("domain_mask");
-
-    // Create an emitter and an emitter velocity
-    auto minEmtW = Vec3s(0.f, 2.5f, 2.5f);
-    auto maxEmtW = Vec3s(2 * mVoxelSize, 3.5f, 3.5f);
-    Coord minEmtCoord = mXform->worldToIndexNodeCentered(minEmtW);
-    Coord maxEmtCoord = mXform->worldToIndexNodeCentered(maxEmtW);
-    mEmitter = FloatGrid::create(/*bg = */0.f);
-    mEmitter->denseFill(CoordBBox(minEmtCoord, maxEmtCoord), /* value = */ 2.0, /*active = */ true);
-    mEmitter->setTransform(mXform);
-    mEmitter->setName("emitter");
-
-    createDirichletVelocity2();
-
-    mDensityCurr = FloatGrid::create(/*bg = */0.f);
-    mDensityCurr->denseFill(CoordBBox(minBBoxIntrCoord, maxBBoxIntrCoord), /* value = */ 0.f, /* active = */ true);
-    mDensityCurr->setTransform(mXform);
-    mDensityCurr->setName("density_curr");
-    mDensityCurr->topologyUnion(*mCollocatedMaskGrid);
-    mDensityCurr->topologyIntersection(*mCollocatedMaskGrid);
-
-    mVCurr = Vec3SGrid::create(/*bg = */Vec3s(0.f, 0.f, 0.f));
-    mVCurr->denseFill(CoordBBox(minBBoxIntrCoord, mMaxStaggered), /* value = */ Vec3s(1.f, 0.f, 0.f), /* active = */ true);
-    mVCurr->setTransform(mXform);
-    mVCurr->setName("vel_curr");
-    mVCurr->setGridClass(GRID_STAGGERED);
-    mVCurr->tree().voxelizeActiveTiles();
-
-    std::ostringstream ostr;
-    ostr << "debug_initialize2.vdb";
-    std::cerr << "\tWriting " << ostr.str() << std::endl;
-    openvdb::io::File file(ostr.str());
-    openvdb::GridPtrVec grids;
-    grids.push_back(mVCurr);
-    grids.push_back(mDensityCurr);
-    file.write(grids);
-    file.close();
-
-    updateEmitter();
-    applyDirichletVelocity(*mVCurr, -1);
-}
-
-void
 SmokeSolver::addGravity(float const dt) {
     tree::LeafManager<Vec3STree> lm(mVCurr->tree());
     SmokeSolver::ApplyGravityOp op(dt, mGravity, mFlags);
@@ -1145,7 +759,6 @@ void
 SmokeSolver::advectDensity(float const dt)
 {
     std::cout << "Advect Density" << std::endl;
-    using MaskGridType = BoolGrid;
     using AdvT = openvdb::tools::VolumeAdvection<Vec3fGrid, true /* Staggered */>;
     using SamplerT = openvdb::tools::Sampler<1>;
 
@@ -1155,46 +768,7 @@ SmokeSolver::advectDensity(float const dt)
     advection.setSubSteps(1);
 
     mDensityNext = advection.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mInteriorPressure, dt);
-    // mDensityNext = advection.advect<FloatGrid, SamplerT>(*mDensityCurr, dt);
     mDensityNext->setName("density_next");
-
-    // Debug
-    // {//test advect with a mask
-    //     Vec3fGrid velocity(Vec3f(1.0f, 0.0f, 0.0f));
-    //     FloatGrid::Ptr density0 = FloatGrid::create(0.0f), density1;
-    //     density0->fill(CoordBBox(Coord(0),Coord(6)), 1.0f);
-
-    //     BoolGrid::Ptr mask = BoolGrid::create(false);
-    //     mask->fill(CoordBBox(Coord(4,0,0),Coord(30,8,8)), true);
-
-    //     AdvT a(*mVCurr);
-    //     a.setGrainSize(0);
-    //     a.setIntegrator(tools::Scheme::MAC);
-    //     //a.setIntegrator(tools::Scheme::BFECC);
-    //     //a.setIntegrator(tools::Scheme::RK4);
-    //     for (int i=1; i<=240; ++i) {
-    //         // density1 = a.advect<FloatGrid, BoolGrid, SamplerT>(*density0, *mask, 0.1f);
-    //         mDensityNext = a.advect<FloatGrid, BoolGrid, SamplerT>(*mDensityCurr, *mCollocatedMaskGrid, 0.1f);
-    //         std::ostringstream ostr;
-    //         ostr << "debugAdvectMask" << "_" << i << ".vdb";
-    //         std::cerr << "Writing " << ostr.str() << std::endl;
-    //         openvdb::io::File file(ostr.str());
-    //         openvdb::GridPtrVec grids;
-    //         // grids.push_back(density1);
-    //         grids.push_back(mDensityNext);
-    //         file.write(grids);
-    //         // density0 = density1;
-    //         mDensityCurr = mDensityNext;
-    //     }
-    // }
-    // std::ostringstream ostr;
-    // ostr << "densityAdvectMask" << ".vdb";
-    // std::cerr << "Writing " << ostr.str() << std::endl;
-    // openvdb::io::File file(ostr.str());
-    // openvdb::GridPtrVec grids;
-    // grids.push_back(mDensityNext);
-    // file.write(grids);
-    // file.close();
 }
 
 void
