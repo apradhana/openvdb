@@ -720,7 +720,7 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                        static_cast<float>(intAcc.isValueOn(ijkp1))};
         float wxsum = wx[0] + wx[1] + wx[2] + wx[3];
 
-        if (wxsum < 2.f && wxsum > 0.f) {
+        if (wxsum > 0.f) {
             float v[4] = {copyAcc.getValue(ijm1k)[0],
                           copyAcc.getValue(ijp1k)[0],
                           copyAcc.getValue(ijkm1)[0],
@@ -740,7 +740,7 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                        static_cast<float>(intAcc.isValueOn(ijkp1))};
         float wysum = (wy[0] + wy[1] + wy[2] + wy[3]);
 
-        if (wysum >0.f && wysum < 2.f) {
+        if (wysum >0.f ) {
         //if (nbAcc.isValueOn(ijm1k)) {
             float v[4] = {copyAcc.getValue(im1jk)[1],
                           copyAcc.getValue(ip1jk)[1],
@@ -763,7 +763,7 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                        static_cast<float>(intAcc.isValueOn(ijm1k)),
                        static_cast<float>(intAcc.isValueOn(ijp1k))};
         float wzsum = wz[0] + wz[1] + wz[2] + wz[3];
-        if (wzsum > 0.f && wzsum < 2.f) {
+        if (wzsum > 0.f ) {
             float v[4] = {copyAcc.getValue(im1jk)[2],
                           copyAcc.getValue(ip1jk)[2],
                           copyAcc.getValue(ijm1k)[2],
@@ -1077,7 +1077,7 @@ FlipSolver::advectParticles(float const dt) {
 void
 FlipSolver::writeVDBs(int const frame) {
     std::ostringstream ss;
-    ss << "water_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    ss << "water_wedge2_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
     std::string fileName(ss.str());
     io::File file(fileName.c_str());
     file.write({mPoints});
