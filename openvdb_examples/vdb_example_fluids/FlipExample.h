@@ -298,7 +298,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializeFreeFall();
+    initializePool();
 }
 
 
