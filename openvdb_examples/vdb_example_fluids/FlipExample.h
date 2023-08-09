@@ -803,6 +803,7 @@ FlipSolver::pressureProjection5(bool print) {
 
     BoolGrid::Ptr interiorPressure = BoolGrid::create(false);
     interiorPressure->tree().topologyUnion(mPoints->tree());
+    // note: no need to take topology intersection with mCollider
 
     std::cout << "interior pressure = " << interiorPressure << std::endl;
 
@@ -941,9 +942,9 @@ FlipSolver::pressureProjection(bool print) {
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    //velocityBCCorrection(*mVCurr);
+    velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
-    //velocityBCCorrection(*mVNext);
+    velocityBCCorrection(*mVNext);
     // extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
@@ -972,7 +973,7 @@ FlipSolver::updateParticlesVelocity() {
 
     // PIC/FLIP update
     tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
-    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.05 /* alpha in PIC/FlIP update */);
+    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.05f /* alpha in PIC/FlIP update */);
     tbb::parallel_for(leafManager.leafRange(), op);
 }
 
