@@ -298,7 +298,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializePool();
+    initializeFreeFall();
 }
 
 
@@ -688,19 +688,20 @@ FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
 
 void
 FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
-    vecGrid.topologyDifference(*mCollider);
+    // vecGrid.topologyDifference(*mCollider);
     BoolGrid::Ptr narrowBand = BoolGrid::create(false);
     (narrowBand->tree()).topologyUnion(vecGrid.tree());
     tools::dilateActiveValues(narrowBand->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     narrowBand->topologyDifference(vecGrid);
     Vec3SGrid::Ptr copyVel = vecGrid.deepCopy();
-    // trial monday
-    mCollider->topologyDifference(vecGrid);
+    // // trial monday
+    // mCollider->topologyDifference(vecGrid);
 
     auto velAcc = vecGrid.getAccessor();
     auto copyAcc = copyVel->getAccessor();
     auto cldrAcc = mCollider->getConstAccessor();
     auto nbAcc = narrowBand->getConstAccessor();
+    auto intAcc = mInteriorPressure->getConstAccessor();
 
     for (auto iter = mCollider->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -718,32 +719,32 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                           copyAcc.getValue(ijp1k)[0],
                           copyAcc.getValue(ijkm1)[0],
                           copyAcc.getValue(ijkp1)[0]};
-            float w[4] = {static_cast<float>(copyAcc.isValueOn(ijm1k)),
-                          static_cast<float>(copyAcc.isValueOn(ijp1k)), 
-                          static_cast<float>(copyAcc.isValueOn(ijkm1)), 
-                          static_cast<float>(copyAcc.isValueOn(ijkp1))};
+            float w[4] = {static_cast<float>(intAcc.isValueOn(ijm1k)),
+                          static_cast<float>(intAcc.isValueOn(ijp1k)),
+                          static_cast<float>(intAcc.isValueOn(ijkm1)),
+                          static_cast<float>(intAcc.isValueOn(ijkp1))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[0] = extrapolate;
         }
 
 
-        // float wy[4] = {static_cast<float>(velAcc.isValueOn(im1jk)),
-        //               static_cast<float>(velAcc.isValueOn(ip1jk)), 
-        //               static_cast<float>(velAcc.isValueOn(ijkm1)), 
-        //               static_cast<float>(velAcc.isValueOn(ijkp1))};
-        // float wysum = (wy[0] + wy[1] + wy[2] + wy[3]);
+        float wy[4] = {static_cast<float>(intAcc.isValueOn(im1jk)),
+                       static_cast<float>(intAcc.isValueOn(ip1jk)),
+                       static_cast<float>(intAcc.isValueOn(ijkm1)),
+                       static_cast<float>(intAcc.isValueOn(ijkp1))};
+        float wysum = (wy[0] + wy[1] + wy[2] + wy[3]);
 
-        // if (wysum >= 0.5 && wysum <= 1.5) {
-        if (nbAcc.isValueOn(ijm1k)) {
+        if (wysum >= 0.5 && wysum <= 1.5) {
+        //if (nbAcc.isValueOn(ijm1k)) {
             float v[4] = {copyAcc.getValue(im1jk)[1],
                           copyAcc.getValue(ip1jk)[1],
                           copyAcc.getValue(ijkm1)[1],
                           copyAcc.getValue(ijkp1)[1]};
-            float w[4] = {static_cast<float>(copyAcc.isValueOn(im1jk)),
-                          static_cast<float>(copyAcc.isValueOn(ip1jk)), 
-                          static_cast<float>(copyAcc.isValueOn(ijkm1)), 
-                          static_cast<float>(copyAcc.isValueOn(ijkp1))};
+            float w[4] = {static_cast<float>(intAcc.isValueOn(im1jk)),
+                          static_cast<float>(intAcc.isValueOn(ip1jk)),
+                          static_cast<float>(intAcc.isValueOn(ijkm1)),
+                          static_cast<float>(intAcc.isValueOn(ijkp1))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = normalize * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[1] = extrapolate;
@@ -757,10 +758,10 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                           copyAcc.getValue(ip1jk)[2],
                           copyAcc.getValue(ijm1k)[2],
                           copyAcc.getValue(ijp1k)[2]};
-            float w[4] = {static_cast<float>(copyAcc.isValueOn(im1jk)),
-                          static_cast<float>(copyAcc.isValueOn(ip1jk)), 
-                          static_cast<float>(copyAcc.isValueOn(ijm1k)), 
-                          static_cast<float>(copyAcc.isValueOn(ijp1k))};
+            float w[4] = {static_cast<float>(intAcc.isValueOn(im1jk)),
+                          static_cast<float>(intAcc.isValueOn(ip1jk)),
+                          static_cast<float>(intAcc.isValueOn(ijm1k)),
+                          static_cast<float>(intAcc.isValueOn(ijp1k))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[2] = extrapolate;
@@ -855,6 +856,7 @@ FlipSolver::pressureProjection5(bool print) {
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        vNextAcc.setValue(ijk, vCurrAcc.getValue(ijk));
         // Only updates velocity if it is a face of fluid cell
         if (interiorAcc.isValueOn(ijk) ||
             interiorAcc.isValueOn(im1jk) || 
@@ -913,7 +915,6 @@ FlipSolver::pressureProjection5(bool print) {
             divAfter = val;
         }
     }
-    writeVDBsVerbose(0);
     std::cout << "\t== divergence after pp = " << divAfter << std::endl;
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -988,7 +989,6 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
-    //velocityBCCorrection(*mVNext);
     // extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
