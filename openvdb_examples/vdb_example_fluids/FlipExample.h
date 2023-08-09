@@ -292,13 +292,13 @@ private:
     FloatGrid::Ptr mPressure;
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
-    BoolGrid::Ptr mDomainMaskGrid;
+    BoolGrid::Ptr mInteriorPressure;
 };
 
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializePool();
+    initializeFreeFall();
 }
 
 
@@ -475,6 +475,14 @@ FlipSolver::particlesToGrid(){
     mVNext->setGridClass(GRID_STAGGERED);
     mVNext->setTransform(mXform);
     mVNext->setName("v_next");
+
+    // Determine the fluid domain
+    mInteriorPressure = BoolGrid::create(false);
+    mInteriorPressure->tree().topologyUnion(mPoints->tree());
+    mInteriorPressure->tree().voxelizeActiveTiles();
+    mInteriorPressure->tree().topologyDifference(mCollider->tree());
+    mInteriorPressure->setTransform(mXform);
+    mInteriorPressure->setName("interior_pressure");
 }
 
 
@@ -801,14 +809,8 @@ FlipSolver::pressureProjection5(bool print) {
     const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
-    BoolGrid::Ptr interiorPressure = BoolGrid::create(false);
-    interiorPressure->tree().topologyUnion(mPoints->tree());
-    // note: no need to take topology intersection with mCollider
-
-    std::cout << "interior pressure = " << interiorPressure << std::endl;
-
     mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->tree().topologyIntersection(interiorPressure->tree());
+    mDivBefore->tree().topologyIntersection(mInteriorPressure->tree());
     mDivBefore->setName("div_before");
     float divBefore = 0.f;
     auto divAcc = mDivBefore->getAccessor();
@@ -827,11 +829,11 @@ FlipSolver::pressureProjection5(bool print) {
     FlipSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
     util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), interiorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
+        mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
     // From conversation with Greg
-    tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    // tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     fluidPressureGrid->setTransform(mXform);
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
@@ -845,20 +847,62 @@ FlipSolver::pressureProjection5(bool print) {
 
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
+    auto interiorAcc = mInteriorPressure->getAccessor();
+    auto cldrAcc = mCollider->getAccessor();
     int count = 0;
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        Vec3s gradijk;
-        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-        vNextAcc.setValue(ijk, val);
+        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+        // Only updates velocity if it is a face of fluid cell
+        if (interiorAcc.isValueOn(ijk) ||
+            interiorAcc.isValueOn(im1jk) || 
+            interiorAcc.isValueOn(ijm1k) || 
+            interiorAcc.isValueOn(ijkm1)) {
+            Vec3s gradijk;
+            gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+            gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+            gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+            auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+            vNextAcc.setValue(ijk, val);
+        }
     }
-    mVNext->tree().topologyIntersection(mVCurr->tree());
+
+    //// apply dirichlet-velocity, i.e. Neumann pressure
+    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
+
+        Vec3s val = *iter;
+
+        if (cldrAcc.isValueOn(ijk)) {
+            // is a full Neumann
+            val = Vec3s::zero();
+        } else {
+            if(cldrAcc.isValueOn(im1jk)) {
+                // neighboring a Neumann pressure in the x face
+                // not looking at getValue(im1jk),
+                // because that's how we set dirichlet velocity being staggered
+                val[0] = 0.f;
+            }
+            if(cldrAcc.isValueOn(ijm1k)) {
+                // neighboring a Neumann pressure in the y face
+                val[1] = 0.f;
+            }
+            if(cldrAcc.isValueOn(ijkm1)) {
+                // neighboring a Neumann pressure in the z face
+                val[2] = 0.f;
+            }
+        }
+        iter.setValue(val);
+    }
+    // mVNext->tree().topologyIntersection(mVCurr->tree());
 
     mDivAfter = tools::divergence(*mVNext);
-    mDivAfter->topologyIntersection(*mDivBefore);
+    mDivAfter->topologyIntersection(*mInteriorPressure);
     mDivAfter->setName("div_after");
     float divAfter = 0.f;
     auto divAfterAcc = mDivAfter->getAccessor();
@@ -944,7 +988,7 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
-    velocityBCCorrection(*mVNext);
+    //velocityBCCorrection(*mVNext);
     // extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
@@ -1044,7 +1088,7 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
-    grids.push_back(mDomainMaskGrid);
+    grids.push_back(mInteriorPressure);
     file.write(grids);
     file.close();
 }
