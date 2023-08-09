@@ -278,7 +278,7 @@ private:
 
 
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, -9.8f/9.f, 0.f);
+    Vec3s mGravity = Vec3s(0.f, -9.8f/2, 0.f);
     int mPointsPerVoxel = 8;
     math::Transform::Ptr mXform;
 
@@ -298,7 +298,7 @@ private:
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializePool();
+    initializeDamBreak();
 }
 
 
@@ -714,20 +714,25 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
 
         auto val = velAcc.getValue(ijk);
 
-        if (nbAcc.isValueOn(im1jk)) {
+        float wx[4] = {static_cast<float>(intAcc.isValueOn(ijm1k)),
+                       static_cast<float>(intAcc.isValueOn(ijp1k)),
+                       static_cast<float>(intAcc.isValueOn(ijkm1)),
+                       static_cast<float>(intAcc.isValueOn(ijkp1))};
+        float wxsum = wx[0] + wx[1] + wx[2] + wx[3];
+
+        if (wxsum < 2.f && wxsum > 0.f) {
             float v[4] = {copyAcc.getValue(ijm1k)[0],
                           copyAcc.getValue(ijp1k)[0],
                           copyAcc.getValue(ijkm1)[0],
                           copyAcc.getValue(ijkp1)[0]};
-            float w[4] = {static_cast<float>(intAcc.isValueOn(ijm1k)),
-                          static_cast<float>(intAcc.isValueOn(ijp1k)),
-                          static_cast<float>(intAcc.isValueOn(ijkm1)),
-                          static_cast<float>(intAcc.isValueOn(ijkp1))};
+        float w[4] = {static_cast<float>(intAcc.isValueOn(ijm1k)),
+                       static_cast<float>(intAcc.isValueOn(ijp1k)),
+                       static_cast<float>(intAcc.isValueOn(ijkm1)),
+                       static_cast<float>(intAcc.isValueOn(ijkp1))};
             float normalize = 1.f / (w[0] + w[1] + w[2] + w[3]);
             float extrapolate = 1 * (w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3]);
             val[0] = extrapolate;
         }
-
 
         float wy[4] = {static_cast<float>(intAcc.isValueOn(im1jk)),
                        static_cast<float>(intAcc.isValueOn(ip1jk)),
@@ -735,7 +740,7 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
                        static_cast<float>(intAcc.isValueOn(ijkp1))};
         float wysum = (wy[0] + wy[1] + wy[2] + wy[3]);
 
-        if (wysum >= 0.5 && wysum <= 1.5) {
+        if (wysum >0.f && wysum < 2.f) {
         //if (nbAcc.isValueOn(ijm1k)) {
             float v[4] = {copyAcc.getValue(im1jk)[1],
                           copyAcc.getValue(ip1jk)[1],
@@ -753,7 +758,12 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
             // }
         }
 
-        if (nbAcc.isValueOn(ijkm1)) {
+        float wz[4] = {static_cast<float>(intAcc.isValueOn(im1jk)),
+                       static_cast<float>(intAcc.isValueOn(ip1jk)),
+                       static_cast<float>(intAcc.isValueOn(ijm1k)),
+                       static_cast<float>(intAcc.isValueOn(ijp1k))};
+        float wzsum = wz[0] + wz[1] + wz[2] + wz[3];
+        if (wzsum > 0.f && wzsum < 2.f) {
             float v[4] = {copyAcc.getValue(im1jk)[2],
                           copyAcc.getValue(ip1jk)[2],
                           copyAcc.getValue(ijm1k)[2],
@@ -989,7 +999,8 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
     velocityBCCorrection(*mVCurr);
     pressureProjection5(false /* print */);
-    // extrapolateToCollider2(*mVNext);
+    extrapolateToCollider2(*mVCurr);
+    extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
 
@@ -1017,7 +1028,7 @@ FlipSolver::updateParticlesVelocity() {
 
     // PIC/FLIP update
     tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
-    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.05f /* alpha in PIC/FlIP update */);
+    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.01f /* alpha in PIC/FlIP update */);
     tbb::parallel_for(leafManager.leafRange(), op);
 }
 
@@ -1032,7 +1043,7 @@ FlipSolver::updateParticles(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 100; ++frame) {
+    for (int frame = 0; frame < 600; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
         float numSubStep = 10.f;
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
@@ -1056,7 +1067,7 @@ FlipSolver::gridToParticles() {
 
 void
 FlipSolver::advectParticles(float const dt) {
-    Index const integrationOrder = 1;
+    Index const integrationOrder = 4;
     int const steps = 1;
 
     points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
