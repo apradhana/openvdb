@@ -9,6 +9,7 @@
 #include <iostream>
 #include <math.h>
 #include <string>
+#include <vector>
 
 #include <openvdb/openvdb.h>
 #include <openvdb/points/PointAdvect.h> // for advectPoints
@@ -59,6 +60,7 @@ private:
 
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
+    void pressureProjection5(bool print);
 
     void gridVelocityUpdate(float const dt);
 
@@ -66,7 +68,6 @@ private:
     void extrapolateToCollider(Vec3SGrid& vecGrid);
     void extrapolateToCollider3(Vec3SGrid& vecGrid);
     void extrapolateToCollider2(Vec3SGrid& vecGrid);
-    void velocityBCCorrectionDebug(Vec3SGrid& vecGrid);
 
     void addGravity(float const dt);
     void computeFlipVelocity(float const dt);
@@ -119,8 +120,30 @@ private:
                 source += delta / voxelSize;
             } else {
                 // Dirichlet pressure
-                diagonal -= 1.0;
-                source -= dirichletBC;
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
             }
         }
 
@@ -269,12 +292,13 @@ private:
     FloatGrid::Ptr mPressure;
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
+    BoolGrid::Ptr mDomainMaskGrid;
 };
 
 
 FlipSolver::FlipSolver(float const voxelSize) : mVoxelSize(voxelSize)
 {
-    initializeDamBreak();
+    initializeFreeFall();
 }
 
 
@@ -738,8 +762,6 @@ FlipSolver::extrapolateToCollider2(Vec3SGrid& vecGrid) {
 }
 
 
-
-
 void
 FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     auto acc = vecGrid.getAccessor();
@@ -750,91 +772,111 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (cldrAcc.isValueOn(im1jk)) {
+        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ip1jk)) {
-            auto val = acc.getValue(ip1jk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            acc.setValue(ip1jk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijm1k)) {
+        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (cldrAcc.isValueOn(ijp1k)) {
-            auto val = acc.getValue(ijp1k);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            acc.setValue(ijp1k, newVal);
-        }
-        if (cldrAcc.isValueOn(ijkm1)) {
+        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijkp1)) {
-            auto val = acc.getValue(ijkp1);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            acc.setValue(ijkp1, newVal);
         }
     }
 }
-
 
 void
-FlipSolver::velocityBCCorrectionDebug(Vec3SGrid& vecGrid) {
-    auto acc = vecGrid.getAccessor();
-    auto cldrAcc = mCollider->getAccessor();
+FlipSolver::pressureProjection5(bool print) {
+    std::cout << "pressure projection 5 begins" << std::endl;
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+    using MaskGridType = BoolGrid;
+    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
+    const ValueType zero = zeroVal<ValueType>();
+    const double epsilon = math::Delta<ValueType>::value();
 
-    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
+    BoolGrid::Ptr interiorPressure = BoolGrid::create(false);
+    interiorPressure->tree().topologyUnion(mPoints->tree());
+
+    std::cout << "interior pressure = " << interiorPressure << std::endl;
+
+    mDivBefore = tools::divergence(*mVCurr);
+    mDivBefore->tree().topologyIntersection(interiorPressure->tree());
+    mDivBefore->setName("div_before");
+    float divBefore = 0.f;
+    auto divAcc = mDivBefore->getAccessor();
+    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
-        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
-        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
-        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
-
-        if (cldrAcc.isValueOn(im1jk) && acc.getValue(ijk)[0] < 0) { 
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[0] > 0) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijm1k) && acc.getValue(ijk)[1] < 0) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[1] > 0) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijkm1) && acc.getValue(ijk)[2] < 0) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijk) && acc.getValue(ijk)[2] > 0) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            acc.setValue(ijk, newVal);
+        auto val = divAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divBefore)) {
+            divBefore = val;
         }
     }
-}
+    std::cout << "\t== divergence before " << divBefore << std::endl;
 
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100000;
+    state.relativeError = state.absoluteError = epsilon;
+    FlipSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
+    util::NullInterrupter interrupter;
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+        mDivBefore->tree(), interiorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
+
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    // From conversation with Greg
+    tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    fluidPressureGrid->setTransform(mXform);
+    mPressure = fluidPressureGrid->copy();
+    mPressure->setName("pressure");
+    auto pressureAcc = fluidPressureGrid->getAccessor();
+
+    // for (auto iter = fluidPressureGrid->beginValueOn(); iter; ++iter) {
+    //     math::Coord ijk = iter.getCoord();
+    //     auto val = pressureAcc.getValue(ijk);
+    //     std::cout << "pressure " << ijk << " = " << val << std::endl;
+    // }
+
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto vNextAcc = mVNext->getAccessor();
+    int count = 0;
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        Vec3s gradijk;
+        gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+        gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+        gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+        auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+        vNextAcc.setValue(ijk, val);
+    }
+    mVNext->tree().topologyIntersection(mVCurr->tree());
+
+    mDivAfter = tools::divergence(*mVNext);
+    mDivAfter->topologyIntersection(*mDivBefore);
+    mDivAfter->setName("div_after");
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    writeVDBsVerbose(0);
+    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
+    std::cout << "Success: " << state.success << std::endl;
+    std::cout << "Iterations: " << state.iterations << std::endl;
+    std::cout << "Relative error: " << state.relativeError << std::endl;
+    std::cout << "Absolute error: " << state.absoluteError << std::endl;
+    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+    std::cout << "pressure projection 5 ends" << std::endl;
+}
 
 void
 FlipSolver::pressureProjection(bool print) {
@@ -850,7 +892,7 @@ FlipSolver::pressureProjection(bool print) {
     mDivBefore->setName("div_before");
 
     MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     domainMaskGrid->topologyDifference(*mCollider);
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
@@ -878,15 +920,30 @@ FlipSolver::pressureProjection(bool print) {
     std::cout << "Iterations: " << state.iterations << "\n";
     std::cout << "Relative error: " << state.relativeError << "\n";
     std::cout << "Absolute error: " << state.absoluteError << "\n";
+
+    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+    mDivAfter = tools::divergence(*mVCurr);
+    mDivAfter->tree().topologyIntersection(domainMaskGrid->tree());
+    mDivAfter->setName("div_after");
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
 }
 
 
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    velocityBCCorrection(*mVCurr);
-    pressureProjection(false /* print */);
-    velocityBCCorrection(*mVNext);
+    //velocityBCCorrection(*mVCurr);
+    pressureProjection5(false /* print */);
+    //velocityBCCorrection(*mVNext);
     // extrapolateToCollider2(*mVNext);
     computeFlipVelocity(dt);
 }
@@ -986,6 +1043,7 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     grids.push_back(mDivBefore);
     grids.push_back(mDivAfter);
     grids.push_back(mPressure);
+    grids.push_back(mDomainMaskGrid);
     file.write(grids);
     file.close();
 }
