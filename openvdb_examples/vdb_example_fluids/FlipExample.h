@@ -1,5 +1,8 @@
 // Copyright Contributors to the OpenVDB Project
 // SPDX-License-Identifier: MPL-2.0
+// TODO:
+//  - double check what greg said about needing to dilate the pressure
+//    in pressure projection
 
 # pragma once
 
@@ -68,6 +71,9 @@ private:
     void extrapolateToCollider(Vec3SGrid& vecGrid);
     void extrapolateToCollider3(Vec3SGrid& vecGrid);
     void extrapolateToCollider2(Vec3SGrid& vecGrid);
+
+
+    float computeLInfinity(const FloatGrid& grid);
 
     void addGravity(float const dt);
     void computeFlipVelocity(float const dt);
@@ -782,6 +788,21 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     }
 }
 
+
+float
+FlipSolver::computeLInfinity(const FloatGrid& grid) {
+    float ret = 0.f;
+    auto acc = grid.getConstAccessor();
+    for (auto iter = grid.beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = acc.getValue(ijk);
+        if (std::abs(val) > std::abs(ret)) {
+            ret = val;
+        }
+    }
+    return ret;
+}
+
 void
 FlipSolver::pressureProjection5(bool print) {
     std::cout << "pressure projection 5 begins" << std::endl;
@@ -789,21 +810,12 @@ FlipSolver::pressureProjection5(bool print) {
     using ValueType = TreeType::ValueType;
     using MaskGridType = BoolGrid;
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-    const ValueType zero = zeroVal<ValueType>();
     const double epsilon = math::Delta<ValueType>::value();
 
     mDivBefore = tools::divergence(*mVCurr);
     mDivBefore->tree().topologyIntersection(mInteriorPressure->tree());
     mDivBefore->setName("div_before");
-    float divBefore = 0.f;
-    auto divAcc = mDivBefore->getAccessor();
-    for (auto iter = mDivBefore->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divBefore)) {
-            divBefore = val;
-        }
-    }
+    float divBefore = computeLInfinity(*mDivBefore);
     std::cout << "\t== divergence before " << divBefore << std::endl;
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
@@ -815,23 +827,16 @@ FlipSolver::pressureProjection5(bool print) {
         mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
 
     FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    // From conversation with Greg
-    // tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     fluidPressureGrid->setTransform(mXform);
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
-    auto pressureAcc = fluidPressureGrid->getAccessor();
 
-    // for (auto iter = fluidPressureGrid->beginValueOn(); iter; ++iter) {
-    //     math::Coord ijk = iter.getCoord();
-    //     auto val = pressureAcc.getValue(ijk);
-    //     std::cout << "pressure " << ijk << " = " << val << std::endl;
-    // }
 
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto interiorAcc = mInteriorPressure->getAccessor();
     auto cldrAcc = mCollider->getAccessor();
+    auto pressureAcc = fluidPressureGrid->getAccessor();
     int count = 0;
     // Assumes that vNext at ijk already has the value of vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
@@ -885,15 +890,8 @@ FlipSolver::pressureProjection5(bool print) {
     mDivAfter = tools::divergence(*mVNext);
     mDivAfter->topologyIntersection(*mInteriorPressure);
     mDivAfter->setName("div_after");
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
+    float divAfter = computeLInfinity(*mDivAfter);
+
     std::cout << "\t== divergence after pp = " << divAfter << std::endl;
     std::cout << "Success: " << state.success << std::endl;
     std::cout << "Iterations: " << state.iterations << std::endl;
@@ -1016,6 +1014,7 @@ FlipSolver::render() {
         std::cout << "\nframe = " << frame << "\n";
         float numSubStep = 10.f;
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
+            std::cout << "\n==frame = " << frame << "==\n";
             substep(dt/numSubStep);
         }
         writeVDBs(frame);
