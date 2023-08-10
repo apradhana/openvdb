@@ -221,14 +221,16 @@ private:
     };// ComputeFlipVelocityOp
 
     // Pressure projection: mVNext = mVCurr - grad pressure.
-    // After calling this operator, the divergence of mVNext should be close to zero.
+    // Assumes that vNext at ijk already has the value of vCurr.
     struct SubtractPressureGradientOp
     {
         SubtractPressureGradientOp(BoolGrid::Ptr interiorPressure,
                                    FloatGrid::Ptr pressure,
+                                   Vec3SGrid::Ptr vCurr,
                                    float const voxelSize) :
                                    interiorPressure(interiorPressure),
                                    pressure(pressure),
+                                   vCurr(vCurr),
                                    voxelSize(voxelSize)
                                    {}
 
@@ -236,7 +238,8 @@ private:
         void operator()(T &leaf, size_t) const
         {
             auto interiorAcc = interiorPressure->getConstAccessor();
-            auto pressureAcc = pressure->getAccessor();
+            auto pressureAcc = pressure->getConstAccessor();
+            auto vCurrAcc = vCurr->getConstAccessor();
             for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
                 math::Coord ijk = iter.getCoord();
                 math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
@@ -252,7 +255,7 @@ private:
                     gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
                     gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
                     gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-                    auto val = *iter - gradijk  *  voxelSize;
+                    auto val = vCurrAcc.getValue(ijk) - gradijk  *  voxelSize;
                     iter.setValue(val);
                 }
             }
@@ -260,6 +263,7 @@ private:
 
         BoolGrid::Ptr interiorPressure;
         FloatGrid::Ptr pressure;
+        Vec3SGrid::Ptr vCurr;
         float voxelSize;
     };// SubtractPressureGradientOp
 
@@ -839,7 +843,7 @@ FlipSolver::pressureProjection5(bool print) {
 
     // Pressure projection: subtract grad p from current velocity
     tree::LeafManager<Vec3STree> lm(mVNext->tree());
-    FlipSolver::SubtractPressureGradientOp op(mInteriorPressure, fluidPressureGrid, mVoxelSize);
+    FlipSolver::SubtractPressureGradientOp op(mInteriorPressure, fluidPressureGrid, mVCurr, mVoxelSize);
     lm.foreach(op);
 
     auto cldrAcc = mCollider->getAccessor();
@@ -847,26 +851,6 @@ FlipSolver::pressureProjection5(bool print) {
     auto vNextAcc = mVNext->getAccessor();
     auto interiorAcc = mInteriorPressure->getAccessor();
     auto pressureAcc = fluidPressureGrid->getAccessor();
-    // Assumes that vNext at ijk already has the value of vCurr
-    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-
-        // Only updates velocity if it is a face of fluid cell
-        if (interiorAcc.isValueOn(ijk) ||
-            interiorAcc.isValueOn(im1jk) ||
-            interiorAcc.isValueOn(ijm1k) ||
-            interiorAcc.isValueOn(ijkm1)) {
-            Vec3s gradijk;
-            gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-            gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-            gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
-            auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
-            vNextAcc.setValue(ijk, val);
-        }
-    }
 
     // Apply velocity on Neumann-pressure faces
     for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
