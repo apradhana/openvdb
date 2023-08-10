@@ -62,7 +62,6 @@ private:
     void advectParticles(float const dt);
 
     // Make the velocity on the grid to be divergence free
-    void pressureProjection(bool print);
     void pressureProjection5(bool print);
 
     void gridVelocityUpdate(float const dt);
@@ -225,35 +224,42 @@ private:
     // After calling this operator, the divergence of mVNext should be close to zero.
     struct SubtractPressureGradientOp
     {
-        SubtractPressureGradientOp(FloatGrid::Ptr pressure,
-                                   Vec3SGrid::Ptr vCurr,
+        SubtractPressureGradientOp(BoolGrid::Ptr interiorPressure,
+                                   FloatGrid::Ptr pressure,
                                    float const voxelSize) :
+                                   interiorPressure(interiorPressure),
                                    pressure(pressure),
-                                   vCurr(vCurr),
                                    voxelSize(voxelSize)
                                    {}
 
         template <typename T>
         void operator()(T &leaf, size_t) const
         {
+            auto interiorAcc = interiorPressure->getConstAccessor();
             auto pressureAcc = pressure->getAccessor();
-            auto vCurrAcc = vCurr->getAccessor();
             for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
-                auto ijk = iter.getCoord();
-                Vec3s gradijk;
-                gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
-                gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
-                gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+                math::Coord ijk = iter.getCoord();
+                math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+                math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+                math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
 
-                // This is only multiplied by mVoxelSize because there is no division by voxel size
-                // in the computation of gradijk above.
-                auto val = vCurrAcc.getValue(ijk) - gradijk * voxelSize;
-                iter.setValue(val);
+                // Only updates velocity if it is a face of fluid cell
+                if (interiorAcc.isValueOn(ijk) ||
+                    interiorAcc.isValueOn(im1jk) ||
+                    interiorAcc.isValueOn(ijm1k) ||
+                    interiorAcc.isValueOn(ijkm1)) {
+                    Vec3s gradijk;
+                    gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+                    gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+                    gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+                    auto val = *iter - gradijk  *  voxelSize;
+                    iter.setValue(val);
+                }
             }
         }
 
+        BoolGrid::Ptr interiorPressure;
         FloatGrid::Ptr pressure;
-        Vec3SGrid::Ptr vCurr;
         float voxelSize;
     };// SubtractPressureGradientOp
 
@@ -831,13 +837,16 @@ FlipSolver::pressureProjection5(bool print) {
     mPressure = fluidPressureGrid->copy();
     mPressure->setName("pressure");
 
+    // Pressure projection: subtract grad p from current velocity
+    tree::LeafManager<Vec3STree> lm(mVNext->tree());
+    FlipSolver::SubtractPressureGradientOp op(mInteriorPressure, fluidPressureGrid, mVoxelSize);
+    lm.foreach(op);
 
+    auto cldrAcc = mCollider->getAccessor();
     auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
     auto interiorAcc = mInteriorPressure->getAccessor();
-    auto cldrAcc = mCollider->getAccessor();
     auto pressureAcc = fluidPressureGrid->getAccessor();
-    int count = 0;
     // Assumes that vNext at ijk already has the value of vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
@@ -885,7 +894,6 @@ FlipSolver::pressureProjection5(bool print) {
         }
         iter.setValue(val);
     }
-    // mVNext->tree().topologyIntersection(mVCurr->tree());
 
     mDivAfter = tools::divergence(*mVNext);
     mDivAfter->topologyIntersection(*mInteriorPressure);
@@ -900,66 +908,6 @@ FlipSolver::pressureProjection5(bool print) {
     std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
     std::cout << "pressure projection 5 ends" << std::endl;
 }
-
-void
-FlipSolver::pressureProjection(bool print) {
-    using TreeType = FloatTree;
-    using ValueType = TreeType::ValueType;
-    using MaskGridType = BoolGrid;
-    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
-    ValueType const zero = zeroVal<ValueType>();
-    double const epsilon = math::Delta<ValueType>::value();
-
-    mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->setName("div_before");
-
-    MaskGridType* domainMaskGrid = new MaskGridType(*mDivBefore); // match input grid's topology
-    // tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    domainMaskGrid->topologyDifference(*mCollider);
-
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100000;
-    state.relativeError = state.absoluteError = epsilon;
-    FlipSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
-    util::NullInterrupter interrupter;
-    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-        mDivBefore->tree(), domainMaskGrid->tree(), bop, state, interrupter, /*staggered=*/true);
-    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-    // Note: need to dilate in order to do one-sided difference
-    // because we use a staggered grid velocity field.
-    tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    fluidPressureGrid->setTransform(mXform);
-
-    // Pressure projection: subtract grad p from current velocity
-    tree::LeafManager<Vec3STree> lm(mVNext->tree());
-    FlipSolver::SubtractPressureGradientOp op(fluidPressureGrid, mVCurr, mVoxelSize);
-    lm.foreach(op);
-
-    mPressure = fluidPressureGrid->copy();
-    mPressure->setName("pressure");
-
-    std::cout << "Projection Success: " << state.success << "\n";
-    std::cout << "Iterations: " << state.iterations << "\n";
-    std::cout << "Relative error: " << state.relativeError << "\n";
-    std::cout << "Absolute error: " << state.absoluteError << "\n";
-
-    tools::erodeActiveValues(domainMaskGrid->tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
-    mDivAfter = tools::divergence(*mVCurr);
-    mDivAfter->tree().topologyIntersection(domainMaskGrid->tree());
-    mDivAfter->setName("div_after");
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
-}
-
 
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
