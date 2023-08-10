@@ -79,9 +79,9 @@ private:
         BoundaryOp(float const voxelSize,
                    FloatGrid::Ptr collider,
                    Vec3SGrid::Ptr vCurr) :
-            voxelSize(voxelSize),
-            collider(collider),
-            vCurr(vCurr) {}
+                   voxelSize(voxelSize),
+                   collider(collider),
+                   vCurr(vCurr) {}
 
         void operator()(const openvdb::Coord& ijk,
                         const openvdb::Coord& neighbor,
@@ -90,9 +90,7 @@ private:
         {
             float const dirichletBC = 0.f;
             bool isInsideCollider = collider->tree().isValueOn(neighbor);
-            auto vNgbr = Vec3s(0.f, 0.f, 0.f);// static collider//vCurr->tree().getValue(neighbor);
-
-            // TODO: Double check this:
+            auto vNgbr = Vec3s(0.f, 0.f, 0.f); // static collider
             if (isInsideCollider) {
                 double delta = 0.0;
                 // Neumann pressure from bbox
@@ -118,32 +116,9 @@ private:
                 // this by 0.5, because the gradient that's used is using
                 // central-differences in a collocated grid, instead of the staggered one.
                 source += delta / voxelSize;
-            } else {
-                // Dirichlet pressure
-                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
-                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    diagonal -= 1.0;
-                    source -= dirichletBC;
-                }
+            } else /* Dirichlet */ {
+                diagonal -= 1.0;
+                source -= dirichletBC;
             }
         }
 
@@ -470,17 +445,14 @@ FlipSolver::particlesToGrid(){
     mVCurr->setTransform(mXform);
     mVCurr->setName("v_curr");
 
-    mVNext = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
-    (mVNext->tree()).topologyUnion(mVCurr->tree());
-    mVNext->setGridClass(GRID_STAGGERED);
-    mVNext->setTransform(mXform);
+    mVNext = mVCurr->deepCopy();
     mVNext->setName("v_next");
 
     // Determine the fluid domain
     mInteriorPressure = BoolGrid::create(false);
     mInteriorPressure->tree().topologyUnion(mPoints->tree());
-    mInteriorPressure->tree().voxelizeActiveTiles();
     mInteriorPressure->tree().topologyDifference(mCollider->tree());
+    mInteriorPressure->tree().voxelizeActiveTiles();
     mInteriorPressure->setTransform(mXform);
     mInteriorPressure->setName("interior_pressure");
 }
@@ -861,16 +833,17 @@ FlipSolver::pressureProjection5(bool print) {
     auto interiorAcc = mInteriorPressure->getAccessor();
     auto cldrAcc = mCollider->getAccessor();
     int count = 0;
+    // Assumes that vNext at ijk already has the value of vCurr
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        vNextAcc.setValue(ijk, vCurrAcc.getValue(ijk));
+
         // Only updates velocity if it is a face of fluid cell
         if (interiorAcc.isValueOn(ijk) ||
-            interiorAcc.isValueOn(im1jk) || 
-            interiorAcc.isValueOn(ijm1k) || 
+            interiorAcc.isValueOn(im1jk) ||
+            interiorAcc.isValueOn(ijm1k) ||
             interiorAcc.isValueOn(ijkm1)) {
             Vec3s gradijk;
             gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
@@ -881,23 +854,19 @@ FlipSolver::pressureProjection5(bool print) {
         }
     }
 
-    //// apply dirichlet-velocity, i.e. Neumann pressure
+    // Apply velocity on Neumann-pressure faces
     for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto im1jk = ijk.offsetBy(-1, 0, 0);
         auto ijm1k = ijk.offsetBy(0, -1, 0);
         auto ijkm1 = ijk.offsetBy(0, 0, -1);
-
         Vec3s val = *iter;
-
         if (cldrAcc.isValueOn(ijk)) {
             // is a full Neumann
             val = Vec3s::zero();
         } else {
             if(cldrAcc.isValueOn(im1jk)) {
                 // neighboring a Neumann pressure in the x face
-                // not looking at getValue(im1jk),
-                // because that's how we set dirichlet velocity being staggered
                 val[0] = 0.f;
             }
             if(cldrAcc.isValueOn(ijm1k)) {
