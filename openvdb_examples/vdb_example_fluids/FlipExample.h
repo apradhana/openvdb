@@ -846,38 +846,78 @@ FlipSolver::pressureProjection5(bool print) {
     FlipSolver::SubtractPressureGradientOp op(mInteriorPressure, fluidPressureGrid, mVCurr, mVoxelSize);
     lm.foreach(op);
 
-    auto cldrAcc = mCollider->getAccessor();
-    auto vCurrAcc = mVCurr->getAccessor();
     auto vNextAcc = mVNext->getAccessor();
-    auto interiorAcc = mInteriorPressure->getAccessor();
-    auto pressureAcc = fluidPressureGrid->getAccessor();
+    auto cldrAcc = mCollider->getAccessor();
+    auto intrAcc = mInteriorPressure->getAccessor();
+
 
     // Apply velocity on Neumann-pressure faces
-    for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+    for (auto iter = mCollider->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto im1jk = ijk.offsetBy(-1, 0, 0);
         auto ijm1k = ijk.offsetBy(0, -1, 0);
         auto ijkm1 = ijk.offsetBy(0, 0, -1);
-        Vec3s val = *iter;
-        if (cldrAcc.isValueOn(ijk)) {
-            // is a full Neumann
-            val = Vec3s::zero();
-        } else {
-            if(cldrAcc.isValueOn(im1jk)) {
-                // neighboring a Neumann pressure in the x face
-                val[0] = 0.f;
-            }
-            if(cldrAcc.isValueOn(ijm1k)) {
-                // neighboring a Neumann pressure in the y face
-                val[1] = 0.f;
-            }
-            if(cldrAcc.isValueOn(ijkm1)) {
-                // neighboring a Neumann pressure in the z face
-                val[2] = 0.f;
-            }
+        auto ip1jk = ijk.offsetBy(1, 0, 0);
+        auto ijp1k = ijk.offsetBy(0, 1, 0);
+        auto ijkp1 = ijk.offsetBy(0, 0, 1);
+
+        if (intrAcc.isValueOn(im1jk)) {
+            auto val = vNextAcc.getValue(ijk);
+            vNextAcc.setValue(ijk, Vec3s(0.f, val[1], val[2]));
         }
-        iter.setValue(val);
+
+        if (intrAcc.isValueOn(ijm1k)) {
+            auto val = vNextAcc.getValue(ijk);
+            vNextAcc.setValue(ijk, Vec3s(val[0], 0.f, val[2]));
+        }
+
+        if (intrAcc.isValueOn(ijkm1)) {
+            auto val = vNextAcc.getValue(ijk);
+            vNextAcc.setValue(ijk, Vec3s(val[0], val[1], 0.f));
+        }
+
+        if (intrAcc.isValueOn(ip1jk)) {
+            auto val = vNextAcc.getValue(ip1jk);
+            vNextAcc.setValue(ip1jk, Vec3s(0.f, val[1], val[2]));
+        }
+
+        if (intrAcc.isValueOn(ijp1k)) {
+            auto val = vNextAcc.getValue(ijp1k);
+            vNextAcc.setValue(ijp1k, Vec3s(val[0], 0.f, val[2]));
+        }
+
+        if (intrAcc.isValueOn(ijkp1)) {
+            auto val = vNextAcc.getValue(ijkp1);
+            vNextAcc.setValue(ijkp1, Vec3s(val[0], val[1], 0.f));
+        }
     }
+
+    // // Apply velocity on Neumann-pressure faces
+    // for (auto iter = mVNext->beginValueOn(); iter; ++iter) {
+    //     auto ijk = iter.getCoord();
+    //     auto im1jk = ijk.offsetBy(-1, 0, 0);
+    //     auto ijm1k = ijk.offsetBy(0, -1, 0);
+    //     auto ijkm1 = ijk.offsetBy(0, 0, -1);
+    //     Vec3s val = *iter;
+    //     if (cldrAcc.isValueOn(ijk)) {
+    //         // is a full Neumann
+    //         val = Vec3s::zero();
+    //     } else {
+    //         if(cldrAcc.isValueOn(im1jk)) {
+    //             // neighboring a Neumann pressure in the x face
+    //             val[0] = 0.f;
+    //         }
+    //         if(cldrAcc.isValueOn(ijm1k)) {
+    //             // neighboring a Neumann pressure in the y face
+    //             val[1] = 0.f;
+    //         }
+    //         if(cldrAcc.isValueOn(ijkm1)) {
+    //             // neighboring a Neumann pressure in the z face
+    //             val[2] = 0.f;
+    //         }
+    //     }
+    //     iter.setValue(val);
+    // }
 
     mDivAfter = tools::divergence(*mVNext);
     mDivAfter->topologyIntersection(*mInteriorPressure);
