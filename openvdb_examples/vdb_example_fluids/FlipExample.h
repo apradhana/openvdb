@@ -68,9 +68,7 @@ private:
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
     void extrapolateToCollider(Vec3SGrid& vecGrid);
-    void extrapolateToCollider3(Vec3SGrid& vecGrid);
     void extrapolateToCollider2(Vec3SGrid& vecGrid);
-
 
     float computeLInfinity(const FloatGrid& grid);
 
@@ -560,74 +558,6 @@ FlipSolver::computeFlipVelocity(float const dt) {
 
 
 void
-FlipSolver::extrapolateToCollider3(Vec3SGrid& vecGrid) {
-    auto velAcc = vecGrid.getAccessor();
-    auto cldrAcc = mCollider->getAccessor();
-    vecGrid.topologyDifference(*mCollider);
-    
-    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord im2jk = ijk.offsetBy(-2, 0, 0);
-        math::Coord ijm2k = ijk.offsetBy(0, -2, 0);
-        math::Coord ijkm2 = ijk.offsetBy(0, 0, -2);
-        math::Coord ip1jk = ijk.offsetBy(2, 0, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 2, 0);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 2);
-        math::Coord ip2jk = ijk.offsetBy(3, 0, 0);
-        math::Coord ijp2k = ijk.offsetBy(0, 3, 0);
-        math::Coord ijkp2 = ijk.offsetBy(0, 0, 3);
-
-
-        if (cldrAcc.isValueOn(im1jk) && cldrAcc.isValueOn(im2jk)) {
-            auto val = velAcc.getValue(ijk);
-            auto newval = velAcc.getValue(im1jk);
-            newval[1] = val[1];
-            newval[2] = val[2];
-            velAcc.setValue(im1jk, newval);
-        }
-        if (cldrAcc.isValueOn(ijm1k) && cldrAcc.isValueOn(ijm2k)) {
-            auto val = velAcc.getValue(ijk);
-            auto newval = velAcc.getValue(ijm1k);
-            newval[0] = val[0];
-            newval[2] = val[2];
-            velAcc.setValue(ijm1k, newval);
-        }
-        if (cldrAcc.isValueOn(ijkm1) && cldrAcc.isValueOn(ijkm2)) {
-            auto val = velAcc.getValue(ijk);
-            auto newval = velAcc.getValue(ijkm1);
-            newval[0] = val[0];
-            newval[1] = val[1];
-            velAcc.setValue(ijkm1, newval);
-        }
-        if (cldrAcc.isValueOn(ip1jk) && cldrAcc.isValueOn(ip2jk)) {
-            auto val = velAcc.getValue(im1jk);
-            auto newval = velAcc.getValue(ip1jk);
-            newval[1] = val[1];
-            newval[2] = val[2];
-            velAcc.setValue(ip1jk, newval);
-        }
-        if (cldrAcc.isValueOn(ijp1k) && cldrAcc.isValueOn(ijp2k)) {
-            auto val = velAcc.getValue(ijm1k);
-            auto newval = velAcc.getValue(ijp1k);
-            newval[0] = val[0];
-            newval[2] = val[2];
-            velAcc.setValue(ijp1k, newval);
-        }
-        if (cldrAcc.isValueOn(ijk) && cldrAcc.isValueOn(ijkp1)) {
-            auto val = velAcc.getValue(ijkm1);
-            auto newval = velAcc.getValue(ijkm1);
-            newval[0] = val[0];
-            newval[1] = val[1];
-            velAcc.setValue(ijkp1, newval);
-        }
-    }
-}
-
-
-void
 FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
     // tools::dilateActiveValues(vecGrid.tree(), /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
     vecGrid.topologyDifference(*mCollider);
@@ -878,8 +808,7 @@ FlipSolver::computeLInfinity(const FloatGrid& grid) {
 }
 
 void
-FlipSolver::pressureProjection5(bool print) {
-    std::cout << "pressure projection 5 begins" << std::endl;
+FlipSolver::pressureProjection(bool print) {
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
     using MaskGridType = BoolGrid;
