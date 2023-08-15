@@ -151,10 +151,10 @@ private:
                 points::AttributeHandle<Vec3s> vFlipHandle(vFlipArray);
                 // Iterate over active indices in the leaf.
                 for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
+                    auto curVel = velHandle.get(*indexIter);
                     auto vPic = vPicHandle.get(*indexIter);
                     auto vFlip = vFlipHandle.get(*indexIter);
-                    //auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
-                    auto newVel = 0.1f * vPic + (1 - alpha) * vFlip;
+                    auto newVel = alpha * (curVel + vFlip) + (1.f - alpha) * vPic;
                     velHandle.set(*indexIter, newVel);
                 }
             }
@@ -267,11 +267,11 @@ private:
         template <typename T>
         void operator()(T &leaf, size_t) const
         {
-            auto vCurrAcc = vCurr->getAccessor();
-            auto vNextAcc = vNext->getAccessor();
+            auto vCurrAcc = vCurr->getConstAccessor();
+            auto vNextAcc = vNext->getConstAccessor();
             for (typename T::ValueOnIter iter = leaf.beginValueOn(); iter; ++iter) {
                 auto ijk = iter.getCoord();
-                Vec3s val = vNextAcc.getValue(ijk) - vCurrAcc.getValue(ijk) - dt * gravity;
+                Vec3s val = vNextAcc.getValue(ijk) - *iter;
                 iter.setValue(val);
             }
         }
@@ -526,6 +526,9 @@ FlipSolver::particlesToGrid(){
     mVNext = mVCurr->deepCopy();
     mVNext->setName("v_next");
 
+    mVDiff = mVCurr->deepCopy();
+    mVDiff->setName("v_flip");
+
     // Determine the fluid domain
     mInteriorPressure = BoolGrid::create(false);
     mInteriorPressure->tree().topologyUnion(mPoints->tree());
@@ -546,11 +549,6 @@ FlipSolver::addGravity(float const dt) {
 
 void
 FlipSolver::computeFlipVelocity(float const dt) {
-    mVDiff = Vec3SGrid::create(Vec3s(0.f, 0.f, 0.f));
-    (mVDiff->tree()).topologyUnion(mVNext->tree());
-    mVDiff->setGridClass(GRID_STAGGERED);
-    mVDiff->setTransform(mXform);
-
     tree::LeafManager<Vec3STree> lm(mVDiff->tree());
     FlipSolver::ComputeFlipVelocityOp op(mVCurr, mVNext, dt, mGravity);
     lm.foreach(op);
@@ -762,7 +760,7 @@ FlipSolver::updateParticlesVelocity() {
 
     // PIC/FLIP update
     tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
-    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.01f /* alpha in PIC/FlIP update */);
+    FlipSolver::FlipUpdateOp op(velIdx, vPicIdx, vFlipIdx, 0.9f /* alpha in PIC/FlIP update */);
     tbb::parallel_for(leafManager.leafRange(), op);
 }
 
