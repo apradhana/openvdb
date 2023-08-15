@@ -15,6 +15,7 @@
 #include <openvdb/points/PointAdvect.h> // for advectPoints
 #include <openvdb/points/PointAttribute.h> // for appendAttribute
 #include <openvdb/points/PointDataGrid.h> // for PointDataGrid
+#include <openvdb/points/PointConversion.h> // for PointAttributeVector
 #include <openvdb/points/PointRasterizeTrilinear.h> // for rasterizing to the grid
 #include <openvdb/points/PointSample.h> // for PointSample
 #include <openvdb/points/PointScatter.h> // for point sampling
@@ -152,7 +153,8 @@ private:
                 for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
                     auto vPic = vPicHandle.get(*indexIter);
                     auto vFlip = vFlipHandle.get(*indexIter);
-                    auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
+                    //auto newVel = alpha * (vPic + vFlip) + (1 - alpha) * vPic;
+                    auto newVel = 0.1f * vPic + (1 - alpha) * vFlip;
                     velHandle.set(*indexIter, newVel);
                 }
             }
@@ -803,7 +805,68 @@ FlipSolver::advectParticles(float const dt) {
     Index const integrationOrder = 4;
     int const steps = 1;
 
-    points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
+    openvdb::Index64 pointCount = openvdb::points::pointCount(mPoints->tree());
+    std::cout << "PointCount=" << pointCount << std::endl;
+
+    std::vector<Vec3s> newPos(pointCount);
+    std::vector<Vec3s> vel(pointCount);
+    std::vector<Vec3s> vPic(pointCount);
+    std::vector<Vec3s> vFlip(pointCount);
+    int index = 0;
+    // Iterate over all the leaf nodes in the grid.
+    for (auto leafIter = mPoints->tree().cbeginLeaf(); leafIter; ++leafIter) {
+        // Extract the position attribute from the leaf by name (P is position).
+        const points::AttributeArray& posArray = leafIter->constAttributeArray("P");
+        const points::AttributeArray& velArray = leafIter->constAttributeArray("velocity");
+        const points::AttributeArray& vPicArray = leafIter->constAttributeArray("v_pic");
+        const points::AttributeArray& vFlipArray = leafIter->constAttributeArray("v_flip");
+        points::AttributeHandle<openvdb::Vec3f> positionHandle(posArray);
+        points::AttributeHandle<openvdb::Vec3f> velocityHandle(velArray);
+        points::AttributeHandle<openvdb::Vec3f> vPicHandle(velArray);
+        points::AttributeHandle<openvdb::Vec3f> vFlipHandle(velArray);
+        // Iterate over the point indices in the leaf.
+        for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
+            Vec3f voxelPosition = positionHandle.get(*indexIter);
+            Vec3d xyz = indexIter.getCoord().asVec3d();
+            openvdb::Vec3f worldPosition = mPoints->transform().indexToWorld(voxelPosition + xyz);
+            Vec3s advVel = velocityHandle.get(*indexIter);
+            newPos[index] = worldPosition + dt * advVel;
+            vel[index] = advVel;
+            vPic[index] = vPicHandle.get(*indexIter);
+            vFlip[index] = vFlipHandle.get(*indexIter);
+            index++;
+        }
+    }
+
+    points::PointAttributeVector<openvdb::Vec3s> positionsWrapper(newPos);
+    tools::PointIndexGrid::Ptr pointIndexGrid =
+        tools::createPointIndexGrid<tools::PointIndexGrid>(positionsWrapper, *mXform);
+    mPoints = points::createPointDataGrid<points::NullCodec, points::PointDataGrid>(*pointIndexGrid, positionsWrapper, *mXform);
+
+    points::TypedAttributeArray<Vec3s, points::NullCodec>::registerType();
+    NamePair velocityAttribute = points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    NamePair vPicAttribute = points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    NamePair vFlipAttribute = points::TypedAttributeArray<Vec3s, points::NullCodec>::attributeType();
+    points::appendAttribute(mPoints->tree(), "velocity", velocityAttribute);
+    points::appendAttribute(mPoints->tree(), "v_pic", vPicAttribute);
+    points::appendAttribute(mPoints->tree(), "v_flip", vFlipAttribute);
+
+    points::PointAttributeVector<Vec3s> velocityWrapper(vel);
+    points::PointAttributeVector<Vec3s> vPicWrapper(vPic);
+    points::PointAttributeVector<Vec3s> vFlipWrapper(vFlip);
+    points::populateAttribute<openvdb::points::PointDataTree,
+        tools::PointIndexTree, openvdb::points::PointAttributeVector<Vec3s>>(
+            mPoints->tree(), pointIndexGrid->tree(), "velocity", velocityWrapper);
+    points::populateAttribute<openvdb::points::PointDataTree,
+        tools::PointIndexTree, openvdb::points::PointAttributeVector<Vec3s>>(
+            mPoints->tree(), pointIndexGrid->tree(), "v_pic", vPicWrapper);
+    points::populateAttribute<openvdb::points::PointDataTree,
+        tools::PointIndexTree, openvdb::points::PointAttributeVector<Vec3s>>(
+            mPoints->tree(), pointIndexGrid->tree(), "v_flip", vFlipWrapper);
+
+    //points::PointAttributeVector<Vec3s> radiusWrapper(radius);
+
+    // points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
 }
 
 
