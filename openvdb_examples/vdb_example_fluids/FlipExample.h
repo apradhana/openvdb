@@ -66,9 +66,11 @@ private:
 
     void gridVelocityUpdate(float const dt);
 
-    void velocityBCCorrection(Vec3SGrid& vecGrid);
+    // Apply velocity on Neumann-pressure faces
+    void velocityBCCorrection(Vec3SGrid::Ptr vecGrid);
     void extrapolateToCollider(Vec3SGrid& vecGrid);
 
+    float computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix);
     float computeLInfinity(const FloatGrid& grid);
 
     void addGravity(float const dt);
@@ -649,32 +651,24 @@ FlipSolver::extrapolateToCollider(Vec3SGrid& vecGrid) {
 
 
 void
-FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
-    auto acc = vecGrid.getAccessor();
-    auto cldrAcc = mCollider->getAccessor();
+FlipSolver::velocityBCCorrection(Vec3SGrid::Ptr vecGrid) {
+    tree::LeafManager<FloatTree> lmc(mCollider->tree());
+    FlipSolver::VelocityBCCorrectionOp opVelCorrection(vecGrid, mCollider, mInteriorPressure);
+    lmc.foreach(opVelCorrection);
+}
 
-    for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
 
-        if (cldrAcc.isValueOn(im1jk) || cldrAcc.isValueOn(ijk)) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(0, val[1], val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijm1k) || cldrAcc.isValueOn(ijk)) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], 0, val[2]);
-            acc.setValue(ijk, newVal);
-        }
-        if (cldrAcc.isValueOn(ijkm1) || cldrAcc.isValueOn(ijk)) {
-            auto val = acc.getValue(ijk);
-            Vec3s newVal = Vec3s(val[0], val[1], 0);
-            acc.setValue(ijk, newVal);
-        }
-    }
+float
+FlipSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix) {
+    std::string name = "div_";
+    name += suffix.c_str();
+
+    divGrid = tools::divergence(*vecGrid);
+    divGrid->tree().topologyIntersection(mInteriorPressure->tree());
+    divGrid->setName(name.c_str());
+    float div = computeLInfinity(*divGrid);
+    std::cout << "Divergence " << suffix.c_str() << " = " << div << std::endl;
+    return div;
 }
 
 
@@ -700,17 +694,16 @@ FlipSolver::pressureProjection(bool print) {
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
     const double epsilon = math::Delta<ValueType>::value();
 
-    mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->tree().topologyIntersection(mInteriorPressure->tree());
-    mDivBefore->setName("div_before");
-    float divBefore = computeLInfinity(*mDivBefore);
-    std::cout << "\t== divergence before " << divBefore << std::endl;
-
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
     state.relativeError = state.absoluteError = epsilon;
     FlipSolver::BoundaryOp bop(mVoxelSize, mCollider, mVCurr);
     util::NullInterrupter interrupter;
+
+    // Compute the right hand size
+    computeDivergence(mDivBefore, mVCurr, "before");
+
+    // Solve the Poisson equation
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
 
@@ -724,31 +717,23 @@ FlipSolver::pressureProjection(bool print) {
     FlipSolver::SubtractPressureGradientOp opSubtractGradP(mInteriorPressure, fluidPressureGrid, mVCurr, mVoxelSize);
     lmv.foreach(opSubtractGradP);
 
-    // Fix velocity BC
-    // Apply velocity on Neumann-pressure faces
-    tree::LeafManager<FloatTree> lmc(mCollider->tree());
-    FlipSolver::VelocityBCCorrectionOp opVelCorrection(mVNext, mCollider, mInteriorPressure);
-    lmc.foreach(opVelCorrection);
-
-    mDivAfter = tools::divergence(*mVNext);
-    mDivAfter->topologyIntersection(*mInteriorPressure);
-    mDivAfter->setName("div_after");
-    float divAfter = computeLInfinity(*mDivAfter);
-
-    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
-    std::cout << "Success: " << state.success << std::endl;
-    std::cout << "Iterations: " << state.iterations << std::endl;
-    std::cout << "Relative error: " << state.relativeError << std::endl;
-    std::cout << "Absolute error: " << state.absoluteError << std::endl;
-    std::cout << "before dilate solution->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
-    std::cout << "pressure projection ends" << std::endl;
+    if (print) {
+        std::cout << "Projection success: " << state.success << std::endl;
+        std::cout << "Projection iterations: " << state.iterations << std::endl;
+        std::cout << "Projection relative error: " << state.relativeError << std::endl;
+        std::cout << "Projection absolute error: " << state.absoluteError << std::endl;
+        std::cout << "Pressure->activeVoxelCount() =  " << fluidPressure->activeVoxelCount() << std::endl;
+    }
 }
 
 void
 FlipSolver::gridVelocityUpdate(float const dt) {
     addGravity(dt);
-    velocityBCCorrection(*mVCurr);
-    pressureProjection(false /* print */);
+    velocityBCCorrection(mVCurr);
+    pressureProjection(true /* print */);
+    velocityBCCorrection(mVNext);
+    computeDivergence(mDivAfter, mVNext, "after");
+
     extrapolateToCollider(*mVCurr);
     extrapolateToCollider(*mVNext);
     computeFlipVelocity(dt);
@@ -793,7 +778,7 @@ FlipSolver::updateParticles(float const dt) {
 void
 FlipSolver::render() {
     float const dt = 1.f/24.f;
-    for (int frame = 0; frame < 600; ++frame) {
+    for (int frame = 0; frame < 200; ++frame) {
         std::cout << "\nframe = " << frame << "\n";
         float numSubStep = 10.f;
         for (int i = 0; i < static_cast<int>(numSubStep); ++i) {
@@ -828,7 +813,7 @@ FlipSolver::advectParticles(float const dt) {
 void
 FlipSolver::writeVDBs(int const frame) {
     std::ostringstream ss;
-    ss << "water_wedge2_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+    ss << "water_particles_" << std::setw(3) << std::setfill('0') << frame << ".vdb";
     std::string fileName(ss.str());
     io::File file(fileName.c_str());
     file.write({mPoints});
