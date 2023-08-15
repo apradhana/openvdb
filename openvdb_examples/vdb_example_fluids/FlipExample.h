@@ -1,8 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
 // SPDX-License-Identifier: MPL-2.0
-// TODO:
-//  - double check what greg said about needing to dilate the pressure
-//    in pressure projection
 
 # pragma once
 
