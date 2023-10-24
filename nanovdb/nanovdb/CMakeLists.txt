@@ -23,15 +23,15 @@ message(STATUS "----------------------------------------------------")
 ###############################################################################
 
 option(NANOVDB_BUILD_TOOLS "Build command-line tools" ON)
-option(NANOVDB_BUILD_UNITTESTS "Build Unit tests" OFF)
-option(NANOVDB_BUILD_EXAMPLES "Build examples" OFF)
+option(NANOVDB_BUILD_UNITTESTS "Build Unit tests" ON)
+option(NANOVDB_BUILD_EXAMPLES "Build examples" ON)
 #option(NANOVDB_BUILD_BENCHMARK "Build benchmark in examples" OFF)
 
 option(NANOVDB_USE_INTRINSICS "Build with hardware intrinsics support" OFF)
-option(NANOVDB_USE_CUDA "Build with CUDA support" OFF)
+option(NANOVDB_USE_CUDA "Build with CUDA support" ON)
 option(NANOVDB_CUDA_KEEP_PTX "Keep CUDA PTX" OFF)
 
-option(NANOVDB_USE_OPENVDB "Build with OpenVDB support" OFF)
+option(NANOVDB_USE_OPENVDB "Build with OpenVDB support" ON)
 option(NANOVDB_USE_BLOSC "Build with BLOSC support" ${USE_BLOSC})
 option(NANOVDB_USE_ZLIB "Build with ZLIB support" ${USE_ZLIB})
 option(NANOVDB_USE_TBB "Build with TBB support" ${USE_TBB})
