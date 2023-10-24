@@ -71,9 +71,9 @@ jobs:
           yum -y install yum-utils
           yum-config-manager --add-repo http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
           echo "Installing cuda toolkit"
-          yum --enablerepo=epel -y install cuda-toolkit-11-6
-          echo "/usr/local/cuda-11.6/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.6/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          yum --enablerepo=epel -y install cuda-toolkit-11-2
+          echo "/usr/local/cuda-11.2/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.2/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
       - name: build
         run: >
           ./ci/build.sh -v
