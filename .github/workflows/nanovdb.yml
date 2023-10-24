@@ -53,7 +53,7 @@ jobs:
     name: >
       linux-nanovdb:cxx:${{ matrix.config.cxx }}-${{ matrix.config.build }}
     container:
-      image: aswf/ci-base:2022
+      image: aswf/ci-openvdb:${{ matrix.config.image }}
     env:
       CXX: ${{ matrix.config.cxx }}
     strategy:
