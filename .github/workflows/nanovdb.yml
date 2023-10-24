@@ -53,16 +53,16 @@ jobs:
     name: >
       linux-nanovdb:cxx:${{ matrix.config.cxx }}-${{ matrix.config.build }}
     container:
-      image: aswf/ci-base:2022
+      image: aswf/ci-openvdb:${{ matrix.config.image }}
     env:
       CXX: ${{ matrix.config.cxx }}
     strategy:
       matrix:
         config:
-          - { cxx: g++,     build: 'Release' }
-          - { cxx: g++,     build: 'Debug' }
-          - { cxx: clang++, build: 'Release' }
-          - { cxx: clang++, build: 'Debug' }
+          - { cxx: g++,     image: '2022-clang11', build: 'Release' }
+          - { cxx: g++,     image: '2022-clang11', build: 'Debug' }
+          - { cxx: clang++, image: '2022-clang11', build: 'Release' }
+          - { cxx: clang++, image: '2022-clang11', build: 'Debug' }
       fail-fast: false
     steps:
       - uses: actions/checkout@v3
