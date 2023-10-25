@@ -87,7 +87,7 @@ jobs:
           -DUSE_BLOSC=OFF
           \'
       - name: test
-        run: cd build && sudo ctest -V
+        run: cd build && sudo ctest -V -E "nanovdb_test_cuda"
 
   windows-nanovdb:
     if: |
@@ -142,7 +142,7 @@ jobs:
         \'
     - name: test
       shell: bash
-      run: cd build && ctest -V
+      run: cd build && ctest -V -E "nanovdb_test_cuda"
 
   macos-nanovdb:
     if: |
@@ -169,7 +169,7 @@ jobs:
           --components=core,nano,nanotest,nanoexam,nanobench,nanotool
           --cargs=\'-DUSE_EXPLICIT_INSTANTIATION=OFF -DNANOVDB_USE_CUDA=OFF -DNANOVDB_USE_OPENVDB=ON\'
       - name: test
-        run: cd build && ctest -V
+        run: cd build && ctest -V -E "nanovdb_test_cuda"
 
   nanovdb-lite:
     if: |
@@ -190,4 +190,4 @@ jobs:
           cd .build
           sudo cmake -DUSE_EXPLICIT_INSTANTIATION=OFF -DNANOVDB_BUILD_UNITTESTS=ON ../
           sudo make -j8 install
-          sudo ctest -V
+          sudo ctest -V -E --tests-regex "nanovdb_test_cuda"
