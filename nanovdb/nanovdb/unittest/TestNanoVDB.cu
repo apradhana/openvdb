@@ -663,63 +663,63 @@ TEST(TestNanoVDBCUDA, mergeSplitGrids)
     //timer.stop();
 }//  mergeSplitGrids
 
-// TEST(TestNanoVDBCUDA, mergeSplitDeviceGrids)
-// {
-//     using BufferT = nanovdb::CudaDeviceBuffer;
-//     using HandleT = nanovdb::GridHandle<BufferT>;
-//     size_t size = 0;
-//     std::vector<HandleT> handles;
-//     std::vector<std::string> gridNames;
-//     //nanovdb::CpuTimer timer("create 10 host grids");
-//     for (int radius = 100; radius<200; radius += 10) {
-//         gridNames.emplace_back("sphere_" + std::to_string(radius));
-//         handles.emplace_back(nanovdb::createLevelSetSphere<float, BufferT>(radius,nanovdb::Vec3d(0),1,3,
-//                                                            nanovdb::Vec3d(0), gridNames.back()));
-//         EXPECT_FALSE(handles.back().isPadded());
-//         size += handles.back().size();
-//     }
-//     //timer.restart("copy grids to device");
-//     for (auto &h : handles) h.deviceUpload();
-//     EXPECT_EQ(10u, handles.size());
-//     //timer.restart("merging device grids");
-//     auto mergedHandle = nanovdb::mergeDeviceGrids<BufferT, std::vector>(handles);
-//     EXPECT_EQ(size, mergedHandle.size());
-//     EXPECT_FALSE(mergedHandle.data());
-//     EXPECT_TRUE(mergedHandle.deviceData());
-//     EXPECT_FALSE(mergedHandle.isPadded());
-//     //timer.restart("copy grids to host");
-//     mergedHandle.deviceDownload();
-//     EXPECT_TRUE(mergedHandle.data());
-//     EXPECT_TRUE(mergedHandle.deviceData());
-//     EXPECT_FALSE(mergedHandle.isPadded());
-//     auto *gridData = mergedHandle.gridData();// first grid
-//     EXPECT_TRUE(gridData);
-//     EXPECT_EQ(10u, gridData->mGridCount);
-//     EXPECT_EQ(0u, gridData->mGridIndex);
-//     //timer.restart("unit-test host grids");
-//     for (uint32_t i=0; i<10; ++i) {
-//         gridData = mergedHandle.gridData(i);
-//         EXPECT_TRUE(gridData);
-//         EXPECT_EQ(i, gridData->mGridIndex);
-//         EXPECT_EQ(strcmp(gridNames[i].c_str(), gridData->mGridName),0);
-//     }
-//     //timer.restart("splitting device grids");
-//     auto splitHandles = nanovdb::splitDeviceGrids<BufferT, std::vector>(mergedHandle);
-//     //timer.restart("unit-test split grids");
-//     EXPECT_EQ(10u, splitHandles.size());
-//     for (uint32_t i=0u; i<10u; ++i) {
-//         EXPECT_EQ(handles[i].size(), splitHandles[i].size());
-//         EXPECT_FALSE(splitHandles[i].isPadded());
-//         EXPECT_FALSE(splitHandles[i].gridData());
-//         splitHandles[i].deviceDownload();
-//         gridData = splitHandles[i].gridData();
-//         EXPECT_TRUE(gridData);
-//         EXPECT_EQ(0u, gridData->mGridIndex);
-//         EXPECT_EQ(1u, gridData->mGridCount);
-//         EXPECT_EQ(strcmp(gridNames[i].c_str(), gridData->mGridName),0);
-//     }
-//     //timer.stop();
-// }//  mergeSplitDeviceGrids
+TEST(TestNanoVDBCUDA, mergeSplitDeviceGrids)
+{
+    using BufferT = nanovdb::CudaDeviceBuffer;
+    using HandleT = nanovdb::GridHandle<BufferT>;
+    size_t size = 0;
+    std::vector<HandleT> handles;
+    std::vector<std::string> gridNames;
+    //nanovdb::CpuTimer timer("create 10 host grids");
+    for (int radius = 100; radius<200; radius += 10) {
+        gridNames.emplace_back("sphere_" + std::to_string(radius));
+        handles.emplace_back(nanovdb::createLevelSetSphere<float, BufferT>(radius,nanovdb::Vec3d(0),1,3,
+                                                           nanovdb::Vec3d(0), gridNames.back()));
+        EXPECT_FALSE(handles.back().isPadded());
+        size += handles.back().size();
+    }
+    //timer.restart("copy grids to device");
+    for (auto &h : handles) h.deviceUpload();
+    EXPECT_EQ(10u, handles.size());
+    //timer.restart("merging device grids");
+    auto mergedHandle = nanovdb::mergeDeviceGrids<BufferT, std::vector>(handles);
+    EXPECT_EQ(size, mergedHandle.size());
+    EXPECT_FALSE(mergedHandle.data());
+    EXPECT_TRUE(mergedHandle.deviceData());
+    EXPECT_FALSE(mergedHandle.isPadded());
+    //timer.restart("copy grids to host");
+    mergedHandle.deviceDownload();
+    EXPECT_TRUE(mergedHandle.data());
+    EXPECT_TRUE(mergedHandle.deviceData());
+    EXPECT_FALSE(mergedHandle.isPadded());
+    auto *gridData = mergedHandle.gridData();// first grid
+    EXPECT_TRUE(gridData);
+    EXPECT_EQ(10u, gridData->mGridCount);
+    EXPECT_EQ(0u, gridData->mGridIndex);
+    //timer.restart("unit-test host grids");
+    for (uint32_t i=0; i<10; ++i) {
+        gridData = mergedHandle.gridData(i);
+        EXPECT_TRUE(gridData);
+        EXPECT_EQ(i, gridData->mGridIndex);
+        EXPECT_EQ(strcmp(gridNames[i].c_str(), gridData->mGridName),0);
+    }
+    //timer.restart("splitting device grids");
+    auto splitHandles = nanovdb::splitDeviceGrids<BufferT, std::vector>(mergedHandle);
+    //timer.restart("unit-test split grids");
+    EXPECT_EQ(10u, splitHandles.size());
+    for (uint32_t i=0u; i<10u; ++i) {
+        EXPECT_EQ(handles[i].size(), splitHandles[i].size());
+        EXPECT_FALSE(splitHandles[i].isPadded());
+        EXPECT_FALSE(splitHandles[i].gridData());
+        splitHandles[i].deviceDownload();
+        gridData = splitHandles[i].gridData();
+        EXPECT_TRUE(gridData);
+        EXPECT_EQ(0u, gridData->mGridIndex);
+        EXPECT_EQ(1u, gridData->mGridCount);
+        EXPECT_EQ(strcmp(gridNames[i].c_str(), gridData->mGridName),0);
+    }
+    //timer.stop();
+}//  mergeSplitDeviceGrids
 
 // make -j 4 testNanoVDB && ./unittest/testNanoVDB --gtest_filter="*Cuda*" --gtest_break_on_failure
 TEST(TestNanoVDBCUDA, CudaIndexGridToGrid_basic)
