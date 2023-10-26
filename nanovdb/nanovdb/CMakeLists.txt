@@ -8,6 +8,7 @@
 #]=======================================================================]
 
 cmake_minimum_required(VERSION 3.18)
+cmake_policy(SET CMP0091 NEW)
 project(NanoVDB LANGUAGES C CXX)
 
 include(GNUInstallDirs)
@@ -34,7 +35,7 @@ option(NANOVDB_CUDA_KEEP_PTX "Keep CUDA PTX" OFF)
 option(NANOVDB_USE_OPENVDB "Build with OpenVDB support" ON)
 option(NANOVDB_USE_BLOSC "Build with BLOSC support" ${USE_BLOSC})
 option(NANOVDB_USE_ZLIB "Build with ZLIB support" ${USE_ZLIB})
-option(NANOVDB_USE_TBB "Build with TBB support" ${USE_TBB})
+option(NANOVDB_USE_TBB "Build with TBB support" ON)
 option(NANOVDB_USE_MAGICAVOXEL "Build with MagicaVoxel support" OFF)
 
 option(NANOVDB_ALLOW_FETCHCONTENT
