@@ -22,8 +22,13 @@ message(STATUS "----------------------------------------------------")
 # add options
 ###############################################################################
 
+<<<<<<< Updated upstream
 option(NANOVDB_BUILD_TOOLS "Build command-line tools" ON)
 option(NANOVDB_BUILD_UNITTESTS "Build Unit tests" OFF)
+=======
+option(NANOVDB_BUILD_TOOLS "Build command-line tools" OFF)
+option(NANOVDB_BUILD_UNITTESTS "Build Unit tests" ON)
+>>>>>>> Stashed changes
 option(NANOVDB_BUILD_EXAMPLES "Build examples" OFF)
 #option(NANOVDB_BUILD_BENCHMARK "Build benchmark in examples" OFF)
 
