@@ -325,6 +325,7 @@ public:
     template <typename PtrT>
     void processLeafNodes(const PtrT points);
 
+
     template <typename PtrT>
     void processPoints(const PtrT points, size_t pointCount);
 
@@ -383,6 +384,81 @@ private:
     template<typename PtrT, typename BufferT>
     BufferT getBuffer(const PtrT points, size_t pointCount, const BufferT &buffer);
 };// CudaPointsToGrid<BuildT>
+
+
+namespace kernels {
+/// @details Used by CudaPointsToGrid<BuildT>::processLeafNodes before the computation
+/// of prefix-sum for index grid. We cannot use the trick of wrapping this global
+/// function in a lambda through
+template <typename BuildT, typename AllocT = cub::CachingDeviceAllocator>
+__global__ void fillValueIndexKernel(const size_t numItems, uint64_t* devValueIndex, CudaPointsToGrid<BuildT, AllocT>::Data* d_data) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= numItems)
+        return;
+    devValueIndex[tid] = static_cast<uint64_t>(d_data->getLeaf(tid).mValueMask.countOn());
+}
+
+template <typename BuildT, typename AllocT = cub::CachingDeviceAllocator>
+__global__ void fooKernel(const size_t numItems, uint64_t* devValueIndexPrefix, CudaPointsToGrid<BuildT, AllocT>::Data* d_data) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= numItems)
+        return;
+
+    auto &leaf = d_data->getLeaf(tid);
+    leaf.mOffset = 1u;// will be re-set below
+    const uint64_t *w = leaf.mValueMask.words();
+    uint64_t &prefixSum = leaf.mPrefixSum, sum = CountOn(*w++);
+    prefixSum = sum;
+    for (int n = 9; n < 55; n += 9) {// n=i*9 where i=1,2,..6
+        sum += CountOn(*w++);
+        prefixSum |= sum << n;// each pre-fixed sum is encoded in 9 bits
+    }
+    if (tid==0) {
+        d_data->getGrid().mData1 = 1u + devValueIndexPrefix[d_data->nodeCount[0]-1];// set total count
+        d_data->getTree().mVoxelCount = devValueIndexPrefix[d_data->nodeCount[0]-1];
+    } else {
+        leaf.mOffset = 1u + devValueIndexPrefix[tid-1];// background is index 0
+    }
+}
+
+
+
+        // cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
+        //     auto &leaf = d_data->getLeaf(tid);
+        //     leaf.mOffset = 1u;// will be re-set below
+        //     const uint64_t *w = leaf.mValueMask.words();
+        //     uint64_t &prefixSum = leaf.mPrefixSum, sum = CountOn(*w++);
+        //     prefixSum = sum;
+        //     for (int n = 9; n < 55; n += 9) {// n=i*9 where i=1,2,..6
+        //         sum += CountOn(*w++);
+        //         prefixSum |= sum << n;// each pre-fixed sum is encoded in 9 bits
+        //     }
+        //     if (tid==0) {
+        //         d_data->getGrid().mData1 = 1u + devValueIndexPrefix[d_data->nodeCount[0]-1];// set total count
+        //         d_data->getTree().mVoxelCount = devValueIndexPrefix[d_data->nodeCount[0]-1];
+        //     } else {
+        //         leaf.mOffset = 1u + devValueIndexPrefix[tid-1];// background is index 0
+        //     }
+        // }, mDeviceData); cudaCheckError();
+        // mMemPool.free(devValueIndexPrefix);
+
+template <typename BuildT, typename AllocT = cub::CachingDeviceAllocator>
+__global__ void setMaskEqValMaskKernel(const size_t numItems, CudaPointsToGrid<BuildT, AllocT>::Data* d_data) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= numItems)
+        return;
+    auto &leaf = d_data->getLeaf(tid);
+    leaf.mMask = leaf.mValueMask;
+}
+
+        // cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
+        //     auto &leaf = d_data->getLeaf(tid);
+        //     leaf.mMask = leaf.mValueMask;
+        // }, mDeviceData); cudaCheckError();
+
+} // namespace kernels
+
+
 
 //================================================================================================
 
@@ -923,37 +999,43 @@ inline void CudaPointsToGrid<BuildT, AllocT>::processLeafNodes(const PtrT points
         if (mVerbose==2) mTimer.restart("prefix-sum for index grid");
         uint64_t *devValueIndex = mMemPool.template alloc<uint64_t>(mData.nodeCount[0], mStream);
         auto devValueIndexPrefix = mMemPool.template alloc<uint64_t>(mData.nodeCount[0], mStream);
-        cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
-            devValueIndex[tid] = static_cast<uint64_t>(d_data->getLeaf(tid).mValueMask.countOn());
-        }, mDeviceData); cudaCheckError();
+        // cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
+        // devValueIndex[tid] = static_cast<uint64_t>(d_data->getLeaf(tid).mValueMask.countOn());
+        // }, mDeviceData); cudaCheckError();
+        kernels::fillValueIndexKernel<BuildT, AllocT><<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], devValueIndex, mDeviceData);
+        cudaCheckError();
         CALL_CUBS(DeviceScan::InclusiveSum, devValueIndex, devValueIndexPrefix, mData.nodeCount[0]);
         mMemPool.free(devValueIndex);
-        cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
-            auto &leaf = d_data->getLeaf(tid);
-            leaf.mOffset = 1u;// will be re-set below
-            const uint64_t *w = leaf.mValueMask.words();
-            uint64_t &prefixSum = leaf.mPrefixSum, sum = CountOn(*w++);
-            prefixSum = sum;
-            for (int n = 9; n < 55; n += 9) {// n=i*9 where i=1,2,..6
-                sum += CountOn(*w++);
-                prefixSum |= sum << n;// each pre-fixed sum is encoded in 9 bits
-            }
-            if (tid==0) {
-                d_data->getGrid().mData1 = 1u + devValueIndexPrefix[d_data->nodeCount[0]-1];// set total count
-                d_data->getTree().mVoxelCount = devValueIndexPrefix[d_data->nodeCount[0]-1];
-            } else {
-                leaf.mOffset = 1u + devValueIndexPrefix[tid-1];// background is index 0
-            }
-        }, mDeviceData); cudaCheckError();
-        mMemPool.free(devValueIndexPrefix);
+        kernels::fooKernel<BuildT, AllocT><<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], devValueIndexPrefix, mDeviceData);
+        cudaCheckError();
+        // cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
+        //     auto &leaf = d_data->getLeaf(tid);
+        //     leaf.mOffset = 1u;// will be re-set below
+        //     const uint64_t *w = leaf.mValueMask.words();
+        //     uint64_t &prefixSum = leaf.mPrefixSum, sum = CountOn(*w++);
+        //     prefixSum = sum;
+        //     for (int n = 9; n < 55; n += 9) {// n=i*9 where i=1,2,..6
+        //         sum += CountOn(*w++);
+        //         prefixSum |= sum << n;// each pre-fixed sum is encoded in 9 bits
+        //     }
+        //     if (tid==0) {
+        //         d_data->getGrid().mData1 = 1u + devValueIndexPrefix[d_data->nodeCount[0]-1];// set total count
+        //         d_data->getTree().mVoxelCount = devValueIndexPrefix[d_data->nodeCount[0]-1];
+        //     } else {
+        //         leaf.mOffset = 1u + devValueIndexPrefix[tid-1];// background is index 0
+        //     }
+        // }, mDeviceData); cudaCheckError();
+        // mMemPool.free(devValueIndexPrefix);
     }
 
     if constexpr(BuildTraits<BuildT>::is_indexmask) {
         if (mVerbose==2) mTimer.restart("leaf.mMask = leaf.mValueMask");
-        cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
-            auto &leaf = d_data->getLeaf(tid);
-            leaf.mMask = leaf.mValueMask;
-        }, mDeviceData); cudaCheckError();
+        kernels::setMaskEqValMaskKernel<BuildT, AllocT><<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], mDeviceData);
+        cudaCheckError();
+        // cudaLambdaKernel<<<numBlocks(mData.nodeCount[0]), mNumThreads, 0, mStream>>>(mData.nodeCount[0], [=] __device__(size_t tid, Data *d_data) {
+        //     auto &leaf = d_data->getLeaf(tid);
+        //     leaf.mMask = leaf.mValueMask;
+        // }, mDeviceData); cudaCheckError();
     }
     if (mVerbose==2) mTimer.stop();
 }// CudaPointsToGrid<BuildT>::processLeafNodes
