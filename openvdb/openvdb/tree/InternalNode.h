@@ -2417,6 +2417,9 @@ InternalNode<ChildT, Log2Dim>::readTopology(std::istream& is, bool fromHalf)
     const ValueType background = (!io::getGridBackgroundValuePtr(is) ? zeroVal<ValueType>()
         : *static_cast<const ValueType*>(io::getGridBackgroundValuePtr(is)));
 
+    // converting reader for reading grid values
+    auto& convertingReader = io::ConvertingReader<ValueType>::get(is);
+
     mChildMask.load(is);
     mValueMask.load(is);
 
@@ -2429,7 +2432,7 @@ InternalNode<ChildT, Log2Dim>::readTopology(std::istream& is, bool fromHalf)
                 child->readTopology(is);
             } else {
                 ValueType value;
-                is.read(reinterpret_cast<char*>(&value), sizeof(ValueType));
+                convertingReader.read(is, value);
                 mNodes[i].setValue(value);
             }
         }
