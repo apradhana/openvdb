@@ -12,3 +12,4 @@ Digital Domain 3.0, Inc.
 Mathieu Malaterre
 Ignacio Vizzo
 Ben FrantzDale
+Sebastian Gaida
