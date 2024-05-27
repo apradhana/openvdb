@@ -1,0 +1,28 @@
+Moved:
+is_same
+is_floating_point
+enable_if
+disable_if
+is_const
+is_pointer
+remove_const
+remove_reference
+remote_pointer
+match_const
+is_specialization
+is_valid - 722
+alignPtr
+memcpy64
+
+age in line 962
+c_str() in line 
+
+added callNanoGrid
+added class checksum
+added checkmode -- internal
+
+Lifted restriction on not being able to construct LeafData
+
+Refactoring of NanoVDB.h by introducing util.h and math.h. 
+util::
+math::	
