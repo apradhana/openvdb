@@ -17,12 +17,15 @@ memcpy64
 age in line 962
 c_str() in line 
 
-added callNanoGrid
-added class checksum
-added checkmode -- internal
+
+
+Nanovdb.h
+added strlen
+moved types to util.h or math.h, the typetraits to util.h or math.h
+Added checksum for the grid
+Add callNanoGrid for generic programming, see example: 
 
 Lifted restriction on not being able to construct LeafData
-
 Refactoring of NanoVDB.h by introducing util.h and math.h. 
 util::
 math::	
