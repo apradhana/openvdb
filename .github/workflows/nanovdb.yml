@@ -136,7 +136,8 @@ jobs:
     - name: install_deps
       shell: bash
       run: |
-        vcpkg/vcpkg install zlib tbb gtest blosc boost-iostreams boost-interprocess boost-algorithm
+        echo ${VCPKG_INSTALLATION_ROOT}
+        vcpkg/vcpkg --x-install-root=${VCPKG_INSTALLATION_ROOT} install zlib tbb gtest blosc boost-iostreams boost-interprocess boost-algorithm
     - name: build
       shell: bash
       run: >
