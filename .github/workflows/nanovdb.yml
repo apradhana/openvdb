@@ -118,9 +118,9 @@ jobs:
         echo "$Env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.config.vc }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         echo "${{github.workspace}}\build\openvdb\openvdb\${{ matrix.config.build }}" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         echo $Env:VCPKG_INSTALLATION_ROOT
-    - name: install_cuda
-      shell: powershell
-      run: .\ci\install_windows_cuda.ps1
+#    - name: install_cuda
+#      shell: powershell
+#      run: .\ci\install_windows_cuda.ps1
     - name: Install vcpkg
       shell: bash
       run: |
@@ -132,11 +132,17 @@ jobs:
         # note: system path must be modified in a previous step to it's use
         echo "$Env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.config.vc }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         echo "${{github.workspace}}\build\openvdb\openvdb\${{ matrix.config.build }}" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "$Env:PWD\vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         echo $Env:VCPKG_INSTALLATION_ROOT
+        echo "$Env:PWD\vcpkg"
+        echo ${PWD}
+        echo "${PWD}\vcpkg\"
     - name: install_deps
       shell: bash
       run: |
         echo ${VCPKG_INSTALLATION_ROOT}
+        echo ${PWD}
+        echo "${PWD}\vcpkg\"
         vcpkg/vcpkg --x-install-root=${VCPKG_INSTALLATION_ROOT} install zlib tbb gtest blosc boost-iostreams boost-interprocess boost-algorithm
     - name: build
       shell: bash
