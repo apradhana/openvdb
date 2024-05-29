@@ -120,11 +120,16 @@ jobs:
     - name: install_cuda
       shell: powershell
       run: .\ci\install_windows_cuda.ps1
-    - name: install_deps
-      shell: bash
+    - name: Install vcpkg
+      shell: powershell
       run: |
-        vcpkg update
-        vcpkg install zlib tbb gtest blosc
+        git clone https://github.com/microsoft/vcpkg
+        vcpkg/bootstrap-vcpkg.bat
+        vcpkg/vcpkg integrate install
+    - name: install_deps
+      shell: powershell
+      run: |
+        vcpkg/vcpkg install zlib tbb gtest blosc boost-iostreams boost-interprocess boost-algorithm
     - name: build
       shell: bash
       run: >
