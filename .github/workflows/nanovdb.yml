@@ -126,6 +126,12 @@ jobs:
         git clone https://github.com/microsoft/vcpkg
         vcpkg/bootstrap-vcpkg.sh
         vcpkg/vcpkg integrate install
+    - name: path_2
+      run: |
+        # note: system path must be modified in a previous step to it's use
+        echo "$Env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.config.vc }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "${{github.workspace}}\build\openvdb\openvdb\${{ matrix.config.build }}" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "$Env:VCPKG_ROOT"
     - name: install_deps
       shell: bash
       run: |
