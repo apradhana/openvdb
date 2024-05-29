@@ -147,6 +147,9 @@ jobs:
     - name: build
       shell: bash
       run: >
+        ls "${PWD}\\vcpkg\\packages"
+        ls "${PWD}\\vcpkg\\packages\\vcpkg-cmake_x64-windows"
+        ls "${PWD}\\vcpkg\\packages\\vcpkg-cmake_x64-windows\\share\\vcpkg-cmake"
         ./ci/build.sh -v
         --config=${{ matrix.config.build }}
         --components=core,nano,nanotest,nanoexam,nanobench,nanotool
