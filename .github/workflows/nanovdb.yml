@@ -124,7 +124,7 @@ jobs:
       shell: bash
       run: |
         vcpkg update
-        vcpkg install zlib tbb gtest blosc boost-iostreams boost-system boost-any boost-uuid boost-interprocess boost-algorithm
+        vcpkg install zlib tbb gtest blosc
     - name: build
       shell: bash
       run: >
