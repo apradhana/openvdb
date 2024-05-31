@@ -144,6 +144,21 @@ jobs:
         echo ${PWD}
         echo "${PWD}/vcpkg/"
         vcpkg/vcpkg --x-install-root=${VCPKG_INSTALLATION_ROOT} install zlib tbb gtest blosc boost-iostreams boost-interprocess boost-algorithm
+    - name: check_directories
+      shell: bash
+      run: |
+        echo ${VCPKG_INSTALLATION_ROOT}
+        echo ${PWD}
+        echo "${PWD}/vcpkg/"
+        echo "${PWD}/vcpkg/packages/vcpkg-cmake_x64-windows/share/vcpkg-cmake/"
+        ls "${PWD}/vcpkg/packages/vcpkg-cmake_x64-windows/share/vcpkg-cmake/"
+        echo "${GITHUB_WORKSPACE}"
+        echo "${GITHUB_WORKSPACE}/vcpkg"
+        ls "${GITHUB_WORKSPACE}/vcpkg/"
+        echo "${env:GITHUB_WORKSPACE}/vcpkg/"
+        echo "${Env:GITHUB_WORKSPACE}/vcpkg/"
+        ls "${env:GITHUB_WORKSPACE}/vcpkg/"
+        ls "${Env:GITHUB_WORKSPACE}/vcpkg/"
     - name: build
       shell: bash
       run: >
