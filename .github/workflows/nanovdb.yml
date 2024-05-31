@@ -168,8 +168,7 @@ jobs:
         -DNANOVDB_USE_CUDA=ON
         -DNANOVDB_USE_OPENVDB=ON
         -DVCPKG_TARGET_TRIPLET=${VCPKG_DEFAULT_TRIPLET}
-        -DCMAKE_TOOLCHAIN_FILE=\"${GITHUB_WORKSPACE}/vcpkg/scripts/buildsystems/vcpkg.cmake"
-        \'
+        -DCMAKE_TOOLCHAIN_FILE=\'${GITHUB_WORKSPACE}/vcpkg/scripts/buildsystems/vcpkg.cmake\'
     - name: test
       shell: bash
       run: cd build && ctest -V -E ".*cuda.*"
