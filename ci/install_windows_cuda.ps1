@@ -26,12 +26,13 @@ $CUDA_KNOWN_URLS = @{
     "11.2.1" = "https://developer.download.nvidia.com/compute/cuda/11.2.1/network_installers/cuda_11.2.1_win10_network.exe";
     "11.2.2" = "https://developer.download.nvidia.com/compute/cuda/11.2.2/network_installers/cuda_11.2.2_win10_network.exe";
     "11.3.0" = "https://developer.download.nvidia.com/compute/cuda/11.3.0/network_installers/cuda_11.3.0_win10_network.exe";
-    "11.6.2" = "https://developer.download.nvidia.com/compute/cuda/11.6.2/network_installers/cuda_11.6.2_windows_network.exe"
+    "11.6.2" = "https://developer.download.nvidia.com/compute/cuda/11.6.2/network_installers/cuda_11.6.2_windows_network.exe";
+    "12.4.0" = "https://developer.download.nvidia.com/compute/cuda/12.4.0/network_installers/cuda_12.4.0_windows_network.exe"
 }
 
 # @todo - change this to be based on _MSC_VER intead, or invert it to be CUDA keyed instead?
 $VISUAL_STUDIO_MIN_CUDA = @{
-    "2022" = "11.6";
+    "2022" = "12.4";
     "2019" = "10.1";
     "2017" = "10.0"; # Depends on which version of 2017! 9.0 to 10.0 depending on  version
     "2015" = "8.0"; # might support older, unsure.
@@ -66,6 +67,13 @@ if(-not $cuda_ver_matched){
 $CUDA_MAJOR=$Matches.major
 $CUDA_MINOR=$Matches.minor
 $CUDA_PATCH=$Matches.patch
+
+echo "CUDA MAJOR = ($CUDA_MAJOR)"
+echo "CUDA MINOR = ($CUDA_MINOR)"
+echo "CUDA PATCH = ($CUDA_PATCH)"
+echo "Matches major = ($Matches.major)"
+echo "Matches minor = ($Matches.minor)"
+echo "Matches patch = ($Matches.patch)"
 
 ## ---------------------------
 ## Visual studio support check
