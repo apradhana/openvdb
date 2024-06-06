@@ -18,3 +18,4 @@ Sebastian Gaida
 Alessio Quaglino
 Benedikt Mersch
 David Aguilar
+Brian Sharpe
