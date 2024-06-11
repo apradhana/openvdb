@@ -104,17 +104,17 @@ def update_files():
                 for key, vals in nspace_dic.items():
                     for val in vals:
                         new_word = key + '::' + val
-                        content.replace(val, new_word)
+                        content = content.replace(val, new_word)
 
                 # Correspond to func4 and func2 in updateFiles.sh
                 for key, val in rename_dic.items():
-                    content.replace(key, val)
+                    content = content.replace(key, val)
 
                 # Correspond to func3 in updateFiles.sh
                 for key, val in movdir_dic.items():
                     old_path = '<nanovdb/' + key + '>'
                     new_path = '<nanovdb/' + val + '>'
-                    content.replace(old_path, new_path)
+                    content = content.replace(old_path, new_path)
 
                 with open(file_path, 'w') as file:
                     file.write(content)
