@@ -44,51 +44,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-#  linux-nanovdb:
-#    if: |
-#      github.event_name != 'workflow_dispatch' ||
-#      github.event.inputs.type == 'all' ||
-#      github.event.inputs.type == 'linux'
-#    runs-on: ${{ (github.repository_owner == 'AcademySoftwareFoundation' && 'ubuntu-20.04-8c-32g-300h') || 'ubuntu-latest' }}
-#    name: >
-#      linux-nanovdb:cxx:${{ matrix.config.cxx }}-${{ matrix.config.build }}
-#    container:
-#      image: aswf/ci-openvdb:${{ matrix.config.image }}
-#    env:
-#      CXX: ${{ matrix.config.cxx }}
-#    strategy:
-#      matrix:
-#        config:
-#          - { cxx: g++,     image: '2022-clang11', build: 'Release' }
+  linux-nanovdb:
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.type == 'all' ||
+      github.event.inputs.type == 'linux'
+    runs-on: ${{ (github.repository_owner == 'AcademySoftwareFoundation' && 'ubuntu-20.04-8c-32g-300h') || 'ubuntu-latest' }}
+    name: >
+      linux-nanovdb:cxx:${{ matrix.config.cxx }}-${{ matrix.config.build }}
+    container:
+      image: aswf/ci-openvdb:${{ matrix.config.image }}
+    env:
+      CXX: ${{ matrix.config.cxx }}
+    strategy:
+      matrix:
+        config:
+          - { cxx: g++,     image: '2022-clang11', build: 'Release' }
 #          - { cxx: g++,     image: '2022-clang11', build: 'Debug' }
 #          - { cxx: clang++, image: '2022-clang11', build: 'Release' }
 #          - { cxx: clang++, image: '2022-clang11', build: 'Debug' }
-#      fail-fast: false
-#    steps:
-#      - uses: actions/checkout@v3
-#      - name: install_cuda_11
-#        run: |
-#          yum -y install yum-utils
-#          yum-config-manager --add-repo http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
-#          echo "Installing cuda toolkit"
-#          yum --enablerepo=epel -y install cuda-toolkit-11-6
-#          echo "/usr/local/cuda-11.6/bin" >> $GITHUB_PATH
-#          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.6/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-#      - name: build
-#        run: >
-#          ./ci/build.sh -v
-#          --build-type=${{ matrix.config.build }}
-#          --components=core,nano,nanotest,nanoexam,nanobench,nanotool
-#          --cargs=\'
-#          -DUSE_EXPLICIT_INSTANTIATION=OFF
-#          -DNANOVDB_USE_CUDA=ON
-#          -DNANOVDB_USE_OPENVDB=ON
-#          -DCMAKE_INSTALL_PREFIX=`pwd`
-#          -DUSE_BLOSC=OFF
-#          \'
-#      - name: test
-#        run: cd build && sudo ctest -V -E ".*cuda.*"
-#
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+      - name: install_cuda_11
+        run: |
+          yum -y install yum-utils
+          yum-config-manager --add-repo http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
+          echo "Installing cuda toolkit"
+          yum --enablerepo=epel -y install cuda-toolkit-11-6
+          echo "/usr/local/cuda-11.6/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=/usr/local/cuda-11.6/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+      - name: build
+        run: >
+          ./ci/build.sh -v
+          --build-type=${{ matrix.config.build }}
+          --components=core,nano,nanotest,nanoexam,nanobench,nanotool
+          --cargs=\'
+          -DUSE_EXPLICIT_INSTANTIATION=OFF
+          -DNANOVDB_USE_CUDA=ON
+          -DNANOVDB_USE_OPENVDB=ON
+          -DCMAKE_INSTALL_PREFIX=`pwd`
+          -DUSE_BLOSC=OFF
+          \'
+      - name: test
+        run: cd build && sudo ctest -V -E ".*cuda.*"
+
 #  windows-nanovdb:
 #    if: |
 #      github.event_name != 'workflow_dispatch' ||
@@ -170,23 +170,23 @@ jobs:
 #      - name: test
 #        run: cd build && sudo ctest -V -E ".*cuda.*"
 
-  nanovdb-lite:
-    if: |
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.type == 'all' ||
-      github.event.inputs.type == 'linux'
-    runs-on: ${{ (github.repository_owner == 'AcademySoftwareFoundation' && 'ubuntu-20.04-8c-32g-300h') || 'ubuntu-latest' }}
-    steps:
-      - uses: actions/checkout@v3
-      - name: install_gtest
-        run: |
-          sudo apt-get update
-          sudo apt-get -q install -y libgtest-dev
-      - name: build_and_test
-        run: |
-          cd nanovdb/nanovdb
-          sudo mkdir .build
-          cd .build
-          sudo cmake -DUSE_EXPLICIT_INSTANTIATION=OFF -DNANOVDB_BUILD_UNITTESTS=ON -DNANOVDB_USE_OPENVDB=OFF -DNANOVDB_USE_CUDA=OFF ../
-          sudo make -j8 install
-          sudo ctest -V
+#  nanovdb-lite:
+#    if: |
+#      github.event_name != 'workflow_dispatch' ||
+#      github.event.inputs.type == 'all' ||
+#      github.event.inputs.type == 'linux'
+#    runs-on: ${{ (github.repository_owner == 'AcademySoftwareFoundation' && 'ubuntu-20.04-8c-32g-300h') || 'ubuntu-latest' }}
+#    steps:
+#      - uses: actions/checkout@v3
+#      - name: install_gtest
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get -q install -y libgtest-dev
+#      - name: build_and_test
+#        run: |
+#          cd nanovdb/nanovdb
+#          sudo mkdir .build
+#          cd .build
+#          sudo cmake -DUSE_EXPLICIT_INSTANTIATION=OFF -DNANOVDB_BUILD_UNITTESTS=ON -DNANOVDB_USE_OPENVDB=OFF -DNANOVDB_USE_CUDA=OFF ../
+#          sudo make -j8 install
+#          sudo ctest -V
