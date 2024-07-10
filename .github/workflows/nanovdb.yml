@@ -68,14 +68,12 @@ jobs:
       - name: Enable Node 16
         run: |
           echo "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true" >> $GITHUB_ENV
-          sed -i \
-            -e 's/^mirrorlist/#mirrorlist/' \
-            -e 's/^#baseurl/baseurl/' \
-            -e 's/mirror\.centos\.org/vault.centos.org/' \
-            /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
       - uses: actions/checkout@v3
       - name: install_cuda_11
         run: |
+          sed -i s/mirrorlist.centos.org/vault.centos.org/g /etc/yum.repos.d/CentOS-*.repo \
+          sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/CentOS-*.repo \
+          sed -i s/#baseurl/baseurl/g /etc/yum.repos.d/CentOS-*.repo \
           yum -y install yum-utils
           yum-config-manager --add-repo http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
           echo "Installing cuda toolkit"
