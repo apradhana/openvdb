@@ -9,6 +9,6 @@ set(CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 find_package(OpenVDB REQUIRED)
-add_executable(nanovdb_test main.cc)
+add_executable(nanovdb_test main.cpp)
 
 target_link_libraries(nanovdb_test OpenVDB::openvdb)
