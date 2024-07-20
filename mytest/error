@@ -1,0 +1,18 @@
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h: In instantiation of ‘const nanovdb::Map& nanovdb::tools::NodeAccessor<GridT>::map() const [with GridT = openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >]’:
+
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h:1713:5:   required from ‘void nanovdb::tools::CreateNanoGrid< <template-parameter-1-1> >::processGrid() [with DstBuildT = float; SrcGridT = openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >]’
+
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h:963:25:   required from ‘nanovdb::GridHandle<BufferT> nanovdb::tools::CreateNanoGrid< <template-parameter-1-1> >::initHandle(const BufferT&) [with DstBuildT = float; BufferT = nanovdb::HostBuffer; SrcGridT = openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >]’
+
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h:901:10:   required from ‘typename nanovdb::util::disable_if<(nanovdb::util::is_same<DstBuildT, nanovdb::FpN>::value || nanovdb::BuildTraits<T>::is_index), nanovdb::GridHandle<BufferT> >::type nanovdb::tools::CreateNanoGrid< <template-parameter-1-1> >::getHandle(const BufferT&) [with DstBuildT = float; BufferT = nanovdb::HostBuffer; SrcGridT = openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >; typename nanovdb::util::disable_if<(nanovdb::util::is_same<DstBuildT, nanovdb::FpN>::value || nanovdb::BuildTraits<T>::is_index), nanovdb::GridHandle<BufferT> >::type = nanovdb::GridHandle<>]’
+
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h:1962:67:   required from ‘typename nanovdb::util::disable_if<(nanovdb::BuildTraits<IndexT>::is_index || nanovdb::BuildTraits<IndexT>::is_Fp), nanovdb::GridHandle<BufferT> >::type nanovdb::tools::createNanoGrid(const SrcGridT&, nanovdb::tools::StatsMode, nanovdb::CheckMode, int, const BufferT&) [with SrcGridT = openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >; DstBuildT = float; BufferT = nanovdb::HostBuffer; typename nanovdb::util::disable_if<(nanovdb::BuildTraits<IndexT>::is_index || nanovdb::BuildTraits<IndexT>::is_Fp), nanovdb::GridHandle<BufferT> >::type = nanovdb::GridHandle<>]’
+
+/home/andre/dev/openvdb/mytest/main.cpp:18:62:   required from here
+
+/usr/local/include/nanovdb/tools/CreateNanoGrid.h:326:58: error: ‘const GridType’ {aka ‘const class openvdb::v11_0::Grid<openvdb::v11_0::tree::Tree<openvdb::v11_0::tree::RootNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::InternalNode<openvdb::v11_0::tree::LeafNode<float, 3>, 4>, 5> > > >’} has no member named ‘map’
+  326 |     const nanovdb::Map& map() const {return this->grid().map();}
+
+The problem has to do with createNanoGrid on line 1952. The exact source of error is line 1962. because later on, it's calling msrcNodeAcc.map().
+
+The question is that why don't we get the same error when I'm coing cmake .. directly from NanoVDB?
