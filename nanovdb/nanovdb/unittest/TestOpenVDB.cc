@@ -651,7 +651,31 @@ TEST_F(TestOpenVDB, OpenToNanoVDB_Basic1)
         EXPECT_NEAR(dstGrid->tree().root().average(),  1.0f, 1e-6);
         EXPECT_NEAR(dstGrid->tree().root().variance(), 0.0f, 1e-6);
         EXPECT_NEAR(dstGrid->tree().root().stdDeviation(), 0.0f, 1e-6);
-    }
+    } // 1 grid point
+
+    // TODO: What's going on here? It is passing.
+    {
+        std::cout << "create level set sphere" << std::endl;
+        auto srcGrid = openvdb::tools::createLevelSetSphere<openvdb::FloatGrid>(100.0f, openvdb::Vec3f(0.0f), 1.0f);
+        // Convert the OpenVDB grid, srcGrid, into a NanoVDB grid handle.
+        auto handle = nanovdb::tools::createNanoGrid(*srcGrid);
+        std::cout << "after handle" << std::endl;
+
+        // Define a (raw) pointer to the NanoVDB grid on the host. Note we match the value type of the srcGrid!
+        auto* dstGrid = handle.grid<float>();
+
+        if (!dstGrid)
+            throw std::runtime_error("GridHandle does not contain a grid with value type float");
+
+        // Get accessors for the two grids. Note that accessors only accelerate repeated access!
+        auto dstAcc = dstGrid->getAccessor();
+        auto srcAcc = srcGrid->getAccessor();
+
+        // Access and print out a cross-section of the narrow-band level set from the two grids
+        for (int i = 97; i < 104; ++i) {
+            printf("(%3i,0,0) OpenVDB cpu: % -4.2f, NanoVDB cpu: % -4.2f\n", i, srcAcc.getValue(openvdb::Coord(i, 0, 0)), dstAcc.getValue(nanovdb::Coord(i, 0, 0)));
+        }
+    } // with srcGrid = openvdb level set sphere
 } // OpenToNanoVDB_Basic1
 
 TEST_F(TestOpenVDB, OpenToNanoVDB_Model)
