@@ -426,6 +426,13 @@ template<typename FromType, typename ToType> struct CopyConstness<const FromType
 };
 /// @endcond
 
+////////////////////////////////////////
+
+template<class T>
+struct is_floating_point : std::is_floating_point<T> { };
+
+template<>
+struct is_floating_point<math::half> : std::is_floating_point<float> { };
 
 ////////////////////////////////////////
 
