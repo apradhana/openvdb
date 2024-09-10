@@ -29,6 +29,7 @@ class ProxyTree: public openvdb::TreeBase
 public:
     using ValueType = int;
     using BuildType = int;
+    using ComputeType = int;
     using LeafNodeType = void;
     using ValueAllCIter = void;
     using ValueAllIter = void;
@@ -126,14 +127,14 @@ TEST_F(TestGrid, testGridRegistry)
 }
 
 
-// TEST_F(TestGrid, testConstPtr)
-// {
-//     using namespace openvdb;
-// 
-//     GridBase::ConstPtr constgrid = ProxyGrid::create();
-// 
-//     EXPECT_EQ(Name("proxy"), constgrid->type());
-// }
+TEST_F(TestGrid, testConstPtr)
+{
+    using namespace openvdb;
+
+    GridBase::ConstPtr constgrid = ProxyGrid::create();
+
+    EXPECT_EQ(Name("proxy"), constgrid->type());
+}
 
 
 TEST_F(TestGrid, testGetGrid)
