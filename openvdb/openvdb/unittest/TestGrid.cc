@@ -194,35 +194,35 @@ TEST_F(TestGrid, testIsTreeUnique)
 }
 
 
-// TEST_F(TestGrid, testTransform)
-// {
-//     ProxyGrid grid;
-// 
-//     // Verify that the grid has a valid default transform.
-//     EXPECT_TRUE(grid.transformPtr());
-// 
-//     // Verify that a null transform pointer is not allowed.
-//     EXPECT_THROW(grid.setTransform(openvdb::math::Transform::Ptr()),
-//         openvdb::ValueError);
-// 
-//     grid.setTransform(openvdb::math::Transform::createLinearTransform());
-// 
-//     EXPECT_TRUE(grid.transformPtr());
-// 
-//     // Verify that calling Transform-related Grid methods (Grid::voxelSize(), etc.)
-//     // is the same as calling those methods on the Transform.
-// 
-//     EXPECT_TRUE(grid.transform().voxelSize().eq(grid.voxelSize()));
-//     EXPECT_TRUE(grid.transform().voxelSize(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
-//         grid.voxelSize(openvdb::Vec3d(0.1, 0.2, 0.3))));
-// 
-//     EXPECT_TRUE(grid.transform().indexToWorld(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
-//         grid.indexToWorld(openvdb::Vec3d(0.1, 0.2, 0.3))));
-//     EXPECT_TRUE(grid.transform().indexToWorld(openvdb::Coord(1, 2, 3)).eq(
-//         grid.indexToWorld(openvdb::Coord(1, 2, 3))));
-//     EXPECT_TRUE(grid.transform().worldToIndex(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
-//         grid.worldToIndex(openvdb::Vec3d(0.1, 0.2, 0.3))));
-// }
+TEST_F(TestGrid, testTransform)
+{
+    ProxyGrid grid;
+
+    // Verify that the grid has a valid default transform.
+    EXPECT_TRUE(grid.transformPtr());
+
+    // Verify that a null transform pointer is not allowed.
+    EXPECT_THROW(grid.setTransform(openvdb::math::Transform::Ptr()),
+        openvdb::ValueError);
+
+    grid.setTransform(openvdb::math::Transform::createLinearTransform());
+
+    EXPECT_TRUE(grid.transformPtr());
+
+    // Verify that calling Transform-related Grid methods (Grid::voxelSize(), etc.)
+    // is the same as calling those methods on the Transform.
+
+    EXPECT_TRUE(grid.transform().voxelSize().eq(grid.voxelSize()));
+    EXPECT_TRUE(grid.transform().voxelSize(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
+        grid.voxelSize(openvdb::Vec3d(0.1, 0.2, 0.3))));
+
+    EXPECT_TRUE(grid.transform().indexToWorld(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
+        grid.indexToWorld(openvdb::Vec3d(0.1, 0.2, 0.3))));
+    EXPECT_TRUE(grid.transform().indexToWorld(openvdb::Coord(1, 2, 3)).eq(
+        grid.indexToWorld(openvdb::Coord(1, 2, 3))));
+    EXPECT_TRUE(grid.transform().worldToIndex(openvdb::Vec3d(0.1, 0.2, 0.3)).eq(
+        grid.worldToIndex(openvdb::Vec3d(0.1, 0.2, 0.3))));
+}
 
 
 TEST_F(TestGrid, testCopyGrid)
