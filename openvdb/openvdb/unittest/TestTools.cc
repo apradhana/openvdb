@@ -217,7 +217,9 @@ TEST_F(TestTools, testLevelSetPlatonic)
 
 }// testLevelSetPlatonic
 
-TEST_F(TestTools, testLevelSetAdvect)
+template<typename GridT>
+void
+testLevelSetAdvectImpl()
 {
     // Uncomment sections below to run this (time-consuming) test
     using namespace openvdb;
@@ -226,9 +228,6 @@ TEST_F(TestTools, testLevelSetAdvect)
     const Vec3f center(0.35f, 0.35f, 0.35f);
     const float radius = 0.15f, voxelSize = 1.0f/(dim-1);
     const float halfWidth = 3.0f, gamma = halfWidth*voxelSize;
-
-    using GridT = FloatGrid;
-    //using VectT = Vec3fGrid;
 
     {//test tracker::resize
         GridT::Ptr grid = tools::createLevelSetSphere<GridT>(radius, center, voxelSize, halfWidth);
@@ -372,7 +371,18 @@ TEST_F(TestTools, testLevelSetAdvect)
         }
         }
     */
-}//testLevelSetAdvect
+}
+
+TEST_F(TestTools, testLevelSetAdvectFloat)
+{
+    testLevelSetAdvectImpl<openvdb::FloatGrid>();
+}//testLevelSetAdvectFloat
+
+
+TEST_F(TestTools, testLevelSetAdvectHalf)
+{
+    testLevelSetAdvectImpl<openvdb::HalfGrid>();
+}//testLevelSetAdvectHalf
 
 
 ////////////////////////////////////////

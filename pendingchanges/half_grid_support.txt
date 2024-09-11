@@ -1,5 +1,7 @@
 Tests:
 [X] Interpolation
+[X] TestMorphology
+[X] TestGrid
 [ ] LevelSetAdvect
 [ ] LevelSetFilter
 [ ] LevelSetMeasure
@@ -14,6 +16,4 @@ Tests:
 [ ] VolumeAdvect
 [ ] VolumeToSpheres
 [ ] FastSweeping
-[X] TestMorphology
-[X] TestGrid
 [ ] Test explicit template instantiation
