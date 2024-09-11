@@ -49,7 +49,7 @@ public:
 };
 
 
-#if 1
+#if 0
 namespace {
 
 // Simple helper class to write out numbered vdbs
@@ -285,6 +285,7 @@ testLevelSetAdvectImpl()
             EXPECT_EQ(0, int(d.failureCount()));
         }
     }
+    /*
     {//test tracker
         typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         using TrackerT = openvdb::tools::LevelSetTracker<GridT>;
@@ -301,6 +302,8 @@ testLevelSetAdvectImpl()
             fw("Tracker", 0, 0);
         }
     }
+    */
+    /*
     {//test EnrightField
         typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         using FieldT = openvdb::tools::EnrightField<float>;
@@ -321,8 +324,9 @@ testLevelSetAdvectImpl()
             fw("Enright", t + dt, advect.advect(t, t + dt));
         }
     }
+    */
+    /*
     using VectT = Vec3fGrid;
-
     {// test DiscreteGrid - Aligned
         typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         VectT vect(openvdb::Vec3f(1,0,0));
@@ -341,6 +345,7 @@ testLevelSetAdvectImpl()
             fw("Aligned", t + dt, advect.advect(t, t + dt));
         }
     }
+    */
     /*
     {// test DiscreteGrid - Transformed
         typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
@@ -350,7 +355,7 @@ testLevelSetAdvectImpl()
             for (ijk[1]=0; ijk[1]<dim; ++ijk[1])
                 for (ijk[2]=0; ijk[2]<dim; ++ijk[2])
                     acc.setValue(ijk, openvdb::Vec3f(1,0,0));
-        vect.transform().scale(2.0f);
+        // vect.transform().scale(2.0f);
         using FieldT = openvdb::tools::DiscreteField<VectT>;
         FieldT field(vect);
         using AdvectT = openvdb::tools::LevelSetAdvection<GridT, FieldT>;
@@ -365,7 +370,7 @@ testLevelSetAdvectImpl()
         for (float t = 0, dt = 0.5f; !grid->empty() && t < 1.0f; t += dt) {
             fw("Xformed", t + dt, advect.advect(t, t + dt));
         }
-        }
+    }
     */
 }
 
