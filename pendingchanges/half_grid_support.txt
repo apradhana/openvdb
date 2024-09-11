@@ -1,3 +1,4 @@
+# TODO
 Tests:
 [X] Interpolation
 [X] TestMorphology
@@ -17,3 +18,11 @@ Tests:
 [ ] VolumeToSpheres
 [ ] FastSweeping
 [ ] Test explicit template instantiation
+
+## TODO Today
+[ ] LevelSetAdvect
+    [X] Refactor
+    [ ] Q: What's being tested?
+    [ ] Test refactoring
+    [ ] Test with Half Grid
+
