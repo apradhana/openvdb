@@ -321,7 +321,8 @@ testLevelSetAdvectImpl()
             fw("Enright", t + dt, advect.advect(t, t + dt));
         }
     }
-    /*
+    using VectT = Vec3fGrid;
+
     {// test DiscreteGrid - Aligned
         typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         VectT vect(openvdb::Vec3f(1,0,0));
@@ -339,11 +340,10 @@ testLevelSetAdvectImpl()
         for (float t = 0, dt = 0.5f; !grid->empty() && t < 1.0f; t += dt) {
             fw("Aligned", t + dt, advect.advect(t, t + dt));
         }
-        }
-    */
+    }
     /*
     {// test DiscreteGrid - Transformed
-        GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
+        typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         VectT vect(openvdb::Vec3f(0,0,0));
         VectT::Accessor acc = vect.getAccessor();
         for (openvdb::Coord ijk(0); ijk[0]<dim; ++ijk[0])
