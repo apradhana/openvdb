@@ -49,7 +49,7 @@ public:
 };
 
 
-#if 0
+#if 1
 namespace {
 
 // Simple helper class to write out numbered vdbs
@@ -285,9 +285,8 @@ testLevelSetAdvectImpl()
             EXPECT_EQ(0, int(d.failureCount()));
         }
     }
-    /*
     {//test tracker
-        GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
+        typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         using TrackerT = openvdb::tools::LevelSetTracker<GridT>;
         TrackerT tracker(*grid);
         tracker.setSpatialScheme(openvdb::math::HJWENO5_BIAS);
@@ -301,11 +300,9 @@ testLevelSetAdvectImpl()
             tracker.track();
             fw("Tracker", 0, 0);
         }
-    */
-
-    /*
+    }
     {//test EnrightField
-        GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
+        typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         using FieldT = openvdb::tools::EnrightField<float>;
         FieldT field;
 
@@ -323,11 +320,10 @@ testLevelSetAdvectImpl()
         for (float t = 0, dt = 0.5f; !grid->empty() && t < 1.0f; t += dt) {
             fw("Enright", t + dt, advect.advect(t, t + dt));
         }
-        }
-    */
+    }
     /*
     {// test DiscreteGrid - Aligned
-        GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
+        typename GridT::Ptr grid = openvdb::tools::createLevelSetSphere<GridT>(radius, center, voxelSize);
         VectT vect(openvdb::Vec3f(1,0,0));
         using FieldT = openvdb::tools::DiscreteField<VectT>;
         FieldT field(vect);
