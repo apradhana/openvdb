@@ -3,7 +3,7 @@ Tests:
 [X] Interpolation
 [X] TestMorphology
 [X] TestGrid
-[ ] LevelSetAdvect
+[X] LevelSetAdvect
 [ ] LevelSetFilter
 [ ] LevelSetMeasure
 [ ] LevelSetMorph
@@ -19,10 +19,12 @@ Tests:
 [ ] FastSweeping
 [ ] Test explicit template instantiation
 
-## TODO Today
-[ ] LevelSetAdvect
+# DONE
+[X] LevelSetAdvect
     [X] Refactor
-    [ ] Q: What's being tested?
-    [ ] Test refactoring
-    [ ] Test with Half Grid
+    [X] Q: What's being tested?
+    [X] Test refactoring
+    [X] Test with Half Grid
 
+## TODO Today
+[ ] LevelSetFilter
