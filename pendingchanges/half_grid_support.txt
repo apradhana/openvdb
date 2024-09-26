@@ -27,4 +27,5 @@ Tests:
     [X] Test with Half Grid
 
 ## TODO Today
-[ ] LevelSetFilter
+[ ] LevelSetFilter -- doesn't have any 
+[ ] LevelSetMeasure in TestTools
