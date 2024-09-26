@@ -223,11 +223,12 @@ testLevelSetAdvectImpl()
 {
     // Uncomment sections below to run this (time-consuming) test
     using namespace openvdb;
+    using T = typename GridT::ValueType;
 
     const int dim = 128;
     const Vec3f center(0.35f, 0.35f, 0.35f);
-    const float radius = 0.15f, voxelSize = 1.0f/(dim-1);
-    const float halfWidth = 3.0f, gamma = halfWidth*voxelSize;
+    const T radius = 0.15f, voxelSize = 1.0f/(dim-1);
+    const T halfWidth = 3.0f, gamma = halfWidth*voxelSize;
 
     {//test tracker::resize
         typename GridT::Ptr grid = tools::createLevelSetSphere<GridT>(radius, center, voxelSize, halfWidth);
@@ -266,7 +267,7 @@ testLevelSetAdvectImpl()
         ASSERT_DOUBLES_EXACTLY_EQUAL( 4.0f, tracker.getHalfWidth());
 
         {// check range of on values in a sphere w/o mask
-            const float g = gamma + voxelSize;
+            const T g = gamma + voxelSize;
             tools::CheckRange<GridT, true, true, typename GridT::ValueOnCIter> c(-g, g);
             tools::Diagnose<GridT> d(*grid);
             std::string str = d.check(c);
@@ -380,10 +381,10 @@ TEST_F(TestTools, testLevelSetAdvectFloat)
 }//testLevelSetAdvectFloat
 
 
-// TEST_F(TestTools, testLevelSetAdvectHalf)
-// {
-//     testLevelSetAdvectImpl<openvdb::HalfGrid>();
-// }//testLevelSetAdvectHalf
+TEST_F(TestTools, testLevelSetAdvectHalf)
+{
+    testLevelSetAdvectImpl<openvdb::HalfGrid>();
+}//testLevelSetAdvectHalf
 
 
 ////////////////////////////////////////
