@@ -711,8 +711,218 @@ TEST_F(TestTools, testLevelSetMeasure)
        EXPECT_EQ(2, x);
      }
    }
-
 }//testLevelSetMeasure
+
+
+template<typename GridT>
+void
+testLevelSetMeasureImpl()
+{
+    const double percentage = 0.1/100.0;//i.e. 0.1%
+    const int dim = 256;
+    openvdb::Real area, volume, mean, gauss;
+
+    // First sphere
+    openvdb::Vec3f C(0.35f, 0.35f, 0.35f);
+    openvdb::Real r = 0.15, voxelSize = 1.0/(dim-1);
+    const openvdb::Real Pi = openvdb::math::pi<openvdb::Real>();
+    typename GridT::Ptr sphere = openvdb::tools::createLevelSetSphere<GridT>(float(r), C, float(voxelSize));
+
+    using MeasureT = openvdb::tools::LevelSetMeasure<GridT>;
+    MeasureT m(*sphere);
+
+    /// Test area and volume of sphere in world units
+    area = 4*Pi*r*r;
+    volume = 4.0/3.0*Pi*r*r*r;
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "\nVolume of sphere = " << volume << "  " << v << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(), percentage*area);
+    EXPECT_NEAR(volume, m.volume(), percentage*volume);
+
+    // Test area, volume and average mean curvature of sphere in world units
+    mean = 1.0/r;
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "radius in world units = " << r << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << mean << "  " << cm << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(), percentage*area);
+    EXPECT_NEAR(volume, m.volume(), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(), percentage*mean);
+
+    // Test area, volume, average mean curvature and average gaussian curvature of sphere in world units
+    gauss = 1.0/(r*r);
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "radius in world units = " << r << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << mean << "  " << cm << std::endl;
+    //std::cerr << "Avg gaussian curvature of sphere = " << gauss << "  " << cg << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,  m.area(), percentage*area);
+    EXPECT_NEAR(volume, m.volume(), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(), percentage*mean);
+    EXPECT_NEAR(gauss, m.avgGaussianCurvature(), percentage*gauss);
+    EXPECT_EQ(0, m.genus());
+
+    // Test measures of sphere in voxel units
+    r /= voxelSize;
+    area = 4*Pi*r*r;
+    volume = 4.0/3.0*Pi*r*r*r;
+    mean = 1.0/r;
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << curv << "  " << cm << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(false), percentage*area);
+    EXPECT_NEAR(volume, m.volume(false), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(false), percentage*mean);
+
+    gauss = 1.0/(r*r);
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "radius in voxel units = " << r << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << mean << "  " << cm << std::endl;
+    //std::cerr << "Avg gaussian curvature of sphere = " << gauss << "  " << cg << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(false), percentage*area);
+    EXPECT_NEAR(volume, m.volume(false), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(false), percentage*mean);
+    EXPECT_NEAR(gauss,  m.avgGaussianCurvature(false), percentage*gauss);
+    EXPECT_EQ(0, m.genus());
+
+    // Second sphere
+    C = openvdb::Vec3f(5.4f, 6.4f, 8.4f);
+    r = 0.57;
+    sphere = openvdb::tools::createLevelSetSphere<GridT>(float(r), C, float(voxelSize));
+    m.init(*sphere);
+
+    // Test all measures of sphere in world units
+    area = 4*Pi*r*r;
+    volume = 4.0/3.0*Pi*r*r*r;
+    mean = 1.0/r;
+    gauss = 1.0/(r*r);
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "radius in world units = " << r << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << mean << "  " << cm << std::endl;
+    //std::cerr << "Avg gaussian curvature of sphere = " << gauss << "  " << cg << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(), percentage*area);
+    EXPECT_NEAR(volume, m.volume(), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(), percentage*mean);
+    EXPECT_NEAR(gauss,  m.avgGaussianCurvature(), percentage*gauss);
+    EXPECT_EQ(0, m.genus());
+    //EXPECT_NEAR(area,  openvdb::tools::levelSetArea(*sphere),  percentage*area);
+    //EXPECT_NEAR(volume,openvdb::tools::levelSetVolume(*sphere),percentage*volume);
+    //EXPECT_EQ(0, openvdb::tools::levelSetGenus(*sphere));
+
+     // Test all measures of sphere in voxel units
+    r /= voxelSize;
+    area = 4*Pi*r*r;
+    volume = 4.0/3.0*Pi*r*r*r;
+    mean = 1.0/r;
+    gauss = 1.0/(r*r);
+    //std::cerr << "\nArea of sphere = " << area << "  " << a << std::endl;
+    //std::cerr << "Volume of sphere = " << volume << "  " << v << std::endl;
+    //std::cerr << "radius in voxel units = " << r << std::endl;
+    //std::cerr << "Avg mean curvature of sphere = " << mean << "  " << cm << std::endl;
+    //std::cerr << "Avg gaussian curvature of sphere = " << gauss << "  " << cg << std::endl;
+    // Test accuracy of computed measures to within 0.1% of the exact measure.
+    EXPECT_NEAR(area,   m.area(false), percentage*area);
+    EXPECT_NEAR(volume, m.volume(false), percentage*volume);
+    EXPECT_NEAR(mean,   m.avgMeanCurvature(false), percentage*mean);
+    EXPECT_NEAR(gauss,  m.avgGaussianCurvature(false), percentage*gauss);
+    EXPECT_NEAR(area,  openvdb::tools::levelSetArea(*sphere,false),
+                                 percentage*area);
+    EXPECT_NEAR(volume,openvdb::tools::levelSetVolume(*sphere,false),
+                                 percentage*volume);
+    EXPECT_EQ(0, openvdb::tools::levelSetGenus(*sphere));
+
+    // Read level set from file
+    /*
+    util::CpuTimer timer;
+    openvdb::initialize();//required whenever I/O of OpenVDB files is performed!
+    openvdb::io::File sourceFile("/usr/pic1/Data/OpenVDB/LevelSetModels/venusstatue.vdb");
+    sourceFile.open();
+    GridT::Ptr model = openvdb::gridPtrCast<GridT>(sourceFile.getGrids()->at(0));
+    m.reinit(*model);
+
+    //m.setGrainSize(1);
+    timer.start("\nParallel measure of area and volume");
+    m.measure(a, v, false);
+    timer.stop();
+    std::cerr << "Model: area = " << a << ", volume = " << v << std::endl;
+
+    timer.start("\nParallel measure of area, volume and curvature");
+    m.measure(a, v, c, false);
+    timer.stop();
+    std::cerr << "Model: area = " << a << ", volume = " << v
+              << ", average curvature = " << c << std::endl;
+
+    m.setGrainSize(0);
+    timer.start("\nSerial measure of area and volume");
+    m.measure(a, v, false);
+    timer.stop();
+    std::cerr << "Model: area = " << a << ", volume = " << v << std::endl;
+
+    timer.start("\nSerial measure of area, volume and curvature");
+    m.measure(a, v, c, false);
+    timer.stop();
+    std::cerr << "Model: area = " << a << ", volume = " << v
+              << ", average curvature = " << c << std::endl;
+    */
+
+   {// testing total genus of multiple disjoint level set spheres with different radius
+     const float dx = 0.5f, r = 50.0f;
+     auto grid = openvdb::createLevelSet<openvdb::FloatGrid>(dx);
+     EXPECT_THROW(openvdb::tools::levelSetGenus(*grid), openvdb::RuntimeError);
+     for (int i=1; i<=3; ++i) {
+       auto sphere = openvdb::tools::createLevelSetSphere<GridT>(r+float(i)*5.0f , openvdb::Vec3f(100.0f*float(i)), dx);
+       openvdb::tools::csgUnion(*grid, *sphere);
+       const int x = openvdb::tools::levelSetEulerCharacteristic(*grid);// since they are not overlapping re-normalization is not required
+       //std::cerr << "Euler characteristics of " << i << " sphere(s) = " << x << std::endl;
+       EXPECT_EQ(2*i, x);
+     }
+   }
+   {// testing total genus of multiple disjoint level set cubes of different size
+     const float dx = 0.5f, size = 50.0f;
+     auto grid = openvdb::createLevelSet<openvdb::FloatGrid>(dx);
+     EXPECT_THROW(openvdb::tools::levelSetGenus(*grid), openvdb::RuntimeError);
+     for (int i=1; i<=2; ++i) {
+       auto shape = openvdb::tools::createLevelSetCube<openvdb::FloatGrid>(size, openvdb::Vec3f(100.0f*float(i)), dx);
+       openvdb::tools::csgUnion(*grid, *shape);
+       const int x = openvdb::tools::levelSetEulerCharacteristic(*grid);
+       //std::cerr << "Euler characteristics of " << i << " cubes(s) = " << x << std::endl;
+       EXPECT_EQ(2*i, x);
+     }
+   }
+   {// testing Euler characteristic and total genus of multiple intersecting (connected) level set spheres
+     const float dx = 0.5f, r = 50.0f;
+     auto grid = openvdb::createLevelSet<openvdb::FloatGrid>(dx);
+     EXPECT_THROW(openvdb::tools::levelSetGenus(*grid), openvdb::RuntimeError);
+     for (int i=1; i<=4; ++i) {
+       auto sphere = openvdb::tools::createLevelSetSphere<GridT>( r , openvdb::Vec3f(30.0f*float(i), 0.0f, 0.0f), dx);
+       openvdb::tools::csgUnion(*grid, *sphere);
+       const int genus = openvdb::tools::levelSetGenus(*grid);
+       const int x = openvdb::tools::levelSetEulerCharacteristic(*grid);
+       //std::cerr << "Genus of " << i << " sphere(s) = " << genus << std::endl;
+       EXPECT_EQ(0, genus);
+       //std::cerr << "Euler characteristics of " << i << " sphere(s) = " << genus << std::endl;
+       EXPECT_EQ(2, x);
+     }
+   }
+}//testLevelSetMeasureImpl
+
+TEST_F(TestTools, testLevelSetMeasureFloat)
+{
+    testLevelSetMeasureImpl<openvdb::FloatGrid>();
+}//testLevelSetMeasureFloat
+
+TEST_F(TestTools, testLevelSetMeasureHalf)
+{
+    testLevelSetMeasureImpl<openvdb::HalfGrid>();
+}//testLevelSetMeasureFloat
 
 TEST_F(TestTools, testMagnitude)
 {
