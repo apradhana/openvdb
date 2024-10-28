@@ -174,7 +174,7 @@ testClosestSurfacePointImpl()
     using Vec3T = typename openvdb::math::Vec3<ValueT>;
 
     const ValueT voxelSize = ValueT(1.0);
-    const Vec3T center{ValueT(0.0)}; // ensure multiple internal nodes
+    const Vec3R center{ValueT(0.0)}; // ensure multiple internal nodes
 
     for (const float radius: { 8.0f, 50.0f }) {
         // Construct a spherical level set.
