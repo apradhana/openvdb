@@ -123,7 +123,7 @@ testLevelSetSphereImpl()
     using Vec3T = typename openvdb::math::Vec3<ValueT>;
 
     const ValueT radius = 4.3f;
-    const Vec3T center(ValueT(15.8), ValueT(13.2), ValueT(16.7));
+    Vec3T center(ValueT(15.8), ValueT(13.2), ValueT(16.7));
     const ValueT voxelSize = 1.5f, width = 3.25f;
     const int dim = 32;
     ValueT tolerance = std::is_floating_point<typename GridT::ValueType>::value ? 0.0001 : 0.004;
@@ -140,8 +140,14 @@ testLevelSetSphereImpl()
     for (int i=0; i<dim; ++i) {
         for (int j=0; j<dim; ++j) {
             for (int k=0; k<dim; ++k) {
+                // Vec3T p(voxelSize*float(i), voxelSize*float(j), voxelSize*float(k));
+                // Vec3T foobar = p;
+                // foobar -= center;
+                // const float dist = foobar.length() - radius;
                 const openvdb::Vec3f p(voxelSize*float(i), voxelSize*float(j), voxelSize*float(k));
-                const float dist = (p-center).length() - radius;
+                const float dist = (p-openvdb::Vec3f(center)).length() - radius;
+                //char* foo = openvdb::math::promote<openvdb::Vec3f::ValueType, typename Vec3T::ValueType>::type(1);
+                //std::cout << foo << std::endl;
                 const float val1 = grid1->tree().getValue(openvdb::Coord(i,j,k));
                 const float val2 = grid2->tree().getValue(openvdb::Coord(i,j,k));
                 if (dist > outside) {

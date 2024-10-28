@@ -2015,7 +2015,9 @@ testSignedFloodFillImpl()
         for (xyz[1]=0; xyz[1]<dim[1]; ++xyz[1]) {
             for (xyz[2]=0; xyz[2]<dim[2]; ++xyz[2]) {
                 const openvdb::Vec3R p =  grid->transform().indexToWorld(xyz);
-                const ValueT dist = float((p-center).length() - radius);
+                Vec3T foobar = p;
+                foobar -= center;
+                const ValueT dist = float(foobar.length() - radius);
                 if (fabs(dist) > outside) continue;
                 acc.setValue(xyz, dist);
             }
@@ -2030,7 +2032,9 @@ testSignedFloodFillImpl()
         for (xyz[1]=0; xyz[1]<dim[1]; ++xyz[1]) {
             for (xyz[2]=0; xyz[2]<dim[2]; ++xyz[2]) {
                 const openvdb::Vec3R p =  grid->transform().indexToWorld(xyz);
-                const ValueT dist = ValueT((p-center).length() - radius);
+                Vec3T foobar = p;
+                foobar -= center;
+                const ValueT dist = ValueT(foobar.length() - radius);
                 const ValueT val  =  acc.getValue(xyz);
                 if (dist < inside) {
                     ASSERT_DOUBLES_EXACTLY_EQUAL( val, outside);
@@ -2052,7 +2056,9 @@ testSignedFloodFillImpl()
         for (xyz[1]=0; xyz[1]<dim[1]; ++xyz[1]) {
             for (xyz[2]=0; xyz[2]<dim[2]; ++xyz[2]) {
                 const openvdb::Vec3R p =  grid->transform().indexToWorld(xyz);
-                const ValueT dist = ValueT((p-center).length() - radius);
+                Vec3T foobar = p;
+                foobar -= center;
+                const ValueT dist = ValueT(foobar.length() - radius);
                 const ValueT val  =  acc.getValue(xyz);
                 if (dist < inside) {
                     ASSERT_DOUBLES_EXACTLY_EQUAL( val, inside);
