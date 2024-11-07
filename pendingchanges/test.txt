@@ -1,0 +1,2 @@
+New feature:
+ - Create a new feature called test.
