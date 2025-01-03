@@ -484,3 +484,8 @@ TEST_F(TestPoissonSolver, testSolveWithSegmentedDomain)
     }
 #endif
 }
+
+TEST_F(TestPoissonSolver, testRemoveDivergence)
+{
+    std::cout << "Add test remove divergence" << std::endl;
+}
