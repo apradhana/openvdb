@@ -69,6 +69,7 @@ option(OPENVDB_BUILD_CORE "Enable the core OpenVDB library. Both static and shar
 option(OPENVDB_BUILD_BINARIES "Enable the vdb binaries. Only vdb_print is enabled by default" ON)
 option(OPENVDB_BUILD_PYTHON_MODULE "Build the pyopenvdb Python module" OFF)
 option(OPENVDB_BUILD_UNITTESTS "Build the OpenVDB unit tests" OFF)
+option(OPENVDB_BUILD_EXAMPLES "Build the OpenVDB examples" OFF)
 option(OPENVDB_BUILD_DOCS "Build the OpenVDB documentation" OFF)
 option(OPENVDB_BUILD_HOUDINI_PLUGIN "Build the Houdini plugin" OFF)
 option(OPENVDB_BUILD_HOUDINI_ABITESTS "Build the Houdini ABI tests" OFF)
@@ -356,6 +357,7 @@ if(NOT (
     OPENVDB_BUILD_AX_UNITTESTS OR
     OPENVDB_BUILD_PYTHON_MODULE OR
     OPENVDB_BUILD_UNITTESTS OR
+    OPENVDB_BUILD_EXAMPLES OR
     OPENVDB_BUILD_HOUDINI_PLUGIN OR
     OPENVDB_BUILD_HOUDINI_ABITESTS OR
     OPENVDB_BUILD_MAYA_PLUGIN OR
@@ -436,6 +438,7 @@ set(NEEDS_OPENVDB OFF)
 if(OPENVDB_BUILD_AX OR
    OPENVDB_BUILD_BINARIES OR
    OPENVDB_BUILD_UNITTESTS OR
+   OPENVDB_BUILD_EXAMPLES OR
    OPENVDB_BUILD_HOUDINI_PLUGIN OR
    OPENVDB_BUILD_MAYA_PLUGIN OR
    OPENVDB_BUILD_PYTHON_MODULE OR
@@ -586,6 +589,10 @@ endif()
 
 if(OPENVDB_BUILD_UNITTESTS)
   add_subdirectory(openvdb/openvdb/unittest)
+endif()
+
+if(OPENVDB_BUILD_EXAMPLES)
+  add_subdirectory(examples)
 endif()
 
 # Tests the vdb_ax binary so needs to come after openvdb_cmd
