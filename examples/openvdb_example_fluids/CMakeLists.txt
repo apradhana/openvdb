@@ -1,8 +1,8 @@
 # Copyright Contributors to the OpenVDB Project
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 #[=======================================================================[
-    CMake Configuration for VDB Example Fluids
+    CMake Configuration for OpenVDB Example Fluids
 #]=======================================================================]
 
 cmake_minimum_required(VERSION 3.18)
