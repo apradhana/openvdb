@@ -42,6 +42,8 @@ private:
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
     void pressureProjectionDebug(bool print);
+    float computeLInfinity(const FloatGrid& grid);
+    float computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix);
 
     void updateEmitter();
     void createDirichletVelocity();
@@ -405,52 +407,46 @@ SmokeSolver::createInteriorPressure()
     writeVDBsDebug(0);
  }
 
+
+float
+SmokeSolver::computeLInfinity(const FloatGrid& grid) {
+    float ret = 0.f;
+    auto acc = grid.getConstAccessor();
+    for (auto iter = grid.beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = acc.getValue(ijk);
+        if (std::abs(val) > std::abs(ret)) {
+            ret = val;
+        }
+    }
+    return ret;
+}
+
+
+float
+SmokeSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix) {
+    std::string name = "div_";
+    name += suffix.c_str();
+
+    divGrid = tools::divergence(*vecGrid);
+    divGrid->tree().topologyIntersection(mInteriorPressure->tree());
+    divGrid->setName(name.c_str());
+    float div = computeLInfinity(*divGrid);
+    std::cout << "Divergence " << suffix.c_str() << " = " << div << std::endl;
+    return div;
+}
+
  void
  SmokeSolver::pressureProjectionDebug(bool print)
  {
-    std::cout << "pressure projection 4" << std::endl;
+    std::cout << "pressure projection debug" << std::endl;
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
 
-    mDivBefore = tools::divergence(*mVCurr);
-    mDivBefore->topologyIntersection(*mInteriorPressure);
-    mDivBefore->setName("div_before");
-
-    float divBefore = 0.f;
-    auto divBeforeAcc = mDivBefore->getAccessor();
-    auto flagAcc = mFlags->getAccessor();
-    auto vCurrAcc = mVCurr->getAccessor();
-    for (int kk = 1; kk <= 2; ++kk)
-    for (int jj = 1; jj <= 2; ++jj)
-    for (int ii = 1; ii <= 2; ++ii) {
-        math::Coord ijk(ii, jj, kk); //= iter.getCoord();
-        auto ip1jk = ijk.offsetBy(1, 0, 0);
-        auto ijp1k = ijk.offsetBy(0, 1, 0);
-        auto ijkp1 = ijk.offsetBy(0, 0, 1);
-        auto val = divBeforeAcc.getValue(ijk);
-
-        Vec3s vdown(vCurrAcc.getValue(ijk));
-        Vec3s vup(vCurrAcc.getValue(ip1jk)[0],
-                  vCurrAcc.getValue(ijp1k)[1],
-                  vCurrAcc.getValue(ijkp1)[2]);
-                  if (print) {
-                    std::cout << "div before " << ijk << " = " << val
-                              << " vdown = " << vdown
-                              << " vup = " << vup
-                              << "flags[ijk]" << flagAcc.getValue(ijk)
-                              << std::endl;
-                  }
-
-        if (std::abs(val) > std::abs(divBefore)) {
-            divBefore = val;
-        }
-    }
-
-    std::cout << "\t== divergence before pp = " << divBefore << std::endl;
+    float divBefore = computeDivergence(mDivBefore, mVCurr, "before");
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
     state.iterations = 100000;
@@ -477,8 +473,8 @@ SmokeSolver::createInteriorPressure()
     auto pressureAcc = fluidPressureGrid->getConstAccessor();
     auto flagsAcc = mFlags->getConstAccessor();
 
-
     // Note: I'm modifying vCurr
+    auto vCurrAcc = mVCurr->getAccessor();
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto im1jk = ijk.offsetBy(-1, 0, 0);
@@ -501,19 +497,8 @@ SmokeSolver::createInteriorPressure()
     }
 
     applyDirichletVelocity(*mVCurr, -2);
-    mDivAfter = tools::divergence(*mVCurr);
-    mDivAfter->setName("div_after");
-    (mDivAfter->tree()).topologyIntersection(mInteriorPressure->tree());
-    float divAfter = 0.f;
-    auto divAfterAcc = mDivAfter->getAccessor();
-    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
-        math::Coord ijk = iter.getCoord();
-        auto val = divAfterAcc.getValue(ijk);
-        if (std::abs(val) > std::abs(divAfter)) {
-            divAfter = val;
-        }
-    }
-    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
+
+    float divAfter = computeDivergence(mDivAfter, mVCurr, "after");
 
     // if (!state.success) {
     //     std::ostringstream ostr;
