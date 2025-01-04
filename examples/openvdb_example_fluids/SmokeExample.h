@@ -446,6 +446,20 @@ SmokeSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vec
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
 
+    // set the boundary
+    auto vCurrAcc = mVCurr->getAccessor();
+    auto xform = mVCurr->transform();
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto xyz = xform.indexToWorld(ijk);
+        auto x = xyz[0];
+        auto y = xyz[1];
+        auto z = xyz[2];
+        Vec3f val(x * x, y * y, z * z);
+        vCurrAcc.setValue(ijk, val);
+    }
+    applyDirichletVelocity(*mVCurr, -2);
+
     float divBefore = computeDivergence(mDivBefore, mVCurr, "before");
 
     math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
@@ -474,7 +488,6 @@ SmokeSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vec
     auto flagsAcc = mFlags->getConstAccessor();
 
     // Note: I'm modifying vCurr
-    auto vCurrAcc = mVCurr->getAccessor();
     for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
         auto ijk = iter.getCoord();
         auto im1jk = ijk.offsetBy(-1, 0, 0);
@@ -716,6 +729,7 @@ SmokeSolver::applyDirichletVelocity(Vec3SGrid& vecGrid, int frame)
         }
     }
 }
+
 
 void
 SmokeSolver::updateEmitter()
