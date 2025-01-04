@@ -42,7 +42,11 @@ The most crucial part of the implementation is how a user defines a "Boundary Op
 You can have a flag grid. This is to be fed into the BoundaryOperator, which is then fed into tools::poisson::solveWithBoundaryConditionsAndPreconditioner. More specifically, the BoundaryOperator also needs dirichletVelocity grid to enforce the boundary condition correctly.
 
 
-        Writing flags.vdb
+# Debugging the pressure projection in the smoke solver
+
+## Regression Test
+```shell
+Writing flags.vdb
 create dirichlet velocity 4
 Write VDBs Debug
 frame = 0 substep = 10
@@ -50,13 +54,21 @@ update emitter
 done with update emitter
 apply dirichlet velocity begins
 pressure projection 4
-        == divergence before pp = -0.0833333
+== divergence before pp = -0.0833333
 Projection Success: 0
 Iterations: 82
 Relative error: 0.0297418
 Absolute error: 0.894733
 apply dirichlet velocity begins
-        == divergence after pp = -0.894734
+== divergence after pp = -0.894734
+```
+## QnAs
+
+**Q:** Do I need to call applyDirichletVelocity again?
+
+## Steps
+[X] Pass regression test
+[ ] Add v(x, y, z) = (x^2, y^2, z^2)
 
 # Branch
 ```
