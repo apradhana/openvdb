@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "FlipExample.h"
+#include "SmokeExample.h"
 
 // TO BUILD:
 // mkdir build
@@ -13,6 +14,11 @@ main(int argc, char *argv[])
 {
     openvdb::initialize();
 
+#if 0
     example::FlipSolver flipSim(0.1f /* voxel size */);
     flipSim.render();
+#endif
+
+    example::SmokeSolver smokeSim(0.1f /* voxel size */);
+    smokeSim.render();
 }
