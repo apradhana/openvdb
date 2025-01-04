@@ -1,6 +1,8 @@
-# Building
+# Building and workflow
 ```shell
 cmake .. -DOPENVDB_BUILD_UNITTESTS=ON --DOPENVDB_BUILD_EXAMPLES=ON
+cd ~/dev/openvdb/_build_remove_div/examples/openvdb_example_fluids
+make -j 32 && ./openvdb_example_fluids
 ```
 
 # Notes
@@ -69,7 +71,19 @@ apply dirichlet velocity begins
 ## Steps
 [X] Pass regression test
 [X] Add computeDivergence and computeLInfinity APIs
-[ ] Add v(x, y, z) = (x^2, y^2, z^2)
+[X] Add v(x, y, z) = (x^2, y^2, z^2)
+[ ] Make the domain even simpler.
+****
+*  =
+****
+or
+********
+*      =
+*      =
+*      =
+*      =
+********
+
 
 ```shell
 Writing flags.vdb
