@@ -41,6 +41,7 @@ private:
 
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
+    void pressureProjectionDebug(bool print);
 
     void updateEmitter();
     void createDirichletVelocity();
@@ -405,13 +406,136 @@ SmokeSolver::createInteriorPressure()
  }
 
  void
- SmokeSolver::pressureProjection(bool print)
+ SmokeSolver::pressureProjectionDebug(bool print)
  {
     std::cout << "pressure projection 4" << std::endl;
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
     using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
 
+    ValueType const zero = zeroVal<ValueType>();
+    double const epsilon = math::Delta<ValueType>::value();
+
+    mDivBefore = tools::divergence(*mVCurr);
+    mDivBefore->topologyIntersection(*mInteriorPressure);
+    mDivBefore->setName("div_before");
+
+    float divBefore = 0.f;
+    auto divBeforeAcc = mDivBefore->getAccessor();
+    auto flagAcc = mFlags->getAccessor();
+    auto vCurrAcc = mVCurr->getAccessor();
+    for (int kk = 1; kk <= 2; ++kk)
+    for (int jj = 1; jj <= 2; ++jj)
+    for (int ii = 1; ii <= 2; ++ii) {
+        math::Coord ijk(ii, jj, kk); //= iter.getCoord();
+        auto ip1jk = ijk.offsetBy(1, 0, 0);
+        auto ijp1k = ijk.offsetBy(0, 1, 0);
+        auto ijkp1 = ijk.offsetBy(0, 0, 1);
+        auto val = divBeforeAcc.getValue(ijk);
+
+        Vec3s vdown(vCurrAcc.getValue(ijk));
+        Vec3s vup(vCurrAcc.getValue(ip1jk)[0],
+                  vCurrAcc.getValue(ijp1k)[1],
+                  vCurrAcc.getValue(ijkp1)[2]);
+                  if (print) {
+                    std::cout << "div before " << ijk << " = " << val
+                              << " vdown = " << vdown
+                              << " vup = " << vup
+                              << "flags[ijk]" << flagAcc.getValue(ijk)
+                              << std::endl;
+                  }
+
+        if (std::abs(val) > std::abs(divBefore)) {
+            divBefore = val;
+        }
+    }
+
+    std::cout << "\t== divergence before pp = " << divBefore << std::endl;
+
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100000;
+    state.relativeError = state.absoluteError = epsilon;
+    SmokeSolver::BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
+    util::NullInterrupter interrupter;
+    FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+        mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
+
+    std::cout << "Projection Success: " << state.success << "\n";
+    std::cout << "Iterations: " << state.iterations << "\n";
+    std::cout << "Relative error: " << state.relativeError << "\n";
+    std::cout << "Absolute error: " << state.absoluteError << "\n";
+
+    // Note: need to dilate in order to do one-sided difference
+    // because we use a staggered grid velocity field.
+    FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+    // tools::dilateActiveValues(*fluidPressure, /*iterations=*/1, tools::NN_FACE, tools::IGNORE_TILES);
+
+    fluidPressureGrid->setTransform(mXform);
+    mPressure = fluidPressureGrid->copy();
+    mPressure->setName("pressure");
+
+    auto pressureAcc = fluidPressureGrid->getConstAccessor();
+    auto flagsAcc = mFlags->getConstAccessor();
+
+
+    // Note: I'm modifying vCurr
+    for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+        auto ijk = iter.getCoord();
+        auto im1jk = ijk.offsetBy(-1, 0, 0);
+        auto ijm1k = ijk.offsetBy(0, -1, 0);
+        auto ijkm1 = ijk.offsetBy(0, 0, -1);
+
+        // Only updates velocity if it is a face of fluid cell
+
+        if (flagsAcc.getValue(ijk) == 1 ||
+            flagsAcc.getValue(im1jk) == 1 || 
+            flagsAcc.getValue(ijm1k) == 1 || 
+            flagsAcc.getValue(ijkm1) == 1) {
+            Vec3s gradijk;
+            gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+            gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+            gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+            auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+            vCurrAcc.setValue(ijk, val);
+        }
+    }
+
+    applyDirichletVelocity(*mVCurr, -2);
+    mDivAfter = tools::divergence(*mVCurr);
+    mDivAfter->setName("div_after");
+    (mDivAfter->tree()).topologyIntersection(mInteriorPressure->tree());
+    float divAfter = 0.f;
+    auto divAfterAcc = mDivAfter->getAccessor();
+    for (auto iter = mDivAfter->beginValueOn(); iter; ++iter) {
+        math::Coord ijk = iter.getCoord();
+        auto val = divAfterAcc.getValue(ijk);
+        if (std::abs(val) > std::abs(divAfter)) {
+            divAfter = val;
+        }
+    }
+    std::cout << "\t== divergence after pp = " << divAfter << std::endl;
+
+    // if (!state.success) {
+    //     std::ostringstream ostr;
+    //     ostr << "debug_velocity_fail.vdb";
+    //     std::cerr << "\tWriting " << ostr.str() << std::endl;
+    //     openvdb::io::File file(ostr.str());
+    //     openvdb::GridPtrVec grids;
+    //     grids.push_back(mVCurr);
+    //     grids.push_back(mPressure);
+    //     file.write(grids);
+    //     exit(0);
+    // }
+    exit(0);
+ }
+
+ void
+ SmokeSolver::pressureProjection(bool print)
+ {
+    std::cout << "pressure projection 4" << std::endl;
+    using TreeType = FloatTree;
+    using ValueType = TreeType::ValueType;
+    using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
 
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
@@ -666,7 +790,7 @@ SmokeSolver::substep(float const dt, int const frame) {
     updateEmitter();
     addGravity(dt);
     applyDirichletVelocity(*mVCurr, -1);
-    pressureProjection(false);
+    pressureProjectionDebug(false);
     advectVelocity(dt, frame);
     advectDensity(dt);
     swapGrids();
