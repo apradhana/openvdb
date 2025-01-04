@@ -14,7 +14,7 @@ include(GNUInstallDirs)
 
 ###### OpenVDB Binary Component Options
 
-option(OPENVDB_BUILD_VDB_EXAMPLE_FLUIDS "Build vdb_example_fluids" OFF)
+option(OPENVDB_BUILD_VDB_EXAMPLE_FLUIDS "Build vdb_example_fluids" ON)
 
 #########################################################################
 
