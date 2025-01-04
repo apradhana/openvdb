@@ -68,7 +68,27 @@ apply dirichlet velocity begins
 
 ## Steps
 [X] Pass regression test
+[X] Add computeDivergence and computeLInfinity APIs
 [ ] Add v(x, y, z) = (x^2, y^2, z^2)
+
+```shell
+Writing flags.vdb
+create dirichlet velocity 4
+Write VDBs Debug
+frame = 0 substep = 10
+update emitter
+done with update emitter
+apply dirichlet velocity begins
+pressure projection debug
+Divergence before = 30.0833
+== divergence before pp = 30.0833
+Projection Success: 0
+Iterations: 82
+Relative error: 0.0297418
+Absolute error: 0.894733
+apply dirichlet velocity begins
+== divergence after pp = -0.894734
+```
 
 # Branch
 ```
