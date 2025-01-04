@@ -90,6 +90,37 @@ apply dirichlet velocity begins
 == divergence after pp = -0.894734
 ```
 
+```shell
+Writing flags.vdb
+create dirichlet velocity 4
+Write VDBs Debug
+frame = 0 substep = 10
+update emitter
+done with update emitter
+apply dirichlet velocity begins
+pressure projection debug
+apply dirichlet velocity begins
+Divergence before = -74.6
+Projection Success: 0
+Iterations: 49
+Relative error: 1.41231
+Absolute error: 105.358
+apply dirichlet velocity begins
+Divergence after = 105.358
+```
+
+With FLIP:
+```shell
+==frame = 2==
+Divergence before = -1.44118
+Projection success: 1
+Projection iterations: 162
+Projection relative error: 7.63079e-06
+Projection absolute error: 1.09973e-05
+Pressure->activeVoxelCount() =  45097
+Divergence after = 1.09427e-05
+```
+
 # Branch
 ```
 https://github.com/apradhana/openvdb/tree/test
