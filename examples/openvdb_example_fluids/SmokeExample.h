@@ -317,12 +317,6 @@ SmokeSolver::createInteriorPressure()
             iter.setValueOff();
         }
     }
-
-    // std::cout << "\ninterior pressure" << std::endl;
-    // auto ipAcc = mInteriorPressure->getAccessor();
-    // for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
-    //     std::cout << "int pres ijk = " << iter.getCoord() << std::endl;
-    // }
 }
 
  void
@@ -476,13 +470,6 @@ SmokeSolver::createInteriorPressure()
 
     auto pressureAcc = fluidPressureGrid->getConstAccessor();
     auto flagsAcc = mFlags->getConstAccessor();
-
-
-    // for (auto iter = mPressure->beginValueOn(); iter; ++iter) {
-    //     auto ijk = iter.getCoord();
-    //     std::cout << "p" << ijk << " = " << pressureAcc.getValue(ijk) << std::endl;
-    // }
-
 
 
     // Note: I'm modifying vCurr
