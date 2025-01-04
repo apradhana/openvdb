@@ -446,6 +446,12 @@ SmokeSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vec
     ValueType const zero = zeroVal<ValueType>();
     double const epsilon = math::Delta<ValueType>::value();
 
+    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+    state.iterations = 100000;
+    state.relativeError = state.absoluteError = epsilon;
+    SmokeSolver::BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
+    util::NullInterrupter interrupter;
+
     // set the boundary
     auto vCurrAcc = mVCurr->getAccessor();
     auto xform = mVCurr->transform();
@@ -462,11 +468,6 @@ SmokeSolver::computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vec
 
     float divBefore = computeDivergence(mDivBefore, mVCurr, "before");
 
-    math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-    state.iterations = 100000;
-    state.relativeError = state.absoluteError = epsilon;
-    SmokeSolver::BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
-    util::NullInterrupter interrupter;
     FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
         mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
 
