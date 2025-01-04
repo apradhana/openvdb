@@ -18,7 +18,8 @@ main(int argc, char *argv[])
     example::FlipSolver flipSim(0.1f /* voxel size */);
     flipSim.render();
 #endif
-
+#if 1
     example::SmokeSolver smokeSim(0.1f /* voxel size */);
     smokeSim.render();
+#endif
 }
