@@ -1,6 +1,8 @@
 // 0 Neumann
 // 1 interior
-// 4 dirichlet
+// 4 dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel. 
+
+// Neumann pressure means Dirichlet velocity.
 # pragma once
 
 #include <algorithm>

@@ -30,13 +30,35 @@ What's the problem you are trying to solve?
 - You are given a velocity field and you want to make it divergence free subject to a certain boundary condition.
 - A little bit of complication comes from the fact that the boundary condition is formulated in terms of pressure interior cells, while the velocity are the faces of these.
 
-What is a Neumann pressure cell?
-
-What is a Dirichlet pressure cell?
-
+What is a Neumann pressure cell?  What is a Dirichlet pressure cell?  
+// 0 Neumann
+// 1 interior
+// 4 dirichlet pressure. In this setup it's on the right. It means that it's not a collider on the right.
+// Neumann pressure means Dirichlet velocity.
 If the B.C. is all Neumann, we will have null-space.
 
-Perhaps the most crucial part of the implementation is how a user defines a "Boundary Operator" functor that gets passed into the class. The user defined boundary operator is called for each dof in the mask where its neighbor lies outside of the mask. This boundary operator is what defines whether a dof is a Dirichlet or a Neumann pressure, and depending on the choice, the user needs to tell the solver how to modify the diagonal entry of the Laplacian matrix and the right hand side corresponding to that dof. 
+The most crucial part of the implementation is how a user defines a "Boundary Operator" functor that gets passed into the class. The user defined boundary operator is called for each dof in the mask where its neighbor lies outside of the mask. This boundary operator is what defines whether a dof is a Dirichlet or a Neumann pressure, and depending on the choice, the user needs to tell the solver how to modify the diagonal entry of the Laplacian matrix and the right hand side corresponding to that dof. 
 
-You can have a flag grid. This is to be fed into the BoundaryOperator, which is then fed into tools::poisson::solveWithBoundaryConditionsAndPreconditioner.
+You can have a flag grid. This is to be fed into the BoundaryOperator, which is then fed into tools::poisson::solveWithBoundaryConditionsAndPreconditioner. More specifically, the BoundaryOperator also needs dirichletVelocity grid to enforce the boundary condition correctly.
 
+
+        Writing flags.vdb
+create dirichlet velocity 4
+Write VDBs Debug
+frame = 0 substep = 10
+update emitter
+done with update emitter
+apply dirichlet velocity begins
+pressure projection 4
+        == divergence before pp = -0.0833333
+Projection Success: 0
+Iterations: 82
+Relative error: 0.0297418
+Absolute error: 0.894733
+apply dirichlet velocity begins
+        == divergence after pp = -0.894734
+
+# Branch
+```
+https://github.com/apradhana/openvdb/tree/test
+```
