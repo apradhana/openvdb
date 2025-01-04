@@ -110,6 +110,9 @@ private:
                 // central-differences in a collocated grid, instead of the staggered one.
                 source += delta / voxelSize;
             } else if (isDirichletPressure) {
+                diagonal -= 1.0;
+                source -= dirichletBC;
+#if 0 // supposedly the same as the two lines above--checked on Friday.
                 // Dirichlet pressure
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
                     diagonal -= 1.0;
@@ -135,6 +138,7 @@ private:
                     diagonal -= 1.0;
                     source -= dirichletBC;
                 }
+#endif
             }
         }
 
@@ -522,6 +526,7 @@ SmokeSolver::createInteriorPressure()
     //     file.write(grids);
     //     exit(0);
     // }
+    exit(0);
  }
 
  void
