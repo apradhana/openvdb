@@ -485,7 +485,55 @@ TEST_F(TestPoissonSolver, testSolveWithSegmentedDomain)
 #endif
 }
 
+using namespace openvdb;
+class SmokeSolver {
+public:
+    SmokeSolver(float const voxelSize) { init(voxelSize); }
+
+    void init(float const vs)
+    {
+        using BBox = math::BBox<Vec3s>;
+        auto mXform = math::Transform::createLinearTransform(mVoxelSize);
+
+        int xDim = 4; int yDim = 4; int zDim = 4;
+        mMinBBox = Vec3s(0.f, 0.f, 0.f);
+        mMaxBBox = Vec3s(xDim * mVoxelSize, yDim * mVoxelSize, zDim * mVoxelSize);
+        mMinIdx = mXform->worldToIndexNodeCentered(mMinBBox);
+        mMaxIdx = mXform->worldToIndexNodeCentered(mMaxBBox);
+        mMaxStaggered = mMaxIdx + math::Coord(1);
+    }
+
+    float mVoxelSize = 0.1f;
+    Vec3s mGravity = Vec3s(0.f, -2.f, 0.f);
+    Vec3s mPushVelocity = Vec3s(0.2f, 0.f, 0.f);
+    math::Transform::Ptr mXform;
+
+    Vec3s mMaxBBox, mMinBBox;
+    Coord mMinIdx, mMaxIdx;
+    Coord mMaxStaggered;
+
+    Int32Grid::Ptr mFlags;
+    FloatGrid::Ptr mDensityCurr;
+    FloatGrid::Ptr mDensityNext;
+    Vec3SGrid::Ptr mVCurr;
+    Vec3SGrid::Ptr mVNext;
+
+    BoolGrid::Ptr mInteriorPressure;
+
+    FloatGrid::Ptr mSphere;
+    FloatGrid::Ptr mEmitter;
+    Vec3SGrid::Ptr mDirichletVelocity;
+
+    FloatGrid::Ptr mDivBefore;
+    FloatGrid::Ptr mDivAfter;
+    FloatGrid::Ptr mPressure;
+};
+
+
 TEST_F(TestPoissonSolver, testRemoveDivergence)
 {
+    using namespace openvdb;
     std::cout << "Add test remove divergence" << std::endl;
+    SmokeSolver smoke(0.1f);
+    std::cout << "minBBox = " << smoke.mMinBBox << std::endl;
 }
