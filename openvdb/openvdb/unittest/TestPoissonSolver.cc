@@ -492,15 +492,50 @@ public:
 
     void init(float const vs)
     {
-        using BBox = math::BBox<Vec3s>;
-        auto mXform = math::Transform::createLinearTransform(mVoxelSize);
+        int xDim = 3; int yDim = 3; int zDim = 3;
 
-        int xDim = 4; int yDim = 4; int zDim = 4;
+        using BBox = math::BBox<Vec3s>;
+        mXform = math::Transform::createLinearTransform(mVoxelSize);
+
         mMinBBox = Vec3s(0.f, 0.f, 0.f);
         mMaxBBox = Vec3s(xDim * mVoxelSize, yDim * mVoxelSize, zDim * mVoxelSize);
         mMinIdx = mXform->worldToIndexNodeCentered(mMinBBox);
         mMaxIdx = mXform->worldToIndexNodeCentered(mMaxBBox);
         mMaxStaggered = mMaxIdx + math::Coord(1);
+
+        createFlags();
+    }
+
+
+    void createFlags()
+    {
+        mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
+        mFlags->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ 1, /* active = */ true);
+        mFlags->setTransform(mXform);
+        mFlags->setName("flags");
+        auto flagsAcc = mFlags->getAccessor();
+        for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+
+            if (ijk[0] == mMaxIdx[0]) {
+                flagsAcc.setValue(ijk, 4); // Dirichlet
+            }
+            if (ijk[0] == mMinIdx[0] /* left face */ ||
+                ijk[1] == mMinIdx[1] /* bottom face */ ||
+                ijk[1] == mMaxIdx[1] /* top face */ ||
+                ijk[2] == mMinIdx[2] /* back face */ ||
+                ijk[2] == mMaxIdx[2] /* front face */) {
+                flagsAcc.setValue(ijk, 0); // Neumann
+            }
+        }
+        std::ostringstream ostr;
+        ostr << "flags.vdb";
+        std::cerr << "\tWriting " << ostr.str() << std::endl;
+        openvdb::io::File file(ostr.str());
+        openvdb::GridPtrVec grids;
+        grids.push_back(mFlags);
+        file.write(grids);
+        file.close();
     }
 
     float mVoxelSize = 0.1f;
