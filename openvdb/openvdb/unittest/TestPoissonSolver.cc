@@ -12,6 +12,7 @@
 #include <openvdb/tools/LevelSetUtil.h> // for tools::sdfToFogVolume()
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox()
 #include <openvdb/tools/PoissonSolver.h>
+#include <openvdb/tools/GridOperators.h> // for divergence and gradient
 
 #include <gtest/gtest.h>
 
@@ -504,11 +505,273 @@ public:
         mMaxStaggered = mMaxIdx + math::Coord(1);
 
         createFlags();
+        initVCurr(/*print = */false);
+        initInteriorPressure();
     }
 
+    // In the Flip Example class, this is VelocityBCCorrectionOp
+    void applyDirichletVelocity() {
+        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
+        // 1 interior pressure dofs.
+        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
+        auto flagsAcc = mFlags->getAccessor();
+        auto vAcc = mVCurr->getAccessor();
+        for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+            math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+            math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+            math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+
+            int flag = flagsAcc.getValue(ijk);
+            int flagim1jk = flagsAcc.getValue(im1jk);
+            int flagijm1k = flagsAcc.getValue(ijm1k);
+            int flagijkm1 = flagsAcc.getValue(ijkm1);
+            // I'm an interior pressure and I need to check if any of my neighbor is Neumann
+            if (flag == 1)
+            {
+                if (flagim1jk == 0)
+                {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(0, cv[1], cv[2]);
+                    vAcc.setValue(ijk, newVel);
+                }
+
+                if (flagijm1k == 0) {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(cv[0], 0, cv[2]);
+                    vAcc.setValue(ijk, newVel);
+
+                }
+
+                if (flagijkm1 == 0) {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(cv[0], cv[1], 0);
+                    vAcc.setValue(ijk, newVel);
+                }
+
+            } else if (flag == 0) { // I'm a Neumann pressure and I need if any of my Neighbor is interior
+                if (flagim1jk == 1)
+                {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(0, cv[1], cv[2]);
+                    vAcc.setValue(ijk, newVel);
+                }
+
+                if (flagijm1k == 1) {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(cv[0], 0, cv[2]);
+                    vAcc.setValue(ijk, newVel);
+                }
+
+                if (flagijkm1 == 1) {
+                    auto cv = vAcc.getValue(ijk);
+                    Vec3f newVel(cv[0], cv[1], 0);
+                    vAcc.setValue(ijk, newVel);
+                }
+            }
+        }
+    } 
+
+    struct BoundaryOp {
+        BoundaryOp(Int32Grid::ConstPtr flags,
+                    Vec3SGrid::ConstPtr dirichletVelocity,
+                    float const voxelSize) :
+                    flags(flags),
+                    dirichletVelocity(dirichletVelocity),
+                    voxelSize(voxelSize) {}
+
+        void operator()(const openvdb::Coord& ijk,
+                        const openvdb::Coord& neighbor,
+                        double& source,
+                        double& diagonal) const
+        {
+            float const dirichletBC = 0.f;
+            int flag = flags->tree().getValue(neighbor);
+            bool isNeumannPressure = (flag == 0);
+            bool isDirichletPressure = (flag == 4);
+            auto vNgbr = Vec3s::zero(); //dirichletVelocity->tree().getValue(neighbor);
+
+            // TODO: Double check this:
+            if (isNeumannPressure) {
+                double delta = 0.0;
+                // Neumann pressure from bbox
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    delta += vNgbr[0];
+                }
+                if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    delta -= vNgbr[0];
+                }
+                if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    delta += vNgbr[1];
+                }
+                if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    delta -= vNgbr[1];
+                }
+                if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    delta += vNgbr[2];
+                }
+                if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    delta -= vNgbr[2];
+                }
+                // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
+                // this by 0.5, because the gradient that's used is using
+                // central-differences in a collocated grid, instead of the staggered one.
+                source += delta / voxelSize;
+            } else if (isDirichletPressure) {
+                diagonal -= 1.0;
+                source -= dirichletBC;
+#if 0 // supposedly the same as the two lines above--checked on Friday.
+                // Dirichlet pressure
+                if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+                else if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
+                    diagonal -= 1.0;
+                    source -= dirichletBC;
+                }
+#endif
+            }
+        }
+
+        Int32Grid::ConstPtr flags;
+        Vec3SGrid::ConstPtr dirichletVelocity;
+        float voxelSize;
+    };
+
+    void pressureProjection() {
+        using TreeType = FloatTree;
+        using ValueType = TreeType::ValueType;
+        using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
+
+        std::cout << "pressure projection begins" << std::endl;
+        util::NullInterrupter interrupter;
+        BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
+        math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
+        double const epsilon = math::Delta<ValueType>::value();
+        state.iterations = 100000;
+        state.relativeError = state.absoluteError = epsilon;
+        FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+            mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
+        std::cout << "Projection Success: " << state.success << "\n";
+        std::cout << "Iterations: " << state.iterations << "\n";
+        std::cout << "Relative error: " << state.relativeError << "\n";
+        std::cout << "Absolute error: " << state.absoluteError << "\n";
+        std::cout << "pressure projection ends" << std::endl;
+
+        FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+        fluidPressureGrid->setTransform(mXform);
+        mPressure = fluidPressureGrid->copy();
+        mPressure->setName("pressure");
+
+        auto vCurrAcc = mVCurr->getAccessor();
+        auto pressureAcc = fluidPressureGrid->getConstAccessor();
+        auto flagsAcc = mFlags->getConstAccessor();
+        for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+                math::Coord ijk = iter.getCoord();
+                math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+                math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+                math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+
+            // Only updates velocity if it is a face of fluid cell
+
+            if (flagsAcc.getValue(ijk) == 1 ||
+                flagsAcc.getValue(im1jk) == 1 ||
+                flagsAcc.getValue(ijm1k) == 1 ||
+                flagsAcc.getValue(ijkm1) == 1) {
+                Vec3s gradijk;
+                gradijk[0] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(-1, 0, 0));
+                gradijk[1] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, -1, 0));
+                gradijk[2] = pressureAcc.getValue(ijk) - pressureAcc.getValue(ijk.offsetBy(0, 0, -1));
+                auto val = vCurrAcc.getValue(ijk) - gradijk * mVoxelSize;
+                vCurrAcc.setValue(ijk, val);
+            }
+        }
+        applyDirichletVelocity();
+    }
+
+    void render()
+    {
+        // print mVCurr
+        printRelevantVelocity("velocity init");
+
+        // compute div before
+        mDivBefore = FloatGrid::create(0.f);
+        float divBefore = computeDivergence(mDivBefore, mVCurr, "before");
+        printGrid(*mDivBefore);
+
+        pressureProjection();
+
+        // compute div after
+        mDivAfter = FloatGrid::create(0.f);
+        float divAfter = computeDivergence(mDivAfter, mVCurr, "after");
+        printGrid(*mDivAfter);
+
+        writeVDBsDebug(1);
+    }
+
+    template<class GridType>
+    void printGrid(const GridType& grid, std::string nameFromUser = "") {
+        using ValueType = typename GridType::ValueType;
+        auto name = nameFromUser != "" ? nameFromUser : grid.getName();
+        std::cout << "printGrid::Printing grid " << name << std::endl;
+        auto acc = grid.getAccessor();
+        for (auto iter = grid.beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+            std::cout << "val" << ijk << " = " << acc.getValue(ijk) << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+    void printRelevantVelocity(std::string nameFromUser = "") {
+        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
+        // 1 interior pressure dofs.
+        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
+        std::cout << "printRelevantVelocity::printing " << nameFromUser << std::endl;
+        auto flagsAcc = mFlags->getAccessor();
+        auto vAcc = mVCurr->getAccessor();
+        for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+            math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
+            math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
+            math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
+
+            int flag = flagsAcc.getValue(ijk);
+            int flagim1jk = flagsAcc.getValue(im1jk);
+            int flagijm1k = flagsAcc.getValue(ijm1k);
+            int flagijkm1 = flagsAcc.getValue(ijkm1);
+
+            if (flag == 1) {
+                std::cout << "vel" << ijk << " = " << vAcc.getValue(ijk) << std::endl;
+            } else {
+                if (flagim1jk == 1 || flagijm1k == 1 || flagijkm1 == 1) {
+                    std::cout << "vel" << ijk << " = " << vAcc.getValue(ijk) << std::endl;
+                }
+            }
+        }
+    }
 
     void createFlags()
     {
+        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
+        // 1 interior pressure dofs.
+        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
         mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
         mFlags->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ 1, /* active = */ true);
         mFlags->setTransform(mXform);
@@ -534,6 +797,104 @@ public:
         openvdb::io::File file(ostr.str());
         openvdb::GridPtrVec grids;
         grids.push_back(mFlags);
+        file.write(grids);
+        file.close();
+    }
+
+    float computeLInfinity(const FloatGrid& grid) {
+        float ret = 0.f;
+        auto acc = grid.getConstAccessor();
+        for (auto iter = grid.beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+            auto val = acc.getValue(ijk);
+            if (std::abs(val) > std::abs(ret)) {
+                ret = val;
+            }
+        }
+        return ret;
+    }
+
+    float computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix) {
+        std::string name = "div_";
+        name += suffix.c_str();
+        divGrid = tools::divergence(*vecGrid);
+        divGrid->tree().topologyIntersection(mInteriorPressure->tree());
+        divGrid->setName(name.c_str());
+        float div = computeLInfinity(*divGrid);
+        std::cout << "Divergence " << suffix.c_str() << " = " << div << std::endl;
+        return div;
+    }
+
+    void initVCurr(bool print)
+    {
+       mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
+       mVCurr->setGridClass(GRID_STAGGERED);
+       mVCurr->denseFill(CoordBBox(mMinIdx, mMaxStaggered), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
+       mVCurr->setTransform(mXform);
+       mVCurr->setName("vel_curr");
+
+       auto flagsAcc = mFlags->getConstAccessor();
+       auto velAcc = mVCurr->getAccessor();
+       const float hv = .5f * mXform->voxelSize()[0]; // half of voxel size
+       for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+           auto ijk = iter.getCoord();
+           Vec3f center = mXform->indexToWorld(ijk);
+
+           float x = center[0] - hv;
+           float y = center[1] - hv;
+           float z = center[2] - hv;
+           Vec3s val(x * x, y * y, z *z);
+           velAcc.setValue(ijk, val);
+
+           // Q: Do I really need this?
+           // auto im1jk = ijk.offsetBy(-1, 0, 0);
+           // auto ijm1k = ijk.offsetBy(0, -1, 0);
+           // auto ijkm1 = ijk.offsetBy(0, 0, -1);
+           // if (flagsAcc.getValue(ijk) == 0) {
+           //     if (flagsAcc.getValue(im1jk) == 0 && flagsAcc.getValue(ijm1k) == 0 && flagsAcc.getValue(ijkm1) == 0) {
+           //         velAcc.setValueOff(ijk);
+           //     }
+           // }
+       }
+
+       applyDirichletVelocity();
+    }
+
+    void initInteriorPressure()
+    {
+        mInteriorPressure = BoolGrid::create(false);
+        mInteriorPressure->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ true, /* active = */ true);
+        mInteriorPressure->setTransform(mXform);
+        mInteriorPressure->setName("interior_pressure");
+
+        auto flagsAcc = mFlags->getConstAccessor();
+        for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
+            math::Coord ijk = iter.getCoord();
+            if (flagsAcc.getValue(ijk) != 1) {
+                iter.setValueOff();
+            }
+        }
+    }
+
+    void writeVDBsDebug(int const frame) {
+        std::cout << "Write VDBs Debug" << std::endl;
+        std::ostringstream ss;
+        ss << "INIT_DEBUG" << std::setw(3) << std::setfill('0') << frame << ".vdb";
+        std::string fileName(ss.str());
+        io::File file(fileName.c_str());
+
+        openvdb::GridPtrVec grids;
+        grids.push_back(mEmitter);
+        grids.push_back(mDirichletVelocity);
+        grids.push_back(mFlags);
+        grids.push_back(mInteriorPressure);
+        grids.push_back(mDirichletVelocity);
+        grids.push_back(mVCurr);
+        grids.push_back(mDensityCurr);
+        grids.push_back(mDivBefore);
+        grids.push_back(mDivAfter);
+        grids.push_back(mPressure);
+
         file.write(grids);
         file.close();
     }
@@ -568,7 +929,6 @@ public:
 TEST_F(TestPoissonSolver, testRemoveDivergence)
 {
     using namespace openvdb;
-    std::cout << "Add test remove divergence" << std::endl;
     SmokeSolver smoke(0.1f);
-    std::cout << "minBBox = " << smoke.mMinBBox << std::endl;
+    smoke.render();
 }
