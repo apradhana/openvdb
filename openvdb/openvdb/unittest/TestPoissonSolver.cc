@@ -721,6 +721,17 @@ public:
         writeVDBsDebug(1);
     }
 
+
+    template<class GridType>
+    typename GridType::Ptr
+    initGridBgAndName(typename GridType::ValueType background, std::string name)
+    {
+        typename GridType::Ptr grid = GridType::create(background);
+        grid->setTransform(mXform);
+        grid->setName(name);
+        return grid;
+    }
+
     template<class GridType>
     void printGrid(const GridType& grid, std::string nameFromUser = "") {
         using ValueType = typename GridType::ValueType;
@@ -761,10 +772,9 @@ public:
 
     void initFlags()
     {
-        mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
+        mFlags = initGridBgAndName<Int32Grid>(0, "flags");
         mFlags->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ 1, /* active = */ true);
-        mFlags->setTransform(mXform);
-        mFlags->setName("flags");
+
         auto flagsAcc = mFlags->getAccessor();
         for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
             math::Coord ijk = iter.getCoord();
@@ -783,8 +793,8 @@ public:
     }
 
     void initDivGrids() {
-        mDivBefore = FloatGrid::create(0.f);
-        mDivAfter = FloatGrid::create(0.f);
+        mDivBefore = initGridBgAndName<FloatGrid>(0.f, "div_before");
+        mDivAfter = initGridBgAndName<FloatGrid>(0.f, "div_after");
     }
 
     float computeLInfinity(const FloatGrid& grid) {
@@ -801,11 +811,8 @@ public:
     }
 
     float computeDivergence(FloatGrid::Ptr& divGrid, const Vec3SGrid::Ptr vecGrid, const std::string& suffix) {
-        std::string name = "div_";
-        name += suffix.c_str();
         divGrid = tools::divergence(*vecGrid);
         divGrid->tree().topologyIntersection(mInteriorPressure->tree());
-        divGrid->setName(name.c_str());
         float div = computeLInfinity(*divGrid);
         std::cout << "Divergence " << suffix.c_str() << " = " << div << std::endl;
         return div;
@@ -813,35 +820,31 @@ public:
 
     void initVCurr()
     {
-       mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
-       mVCurr->setGridClass(GRID_STAGGERED);
-       mVCurr->denseFill(CoordBBox(mMinIdx, mMaxStaggered), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
-       mVCurr->setTransform(mXform);
-       mVCurr->setName("vel_curr");
+        mVCurr = initGridBgAndName<Vec3SGrid>(Vec3s::zero(), "vel_curr");
+        mVCurr->setGridClass(GRID_STAGGERED);
+        mVCurr->denseFill(CoordBBox(mMinIdx, mMaxStaggered), /* value = */ Vec3s(0.f, 0.f, 0.f), /* active = */ true);
 
-       auto flagsAcc = mFlags->getConstAccessor();
-       auto velAcc = mVCurr->getAccessor();
-       const float hv = .5f * mXform->voxelSize()[0]; // half of voxel size
-       for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
-           auto ijk = iter.getCoord();
-           Vec3f center = mXform->indexToWorld(ijk);
+        auto flagsAcc = mFlags->getConstAccessor();
+        auto velAcc = mVCurr->getAccessor();
+        const float hv = .5f * mXform->voxelSize()[0]; // half of voxel size
+        for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            Vec3f center = mXform->indexToWorld(ijk);
 
-           float x = center[0] - hv;
-           float y = center[1] - hv;
-           float z = center[2] - hv;
-           Vec3s val(x * x, y * y, z *z);
-           velAcc.setValue(ijk, val);
-       }
+            float x = center[0] - hv;
+            float y = center[1] - hv;
+            float z = center[2] - hv;
+            Vec3s val(x * x, y * y, z *z);
+            velAcc.setValue(ijk, val);
+        }
 
-       applyDirichletVelocity(); // VERY IMPORTANT
+        applyDirichletVelocity(); // VERY IMPORTANT
     }
 
     void initInteriorPressure()
     {
-        mInteriorPressure = BoolGrid::create(false);
+        mInteriorPressure = initGridBgAndName<BoolGrid>(false, "interior_pressure");
         mInteriorPressure->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ true, /* active = */ true);
-        mInteriorPressure->setTransform(mXform);
-        mInteriorPressure->setName("interior_pressure");
 
         auto flagsAcc = mFlags->getConstAccessor();
         for (auto iter = mInteriorPressure->beginValueOn(); iter; ++iter) {
@@ -904,11 +907,11 @@ TEST_F(TestPoissonSolver, testRemoveDivergence)
 
     EXPECT_TRUE(smoke.mPressure);
     EXPECT_EQ(smoke.mState.success, 1);
-
-    std::cout << "Projection Success: " << smoke.mState.success << "\n";
-    std::cout << "Iterations: " << smoke.mState.iterations << "\n";
-    std::cout << "Relative error: " << smoke.mState.relativeError << "\n";
-    std::cout << "Absolute error: " << smoke.mState.absoluteError << "\n";
+    EXPECT_EQ(smoke.mState.iterations, 28);
+    EXPECT_TRUE(smoke.mState.relativeError < 1.e-5f);
+    EXPECT_TRUE(smoke.mState.absoluteError < 1.e-3f);
 
     float divAfter = smoke.computeDivergence(smoke.mDivAfter, smoke.mVCurr, "after");
+    EXPECT_TRUE(divAfter < 1.e-3f);
+    smoke.writeVDBsDebug(1 /* frame */);
 }
