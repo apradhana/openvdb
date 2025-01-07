@@ -487,33 +487,33 @@ TEST_F(TestPoissonSolver, testSolveWithSegmentedDomain)
 }
 
 using namespace openvdb;
+
+// 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
+// 1 interior pressure dofs.
+// 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
 class SmokeSolver {
 public:
     SmokeSolver(float const voxelSize) { init(voxelSize); }
 
     void init(float const vs)
     {
-        int xDim = 3; int yDim = 3; int zDim = 3;
-
-        using BBox = math::BBox<Vec3s>;
         mXform = math::Transform::createLinearTransform(mVoxelSize);
 
+        int xDim = 3; int yDim = 15; int zDim = 17;
         mMinBBox = Vec3s(0.f, 0.f, 0.f);
         mMaxBBox = Vec3s(xDim * mVoxelSize, yDim * mVoxelSize, zDim * mVoxelSize);
         mMinIdx = mXform->worldToIndexNodeCentered(mMinBBox);
         mMaxIdx = mXform->worldToIndexNodeCentered(mMaxBBox);
         mMaxStaggered = mMaxIdx + math::Coord(1);
 
-        createFlags();
-        initVCurr(/*print = */false);
+        initFlags();
         initInteriorPressure();
+        initVCurr();
+        initDivGrids();
     }
 
     // In the Flip Example class, this is VelocityBCCorrectionOp
     void applyDirichletVelocity() {
-        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
-        // 1 interior pressure dofs.
-        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
         auto flagsAcc = mFlags->getAccessor();
         auto vAcc = mVCurr->getAccessor();
         for (auto iter = mFlags->beginValueOn(); iter; ++iter) {
@@ -655,33 +655,9 @@ public:
         float voxelSize;
     };
 
-    void pressureProjection() {
-        using TreeType = FloatTree;
-        using ValueType = TreeType::ValueType;
-        using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
-
-        std::cout << "pressure projection begins" << std::endl;
-        util::NullInterrupter interrupter;
-        BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
-        math::pcg::State state = math::pcg::terminationDefaults<ValueType>();
-        double const epsilon = math::Delta<ValueType>::value();
-        state.iterations = 100000;
-        state.relativeError = state.absoluteError = epsilon;
-        FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
-            mDivBefore->tree(), mInteriorPressure->tree(), bop, state, interrupter, /*staggered=*/true);
-        std::cout << "Projection Success: " << state.success << "\n";
-        std::cout << "Iterations: " << state.iterations << "\n";
-        std::cout << "Relative error: " << state.relativeError << "\n";
-        std::cout << "Absolute error: " << state.absoluteError << "\n";
-        std::cout << "pressure projection ends" << std::endl;
-
-        FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
-        fluidPressureGrid->setTransform(mXform);
-        mPressure = fluidPressureGrid->copy();
-        mPressure->setName("pressure");
-
+    void subtractPressureGradFromVel() {
         auto vCurrAcc = mVCurr->getAccessor();
-        auto pressureAcc = fluidPressureGrid->getConstAccessor();
+        auto pressureAcc = mPressure->getConstAccessor();
         auto flagsAcc = mFlags->getConstAccessor();
         for (auto iter = mVCurr->beginValueOn(); iter; ++iter) {
                 math::Coord ijk = iter.getCoord();
@@ -690,7 +666,6 @@ public:
                 math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
 
             // Only updates velocity if it is a face of fluid cell
-
             if (flagsAcc.getValue(ijk) == 1 ||
                 flagsAcc.getValue(im1jk) == 1 ||
                 flagsAcc.getValue(ijm1k) == 1 ||
@@ -703,25 +678,45 @@ public:
                 vCurrAcc.setValue(ijk, val);
             }
         }
-        applyDirichletVelocity();
+
+        applyDirichletVelocity(); // VERY IMPORTANT
+    }
+
+    void pressureProjection() {
+        using TreeType = FloatTree;
+        using ValueType = TreeType::ValueType;
+        using PCT = openvdb::math::pcg::JacobiPreconditioner<openvdb::tools::poisson::LaplacianMatrix>;
+
+        BoundaryOp bop(mFlags, mVCurr, mVoxelSize);
+        util::NullInterrupter interrupter;
+
+        const double epsilon = math::Delta<ValueType>::value();
+
+        mState = math::pcg::terminationDefaults<ValueType>();
+        mState.iterations = 100;
+        mState.relativeError = mState.absoluteError = epsilon;
+        FloatTree::Ptr fluidPressure = tools::poisson::solveWithBoundaryConditionsAndPreconditioner<PCT>(
+            mDivBefore->tree(), mInteriorPressure->tree(), bop, mState, interrupter, /*staggered=*/true);
+
+        FloatGrid::Ptr fluidPressureGrid = FloatGrid::create(fluidPressure);
+        fluidPressureGrid->setTransform(mXform);
+        mPressure = fluidPressureGrid->copy();
+        mPressure->setName("pressure");
     }
 
     void render()
     {
-        // print mVCurr
-        printRelevantVelocity("velocity init");
+        if (mVERBOSE) printRelevantVelocity("velocity init");
 
-        // compute div before
-        mDivBefore = FloatGrid::create(0.f);
         float divBefore = computeDivergence(mDivBefore, mVCurr, "before");
-        printGrid(*mDivBefore);
+        if (mVERBOSE) printGrid(*mDivBefore);
 
+        // Make the velocity divergence free by solving Poisson Equation and subtracting the pressure gradient
         pressureProjection();
+        subtractPressureGradFromVel();
 
-        // compute div after
-        mDivAfter = FloatGrid::create(0.f);
         float divAfter = computeDivergence(mDivAfter, mVCurr, "after");
-        printGrid(*mDivAfter);
+        if (mVERBOSE) printGrid(*mDivAfter);
 
         writeVDBsDebug(1);
     }
@@ -740,9 +735,6 @@ public:
     }
 
     void printRelevantVelocity(std::string nameFromUser = "") {
-        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
-        // 1 interior pressure dofs.
-        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
         std::cout << "printRelevantVelocity::printing " << nameFromUser << std::endl;
         auto flagsAcc = mFlags->getAccessor();
         auto vAcc = mVCurr->getAccessor();
@@ -767,11 +759,8 @@ public:
         }
     }
 
-    void createFlags()
+    void initFlags()
     {
-        // 0 Neumann pressure, meaning Dirichlet velocity on its normal face.
-        // 1 interior pressure dofs.
-        // 4 Dirichlet pressure. In this setup it's on the right. It means that it's not a solid collider or an open channel.
         mFlags = Int32Grid::create(/* bg = */ 0); // Neumann pressure
         mFlags->denseFill(CoordBBox(mMinIdx, mMaxIdx), /* value = */ 1, /* active = */ true);
         mFlags->setTransform(mXform);
@@ -791,14 +780,11 @@ public:
                 flagsAcc.setValue(ijk, 0); // Neumann
             }
         }
-        std::ostringstream ostr;
-        ostr << "flags.vdb";
-        std::cerr << "\tWriting " << ostr.str() << std::endl;
-        openvdb::io::File file(ostr.str());
-        openvdb::GridPtrVec grids;
-        grids.push_back(mFlags);
-        file.write(grids);
-        file.close();
+    }
+
+    void initDivGrids() {
+        mDivBefore = FloatGrid::create(0.f);
+        mDivAfter = FloatGrid::create(0.f);
     }
 
     float computeLInfinity(const FloatGrid& grid) {
@@ -825,7 +811,7 @@ public:
         return div;
     }
 
-    void initVCurr(bool print)
+    void initVCurr()
     {
        mVCurr = Vec3SGrid::create(/* bg = */ Vec3s::zero()); // Neumann pressure
        mVCurr->setGridClass(GRID_STAGGERED);
@@ -845,19 +831,9 @@ public:
            float z = center[2] - hv;
            Vec3s val(x * x, y * y, z *z);
            velAcc.setValue(ijk, val);
-
-           // Q: Do I really need this?
-           // auto im1jk = ijk.offsetBy(-1, 0, 0);
-           // auto ijm1k = ijk.offsetBy(0, -1, 0);
-           // auto ijkm1 = ijk.offsetBy(0, 0, -1);
-           // if (flagsAcc.getValue(ijk) == 0) {
-           //     if (flagsAcc.getValue(im1jk) == 0 && flagsAcc.getValue(ijm1k) == 0 && flagsAcc.getValue(ijkm1) == 0) {
-           //         velAcc.setValueOff(ijk);
-           //     }
-           // }
        }
 
-       applyDirichletVelocity();
+       applyDirichletVelocity(); // VERY IMPORTANT
     }
 
     void initInteriorPressure()
@@ -877,20 +853,15 @@ public:
     }
 
     void writeVDBsDebug(int const frame) {
-        std::cout << "Write VDBs Debug" << std::endl;
         std::ostringstream ss;
         ss << "INIT_DEBUG" << std::setw(3) << std::setfill('0') << frame << ".vdb";
         std::string fileName(ss.str());
         io::File file(fileName.c_str());
 
         openvdb::GridPtrVec grids;
-        grids.push_back(mEmitter);
-        grids.push_back(mDirichletVelocity);
         grids.push_back(mFlags);
         grids.push_back(mInteriorPressure);
-        grids.push_back(mDirichletVelocity);
         grids.push_back(mVCurr);
-        grids.push_back(mDensityCurr);
         grids.push_back(mDivBefore);
         grids.push_back(mDivAfter);
         grids.push_back(mPressure);
@@ -899,36 +870,45 @@ public:
         file.close();
     }
 
+    bool mVERBOSE = false;
+
     float mVoxelSize = 0.1f;
-    Vec3s mGravity = Vec3s(0.f, -2.f, 0.f);
-    Vec3s mPushVelocity = Vec3s(0.2f, 0.f, 0.f);
     math::Transform::Ptr mXform;
+
+    math::pcg::State mState;
 
     Vec3s mMaxBBox, mMinBBox;
     Coord mMinIdx, mMaxIdx;
     Coord mMaxStaggered;
 
     Int32Grid::Ptr mFlags;
-    FloatGrid::Ptr mDensityCurr;
-    FloatGrid::Ptr mDensityNext;
-    Vec3SGrid::Ptr mVCurr;
-    Vec3SGrid::Ptr mVNext;
-
     BoolGrid::Ptr mInteriorPressure;
-
-    FloatGrid::Ptr mSphere;
-    FloatGrid::Ptr mEmitter;
-    Vec3SGrid::Ptr mDirichletVelocity;
-
+    Vec3SGrid::Ptr mVCurr;
+    FloatGrid::Ptr mPressure;
     FloatGrid::Ptr mDivBefore;
     FloatGrid::Ptr mDivAfter;
-    FloatGrid::Ptr mPressure;
 };
 
 
 TEST_F(TestPoissonSolver, testRemoveDivergence)
 {
     using namespace openvdb;
+
     SmokeSolver smoke(0.1f);
-    smoke.render();
+
+    float divBefore = smoke.computeDivergence(smoke.mDivBefore, smoke.mVCurr, "before");
+
+    // Make the velocity divergence free by solving Poisson Equation and subtracting the pressure gradient
+    smoke.pressureProjection();
+    smoke.subtractPressureGradFromVel();
+
+    EXPECT_TRUE(smoke.mPressure);
+    EXPECT_EQ(smoke.mState.success, 1);
+
+    std::cout << "Projection Success: " << smoke.mState.success << "\n";
+    std::cout << "Iterations: " << smoke.mState.iterations << "\n";
+    std::cout << "Relative error: " << smoke.mState.relativeError << "\n";
+    std::cout << "Absolute error: " << smoke.mState.absoluteError << "\n";
+
+    float divAfter = smoke.computeDivergence(smoke.mDivAfter, smoke.mVCurr, "after");
 }
