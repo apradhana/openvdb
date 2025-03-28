@@ -1,3 +1,36 @@
+cmake .. -DCMAKE_BUILD_TYPE=Release -DOPENVDB_BUILD_UNITTESTS=ON 
+
+
+cmake -DOPENVDB_USE_DEPRECATED_ABI_10=ON -DOPENVDB_USE_DEPRECATED_ABI_11=ON -DOPENVDB_BUILD_VDB_PRINT=ON -DOPENVDB_BUILD_VDB_LOD=ON -DOPENVDB_BUILD_VDB_TOOL=ON -DOPENVDB_BUILD_VDB_TOOL_UNITTESTS=ON -DOPENVDB_TOOL_USE_NANO=OFF -DMSVC_MP_THREAD_COUNT=8 -DOPENVDB_CXX_STRICT=ON -DOPENVDB_ABI_VERSION_NUMBER=12 -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=Release -DOPENVDB_BUILD_HOUDINI_PLUGIN=OFF -DOPENVDB_BUILD_NANOVDB=OFF -DNANOVDB_BUILD_TOOLS=OFF -DOPENVDB_BUILD_VDB_RENDER=ON -DOPENVDB_BUILD_BINARIES=ON -DNANOVDB_BUILD_EXAMPLES=OFF -DOPENVDB_BUILD_AX_GRAMMAR=OFF -DOPENVDB_BUILD_CORE=ON -DNANOVDB_BUILD_BENCHMARK=OFF -DOPENVDB_BUILD_AX_BINARIES=OFF -DOPENVDB_BUILD_AX_UNITTESTS=OFF -DOPENVDB_BUILD_DOCS=OFF -DOPENVDB_BUILD_UNITTESTS=ON -DOPENVDB_BUILD_AX=OFF -DNANOVDB_BUILD_UNITTESTS=OFF  ..
+
+-  target_link_libraries(vdb_tool_test PRIVATE vdb_tool_common GTest::gmock GTest::gtest GTest::gmock_main GTest::gtest_main)
++  target_link_libraries(vdb_tool_test PRIVATE vdb_tool_common GTest::gtest GTest::gtest_main)
+in openvdb_cmd/vdb_tool/CMakeLists.txt b/openvdb_cmd/vdb_tool/CMakeLists.txt
+
+https://askubuntu.com/questions/26498/how-to-choose-the-default-gcc-and-g-version
+Ask UbuntuAsk Ubuntu
+How to choose the default gcc and g++ version?
+So I have installed gcc-4.4 and gcc-4.3 (same for g++). Now as far as I remember there is a tool in Ubuntu which sets the symlinks for you if you just tell it which version you want. However it doe...
+3:13
+https://stackoverflow.com/questions/7031126/switching-between-gcc-and-clang-llvm-using-cmake
+
+
+feature/hg_vec3h_arithmetic
+
+import openvdb
+from openvdb import *
+
+imported_symbols = [symbol for symbol in globals() if not symbol.startswith("_")]
+
+print(f"imported_symbols = {imported_symbols}")
+# for sym in dir(openvdb):
+#     print(f"DOCSTRING FOR openvdb.{sym}")
+#     # print(eval(f"fvdb.nn.{sym}.__doc__"))
+#     print("----------------------------------------")
+#     print("")
+#     print("")
+
+
 # TODO
 Tests:
 [X] LevelSetAdvect
