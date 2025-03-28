@@ -20,6 +20,7 @@ option(OPENVDB_BUILD_VDB_RENDER "Build vdb_render" OFF)
 option(OPENVDB_BUILD_VDB_VIEW "Build vdb_view" OFF)
 option(OPENVDB_BUILD_VDB_TOOL "Build vdb_tool" OFF)
 option(OPENVDB_BUILD_VDB_AX "Build the OpenVDB AX command line binary" OFF)
+option(OPENVDB_BUILD_HG_TEST "Build the OpenVDB Half Grid test" ON)
 
 if(OPENVDB_BUILD_AX_BINARIES)
   message(DEPRECATION "OPENVDB_BUILD_AX_BINARIES is deprecated. Use OPENVDB_BUILD_VDB_AX.")
@@ -81,4 +82,8 @@ endif()
 
 if (OPENVDB_BUILD_VDB_AX)
   add_subdirectory(vdb_ax)
+endif()
+
+if (OPENVDB_BUILD_HG_TEST)
+  add_subdirectory(vdb_hg_test)
 endif()

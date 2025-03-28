@@ -1,0 +1,200 @@
+# TODO
+Tests:
+[X] LevelSetAdvect
+[X] Interpolation
+[X] TestMorphology
+[X] TestGrid
+[X] LevelSetAdvect
+[X] LevelSetMeasure - Written, but not passing
+[X] LevelSetMorph
+[X] LevelSetSphere
+[X] LevelSetUtil
+[X] RayIntersector
+[X] RayTracer
+[X] SignedFloodFill
+[X] VolumeAdvect
+[X] VolumeToSpheres
+[-] LevelSetFilter - doesn't have any
+[-] LevelSetTracker
+[-] MeshToVolume
+[ ] FastSweeping
+[ ] Test explicit template instantiation
+
+# TODO, but will be addressed later:
+[ ] Add support for csgUnion for HalfGrid.
+
+#include <type_traits>
+
+struct half {
+    float x;
+    explicit half(float v) : x(v) {}
+};
+
+// namespace std {
+//     template <>
+//     struct is_arithmetic<half> {
+//         static constexpr bool value = true;
+//     };
+// }
+namespace openvdb {
+    template <typename S, typename T>
+    struct common_type {
+        using type = typename std::common_type_t<S, T>;
+    };
+
+    template< class... T >
+    using common_type_t = typename common_type<T...>::type;
+
+    template <>
+    struct common_type<half, float> {
+        using type = float;
+    };
+
+    template <>
+    struct common_type<float, half> {
+        using type = float;
+    };
+
+    template <>
+    struct common_type<half, double> {
+        using type = double;
+    };
+
+    template <>
+    struct common_type<double, half> {
+        using type = double;
+    };
+}
+
+template <typename S, typename T, typename =
+    std::enable_if_t<std::is_same_v<S, half> || std::is_same_v<T, half> || std::is_arithmetic_v<S> && std::is_arithmetic_v<T>>>
+struct promote {
+    using type = typename openvdb::common_type_t<S,T>;
+};
+
+
+
+
+int main()
+{
+    // char* foo = promote<half, float>::type(1);
+    promote<half, half>::type a0(1);
+    promote<half, float>::type a1(1);
+    promote<float, half>::type a2(1);
+    promote<half, double>::type a3(1);
+    promote<double, half>::type a4(1);
+    return 0;
+}
+
+The problem is that half is not an arithmetic type according to std::arithmetic_type.
+
+The other way to do this is to create `openvdb::is_arithmetic`.
+
+// One-dimensional scalar types
+using Half    = math::half;
+// Two-dimensional vector types
+using Vec2H = math::Vec2<Half>;
+// Three-dimensional vector types
+using Vec3H = math::Vec3<Half>;
+// Four-dimensional vector types
+using Vec4H = math::Vec4<Half>;
+// Three-dimensional matrix types
+// Four-dimensional matrix types
+// Quaternions
+
+Member functions:
+1. /// Alternative indexed reference to the elements
+T& operator()(int i) { return this->mm[i]; }
+
+2. /// Alternative indexed constant reference to the elements,
+T operator()(int i) const { return this->mm[i]; }
+
+3. /// @brief Assignment operator
+/// @details Type conversion warnings are not suppressed.
+template<typename Source>
+const Vec3<T>& operator=(const Vec3<Source> &v)
+
+4. /// Negation operator, for e.g.   v1 = -v2;
+Vec3<T> operator-() const { return Vec3<T>(-this->mm[0], -this->mm[1], -this->mm[2]); }
+
+
+5. /// Multiply each element of this vector by @a scalar.
+template <typename S>
+const Vec3<T> &operator*=(S scalar)
+
+6. /// Multiply each element of this vector by the corresponding element of the given vector.
+template <typename S>
+const Vec3<T> &operator*=(const Vec3<S> &v1)
+
+7. /// Divide each element of this vector by @a scalar.
+template <typename S>
+const Vec3<T> &operator/=(S scalar)
+
+8. /// Divide each element of this vector by the corresponding element of the given vector.
+template <typename S>
+const Vec3<T> &operator/=(const Vec3<S> &v1)
+
+9. /// Add @a scalar to each element of this vector.
+template <typename S>
+const Vec3<T> &operator+=(S scalar)
+
+10. /// Add each element of the given vector to the corresponding element of this vector.
+template <typename S>
+const Vec3<T> &operator+=(const Vec3<S> &v1)
+
+11. /// Subtract @a scalar from each element of this vector.
+template <typename S>
+const Vec3<T> &operator-=(S scalar)
+
+12. /// Subtract each element of the given vector from the corresponding element of this vector.
+template <typename S>
+const Vec3<T> &operator-=(const Vec3<S> &v1)
+
+Free functions:
+1. /// Equality operator, does exact floating point comparisons
+template <typename T0, typename T1>
+inline bool operator==(const Vec3<T0> &v0, const Vec3<T1> &v1)
+
+2. /// Inequality operator, does exact floating point comparisons
+template <typename T0, typename T1>
+inline bool operator!=(const Vec3<T0> &v0, const Vec3<T1> &v1) { return !(v0==v1); }
+
+3. /// Multiply each element of the given vector by @a scalar and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator*(S scalar, const Vec3<T> &v) { return v*scalar; }
+
+4. /// Multiply each element of the given vector by @a scalar and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator*(const Vec3<T> &v, S scalar)
+
+5. /// Multiply corresponding elements of @a v0 and @a v1 and return the result.
+template <typename T0, typename T1>
+inline Vec3<typename promote<T0, T1>::type> operator*(const Vec3<T0> &v0, const Vec3<T1> &v1)
+
+6. /// Divide @a scalar by each element of the given vector and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator/(S scalar, const Vec3<T> &v)
+
+7. /// Divide each element of the given vector by @a scalar and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator/(const Vec3<T> &v, S scalar)
+
+8. /// Divide corresponding elements of @a v0 and @a v1 and return the result.
+template <typename T0, typename T1>
+inline Vec3<typename promote<T0, T1>::type> operator/(const Vec3<T0> &v0, const Vec3<T1> &v1)
+
+9. /// Add corresponding elements of @a v0 and @a v1 and return the result.
+template <typename T0, typename T1>
+inline Vec3<typename promote<T0, T1>::type> operator+(const Vec3<T0> &v0, const Vec3<T1> &v1)
+
+10. /// Add @a scalar to each element of the given vector and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator+(const Vec3<T> &v, S scalar)
+
+11. /// Subtract corresponding elements of @a v0 and @a v1 and return the result.
+template <typename T0, typename T1>
+inline Vec3<typename promote<T0, T1>::type> operator-(const Vec3<T0> &v0, const Vec3<T1> &v1)
+
+12. /// Subtract @a scalar from each element of the given vector and return the result.
+template <typename S, typename T>
+inline Vec3<typename promote<S, T>::type> operator-(const Vec3<T> &v, S scalar)
