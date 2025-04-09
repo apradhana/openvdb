@@ -444,6 +444,14 @@ struct ValueToComputeMap<Half>
 
 
 ////////////////////////////////////////
+template<class T>
+struct is_floating_point : std::is_floating_point<T> { };
+
+template<>
+struct is_floating_point<math::half> : std::is_floating_point<float> { };
+
+
+////////////////////////////////////////
 
 
 // Add new items to the *end* of this list, and update NUM_GRID_CLASSES.
