@@ -1,0 +1,196 @@
+// Copyright Contributors to the OpenVDB Project
+// SPDX-License-Identifier: Apache-2.0
+//
+/// @file main.cc
+///
+/// @brief Simple ray tracer for OpenVDB volumes
+///
+/// @note This is intended mainly as an example of how to ray-trace
+/// OpenVDB volumes.  It is not a production-quality renderer.
+
+#include <openvdb/openvdb.h>
+#include <openvdb/openvdb.h>
+#include <openvdb/math/Mat.h>
+#include <openvdb/tools/LevelSetSphere.h>
+#include <openvdb/tools/LevelSetPlatonic.h>
+#include <openvdb/tools/MeshToVolume.h>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
+template<typename GridType>
+float
+testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::Vec3f center, std::string name, openvdb::GridPtrVec& grids)
+{
+    const tbb::tick_count start = tbb::tick_count::now();
+    typename GridType::Ptr grid = openvdb::tools::createLevelSetSphere<GridType>(
+        radius, center, voxelSize, halfWidth);
+    grid->setName(name);
+    grid->setGridClass(openvdb::GRID_LEVEL_SET);
+    const tbb::tick_count end = tbb::tick_count::now();
+    const double duration = (end - start).seconds();
+
+    grids.push_back(grid);
+
+    return duration;
+}
+
+void testLevelSetSphere() {
+    openvdb::GridPtrVec grids;
+    const float radius = 50.0f;
+    const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
+    const float voxelSize = 0.1f;
+    const float halfWidth = 3.0f; // narrow band half-width in voxels
+
+    const double half_duration = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere", grids);
+    int activeVoxelCountHalf = grids.back()->activeVoxelCount();
+    const double float_duration = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere", grids);
+    int activeVoxelCountFloat = grids.back()->activeVoxelCount();
+
+    const std::string filename = "half_sphere.vdb";
+    openvdb::io::File file(filename);
+    file.write(grids);
+    file.close();
+    std::cout << " ==== Test create level set sphere ====" << std::endl;
+    std::cout << "Half  grid voxel count = " << activeVoxelCountHalf << " duration = " << half_duration << " seconds" << std::endl;
+    std::cout << "Float grid voxel count = " << activeVoxelCountHalf << " duration = " << float_duration << " seconds" << std::endl;
+}
+
+
+template<typename GridType>
+float
+testLevelSetPlatonicImpl(int faceCount, float scale, openvdb::Vec3f center, float voxelSize, float halfWidth, std::string name, openvdb::GridPtrVec& grids)
+{
+    const tbb::tick_count start = tbb::tick_count::now();
+    typename GridType::Ptr grid = openvdb::tools::createLevelSetPlatonic<GridType>(
+        faceCount, scale, center, voxelSize, halfWidth);
+    grid->setName(name);
+    grid->setGridClass(openvdb::GRID_LEVEL_SET);
+    const tbb::tick_count end = tbb::tick_count::now();
+    const double duration = (end - start).seconds();
+
+    grids.push_back(grid);
+
+    return duration;
+}
+
+void testLevelSetPlatonic()
+{
+    openvdb::GridPtrVec grids;
+    const int faceCount = 8; // 4=Tetrahedron, 6=Cube, 8=Octahedron, 12=Dodecahedron, 20=Icosahedron
+    const float scale = 30.0f;
+    const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
+    const float voxelSize = 0.1f;
+    const float halfWidth = 3.0f; // narrow band half-width in voxels
+
+    // Create a level set platonic solid as a FloatGrid
+    const double float_duration = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_octahedron", grids);
+    int activeVoxelCountFloat = grids.back()->activeVoxelCount();
+
+    openvdb::io::File file("platonic_solids.vdb");
+    file.write(grids);
+    file.close();
+
+    std::cout << " ==== Test create level set platonic ====" << std::endl;
+    std::cout << "Float grid voxel count = " << activeVoxelCountFloat << " duration = " << float_duration << " seconds" << std::endl;
+}
+
+
+template<typename GridType>
+float testMeshToVolumeImpl(std::vector<openvdb::Vec3s> points, std::vector<openvdb::Vec3I> triangles, std::vector<openvdb::Vec4I> quads, float exteriorBandWidth, float interiorBandWidth, openvdb::math::Transform::Ptr transform, std::string name, openvdb::GridPtrVec& grids)
+{
+    using namespace openvdb;
+
+    typename GridType::Ptr grid = nullptr;
+
+    const tbb::tick_count start = tbb::tick_count::now();
+    if (!triangles.empty()) {
+        grid = tools::meshToLevelSet<GridType>(*transform, points, triangles, exteriorBandWidth);
+    } else if (!quads.empty()) {
+        grid = tools::meshToLevelSet<GridType>(*transform, points, quads, exteriorBandWidth);
+    }
+    const tbb::tick_count end = tbb::tick_count::now();
+    const double duration = (end - start).seconds();
+    if (!grid) {
+        std::cerr << "Failed to create VDB grid from mesh." << std::endl;
+    }
+    grids.push_back(grid);
+    return duration;
+}
+
+void testMeshToVolume()
+{
+    using namespace openvdb;
+
+    std::string objFile = "/home/andre/Desktop/dragon.obj";
+    std::string vdbFile = "/home/andre/Desktop/dragon_meshtovolume.vdb" ;
+
+    // Parse OBJ
+    std::vector<Vec3s> points;
+    std::vector<Vec3I> triangles;
+    std::vector<Vec4I> quads;
+
+    std::ifstream in(objFile);
+    if (!in) {
+        std::cerr << "Failed to open OBJ file: " << objFile << std::endl;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream iss(line);
+        std::string type;
+        iss >> type;
+        if (type == "v") {
+            float x, y, z;
+            iss >> x >> y >> z;
+            points.emplace_back(x, y, z);
+        } else if (type == "f") {
+            std::vector<int> idx;
+            std::string vert;
+            while (iss >> vert) {
+                std::istringstream viss(vert);
+                int i;
+                viss >> i;
+                idx.push_back(i - 1); // OBJ is 1-based
+            }
+            if (idx.size() == 3) {
+                triangles.emplace_back(idx[0], idx[1], idx[2]);
+            } else if (idx.size() == 4) {
+                quads.emplace_back(idx[0], idx[1], idx[2], idx[3]);
+            }
+        }
+    }
+
+    if (points.empty() || (triangles.empty() && quads.empty())) {
+        std::cerr << "OBJ file does not contain valid mesh data." << std::endl;
+    }
+
+    // Create a transform (identity, voxel size = 1.0)
+    float voxelSize = 0.2f;
+    math::Transform::Ptr transform = math::Transform::createLinearTransform(voxelSize);
+
+    // Convert mesh to level set
+    openvdb::GridPtrVec grids;
+    float exteriorBandWidth = 3.0f, interiorBandWidth = 3.0f;
+    const double float_duration = testMeshToVolumeImpl<openvdb::FloatGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "float_dragon", grids);
+    const double half_duration = testMeshToVolumeImpl<openvdb::HalfGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "half_dragon", grids);
+
+    std::cout << " ==== Test mesh to volume ====" << std::endl;
+    std::cout << "Duration = " << float_duration << " seconds" << std::endl;
+
+    // Save to VDB file
+    io::File file(vdbFile);
+    file.write(grids);
+    file.close();
+}
+
+int main()
+{
+    openvdb::initialize();
+
+    testLevelSetSphere();
+    testLevelSetPlatonic();
+    testMeshToVolume();
+
+    return 0;
+}
