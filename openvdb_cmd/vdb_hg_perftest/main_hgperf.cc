@@ -18,6 +18,64 @@
 #include <iostream>
 #include <vector>
 
+
+namespace internal {
+struct CopyValuesOp
+{
+    CopyValuesOp(openvdb::HalfGrid::Ptr hg,
+                 openvdb::FloatGrid::Ptr fg) :
+                 hg(hg),
+                 fg(fg) {}
+
+    template <typename T>
+    void operator()(T &node, size_t) const
+    {
+        auto halfAcc = hg->getAccessor();
+        for (typename T::ValueAllIter iter = node.beginValueAll(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            iter.setValue(halfAcc.getValue(ijk));
+        }
+    }
+
+    openvdb::HalfGrid::Ptr hg;
+    openvdb::FloatGrid::Ptr fg;
+};// CopyValuesOp
+} // namespace internal
+
+template<typename HalfGridT>
+void
+convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr fg, std::string gridName)
+{
+    using namespace openvdb;
+
+    fg->setName(gridName);
+    fg->setTransform(hg->transform().copy());
+    fg->tree().topologyUnion(hg->tree());
+
+    tree::LeafManager<FloatTree> lm(fg->tree());
+    ::internal::CopyValuesOp op(hg, fg);
+    lm.foreach(op);
+
+    auto fAcc = fg->getAccessor();
+    auto hAcc = hg->getAccessor();
+    float maxDif = 0.f;
+    for (auto iter = fg->beginValueOn(); iter; ++iter) {
+        math::Coord const ijk = iter.getCoord();
+        auto const fv = fAcc.getValue(ijk);
+        auto const hv = hAcc.getValue(ijk);
+        float const dif = std::abs(fv - hv);
+        if (dif > maxDif) {
+            maxDif = dif;
+        }
+    }
+
+    if (hg->getGridClass() == GRID_LEVEL_SET) {
+        fg->setGridClass(GRID_LEVEL_SET);
+        openvdb::tools::changeLevelSetBackground(fg->tree(), 3.f);
+    }
+    std::cout << "convertHalfToFloatGrid::maxDif = " << maxDif << "\tactiveVoxelCount dif = " << (int)(fg->activeVoxelCount() - hg->activeVoxelCount()) << "\n";
+}
+
 template<typename GridType>
 float
 testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::Vec3f center, std::string name, openvdb::GridPtrVec& grids)
@@ -178,9 +236,17 @@ void testMeshToVolume()
     std::cout << " ==== Test mesh to volume ====" << std::endl;
     std::cout << "Duration = " << float_duration << " seconds" << std::endl;
 
+    openvdb::FloatGrid::Ptr floatGrid = openvdb::FloatGrid::create();
+
+    convertHalfToFloatGrid<openvdb::HalfGrid>(gridPtrCast<openvdb::HalfGrid>(grids.back()), floatGrid, "half_dragon_in_float");
+
+    openvdb::GridPtrVec grids2;
+    grids2.push_back(grids.front());
+    grids2.push_back(floatGrid);
+
     // Save to VDB file
     io::File file(vdbFile);
-    file.write(grids);
+    file.write(grids2);
     file.close();
 }
 
