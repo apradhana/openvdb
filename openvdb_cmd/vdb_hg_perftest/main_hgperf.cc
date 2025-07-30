@@ -233,8 +233,12 @@ void testMeshToVolume()
     const double float_duration = testMeshToVolumeImpl<openvdb::FloatGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "float_dragon", grids);
     const double half_duration = testMeshToVolumeImpl<openvdb::HalfGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "half_dragon", grids);
 
+    int activeVoxelCountFloat = grids.front()->activeVoxelCount();
+    int activeVoxelCountHalf = grids.back()->activeVoxelCount();
+
     std::cout << " ==== Test mesh to volume ====" << std::endl;
-    std::cout << "Duration = " << float_duration << " seconds" << std::endl;
+    std::cout << "Float grid voxel count = " << activeVoxelCountFloat << " duration = " << float_duration << " seconds" << std::endl;
+    std::cout << "Half grid voxel count = " << activeVoxelCountHalf << " duration = " << half_duration << " seconds" << std::endl;
 
     openvdb::FloatGrid::Ptr floatGrid = openvdb::FloatGrid::create();
 
