@@ -476,6 +476,11 @@ template<typename FromType, typename ToType> struct CopyConstness<const FromType
 
 
 ////////////////////////////////////////
+/// @brief Type trait to determine if a type is a floating point type.
+///
+/// This struct inherits from std::is_floating_point<T> and can be used in place of it.
+/// It returns true for standard floating point types (float, double, long double). We make
+/// a special case for math::half, which is a 16-bit floating point type.
 template<class T>
 struct is_floating_point : std::is_floating_point<T> { };
 
