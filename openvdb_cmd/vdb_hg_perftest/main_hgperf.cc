@@ -101,7 +101,7 @@ saveTestResults(TestResult<openvdb::FloatGrid> floatResult, TestResult<openvdb::
     grids.push_back(floatResult.grid);
     grids.push_back(halfInFloat);
 
-    openvdb::io::File file(fileName);
+    io::File file(fileName);
     file.write(grids);
     file.close();
 }
@@ -136,12 +136,7 @@ void testLevelSetSphere() {
     TestResult<openvdb::HalfGrid> halfResult = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere");
     TestResult<openvdb::FloatGrid> floatResult = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere");
 
-    openvdb::GridPtrVec grids;
-    grids.push_back(halfResult.grid);
-    grids.push_back(floatResult.grid);
-    openvdb::io::File file(fileName);
-    file.write(grids);
-    file.close();
+    saveTestResults(floatResult, halfResult, fileName);
 
     halfResult.print();
     floatResult.print();
@@ -180,11 +175,7 @@ void testLevelSetPlatonic()
     auto floatResult = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_octahedron");
     auto halfResult = testLevelSetPlatonicImpl<openvdb::HalfGrid>(faceCount, scale, center, voxelSize, halfWidth, "half_octahedron");
 
-    openvdb::GridPtrVec grids;
-    grids.push_back(floatResult.grid);
-    openvdb::io::File file(fileName);
-    file.write(grids);
-    file.close();
+    saveTestResults(floatResult, halfResult, fileName);
 
     floatResult.print();
     halfResult.print();
