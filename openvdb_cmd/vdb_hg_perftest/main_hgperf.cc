@@ -116,25 +116,25 @@ void testLevelSetSphere() {
     const float voxelSize = 0.1f;
     const float halfWidth = 3.0f; // narrow band half-width in voxels
 
-    TestResult<openvdb::HalfGrid> half_result = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere");
-    TestResult<openvdb::FloatGrid> float_result = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere");
+    TestResult<openvdb::HalfGrid> halfResult = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere");
+    TestResult<openvdb::FloatGrid> floatResult = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere");
 
     openvdb::GridPtrVec grids;
-    grids.push_back(half_result.grid);
-    grids.push_back(float_result.grid);
+    grids.push_back(halfResult.grid);
+    grids.push_back(floatResult.grid);
     openvdb::io::File file(fileName);
     file.write(grids);
     file.close();
 
     std::cout << logTitle;
-    half_result.print();
-    float_result.print();
+    halfResult.print();
+    floatResult.print();
 }
 
 
 template<typename GridType>
-float
-testLevelSetPlatonicImpl(int faceCount, float scale, openvdb::Vec3f center, float voxelSize, float halfWidth, std::string name, openvdb::GridPtrVec& grids)
+TestResult<GridType>
+testLevelSetPlatonicImpl(int faceCount, float scale, openvdb::Vec3f center, float voxelSize, float halfWidth, std::string name)
 {
     const tbb::tick_count start = tbb::tick_count::now();
     typename GridType::Ptr grid = openvdb::tools::createLevelSetPlatonic<GridType>(
@@ -144,14 +144,13 @@ testLevelSetPlatonicImpl(int faceCount, float scale, openvdb::Vec3f center, floa
     const tbb::tick_count end = tbb::tick_count::now();
     const double duration = (end - start).seconds();
 
-    grids.push_back(grid);
-
-    return duration;
+    return TestResult<GridType>(duration, grid, grid->activeVoxelCount());
 }
 
 void testLevelSetPlatonic()
 {
-    openvdb::GridPtrVec grids;
+    const std::string fileName = "testLevelSetPlatonic.vdb";
+    const std::string logTitle = "==== Test create level set platonic ====\n";
     const int faceCount = 8; // 4=Tetrahedron, 6=Cube, 8=Octahedron, 12=Dodecahedron, 20=Icosahedron
     const float scale = 30.0f;
     const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
@@ -159,15 +158,16 @@ void testLevelSetPlatonic()
     const float halfWidth = 3.0f; // narrow band half-width in voxels
 
     // Create a level set platonic solid as a FloatGrid
-    const double float_duration = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_octahedron", grids);
-    int activeVoxelCountFloat = grids.back()->activeVoxelCount();
+    auto floatResult = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_octahedron");
 
-    openvdb::io::File file("platonic_solids.vdb");
+    openvdb::GridPtrVec grids;
+    grids.push_back(floatResult.grid);
+    openvdb::io::File file(fileName);
     file.write(grids);
     file.close();
 
-    std::cout << " ==== Test create level set platonic ====" << std::endl;
-    std::cout << "Float grid voxel count = " << activeVoxelCountFloat << " duration = " << float_duration << " seconds" << std::endl;
+    std::cout << logTitle;
+    floatResult.print();
 }
 
 
