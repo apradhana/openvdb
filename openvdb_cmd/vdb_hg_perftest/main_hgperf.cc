@@ -111,6 +111,8 @@ void testLevelSetSphere() {
     const std::string fileName = "testLevelSetSphere.vdb";
     const std::string logTitle = "==== Test create level set sphere ====\n";
 
+    std::cout << logTitle;
+
     const float radius = 50.0f;
     const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
     const float voxelSize = 0.1f;
@@ -126,7 +128,6 @@ void testLevelSetSphere() {
     file.write(grids);
     file.close();
 
-    std::cout << logTitle;
     halfResult.print();
     floatResult.print();
 }
@@ -151,6 +152,9 @@ void testLevelSetPlatonic()
 {
     const std::string fileName = "testLevelSetPlatonic.vdb";
     const std::string logTitle = "==== Test create level set platonic ====\n";
+
+    std::cout << logTitle;
+
     const int faceCount = 8; // 4=Tetrahedron, 6=Cube, 8=Octahedron, 12=Dodecahedron, 20=Icosahedron
     const float scale = 30.0f;
     const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
@@ -167,7 +171,6 @@ void testLevelSetPlatonic()
     file.write(grids);
     file.close();
 
-    std::cout << logTitle;
     floatResult.print();
     halfResult.print();
 }
@@ -195,23 +198,15 @@ float testMeshToVolumeImpl(std::vector<openvdb::Vec3s> points, std::vector<openv
     return duration;
 }
 
-void testMeshToVolume()
+void parseObjFile(std::string objFile, std::vector<openvdb::Vec3s>& points, std::vector<openvdb::Vec3I>& triangles, std::vector<openvdb::Vec4I>& quads)
 {
     using namespace openvdb;
-
-    std::string objFile = "/home/andre/Desktop/dragon.obj";
-    std::string vdbFile = "/home/andre/Desktop/dragon_meshtovolume.vdb" ;
-
-    // Parse OBJ
-    std::vector<Vec3s> points;
-    std::vector<Vec3I> triangles;
-    std::vector<Vec4I> quads;
 
     std::ifstream in(objFile);
     if (!in) {
         std::cerr << "Failed to open OBJ file: " << objFile << std::endl;
     }
-
+    const tbb::tick_count start = tbb::tick_count::now();
     std::string line;
     while (std::getline(in, line)) {
         std::istringstream iss(line);
@@ -241,6 +236,26 @@ void testMeshToVolume()
     if (points.empty() || (triangles.empty() && quads.empty())) {
         std::cerr << "OBJ file does not contain valid mesh data." << std::endl;
     }
+    const tbb::tick_count end = tbb::tick_count::now();
+    const double duration = (end - start).seconds();
+    std::cout << "OBJ file parsing duration = " << duration << " seconds" << std::endl;
+}
+
+void testMeshToVolume()
+{
+    using namespace openvdb;
+
+    std::string objFile = "/home/andre/Desktop/dragon.obj";
+    std::string vdbFile = "/home/andre/Desktop/dragon_meshtovolume.vdb" ;
+    std::string logTitle = "==== Test mesh to volume ====\n";
+
+    std::cout << logTitle;
+
+    // Parse OBJ
+    std::vector<Vec3s> points;
+    std::vector<Vec3I> triangles;
+    std::vector<Vec4I> quads;
+    parseObjFile(objFile, points, triangles, quads);
 
     // Create a transform (identity, voxel size = 1.0)
     float voxelSize = 0.2f;
@@ -255,7 +270,6 @@ void testMeshToVolume()
     int activeVoxelCountFloat = grids.front()->activeVoxelCount();
     int activeVoxelCountHalf = grids.back()->activeVoxelCount();
 
-    std::cout << " ==== Test mesh to volume ====" << std::endl;
     std::cout << "Float grid voxel count = " << activeVoxelCountFloat << " duration = " << float_duration << " seconds" << std::endl;
     std::cout << "Half grid voxel count = " << activeVoxelCountHalf << " duration = " << half_duration << " seconds" << std::endl;
 
