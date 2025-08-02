@@ -42,6 +42,19 @@ struct CopyValuesOp
 };// CopyValuesOp
 } // namespace internal
 
+template<typename GridT>
+struct TestResult {
+    double duration;
+    typename GridT::Ptr grid;
+    int activeVoxelCount;
+
+    TestResult(double duration, typename GridT::Ptr grid, int activeVoxelCount) : duration(duration), grid(grid), activeVoxelCount(activeVoxelCount) {}
+
+    void print() const {
+        std::cout << "duration = " << duration << " seconds" << std::endl;
+    }
+};
+
 template<typename HalfGridT>
 void
 convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr fg, std::string gridName)
@@ -76,8 +89,9 @@ convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr
     std::cout << "convertHalfToFloatGrid::maxDif = " << maxDif << "\tactiveVoxelCount dif = " << (int)(fg->activeVoxelCount() - hg->activeVoxelCount()) << "\n";
 }
 
+
 template<typename GridType>
-float
+TestResult<GridType>
 testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::Vec3f center, std::string name, openvdb::GridPtrVec& grids)
 {
     const tbb::tick_count start = tbb::tick_count::now();
@@ -88,9 +102,11 @@ testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::
     const tbb::tick_count end = tbb::tick_count::now();
     const double duration = (end - start).seconds();
 
+    TestResult<GridType> result(duration, grid, grid->activeVoxelCount());
+
     grids.push_back(grid);
 
-    return duration;
+    return result;
 }
 
 void testLevelSetSphere() {
@@ -100,18 +116,17 @@ void testLevelSetSphere() {
     const float voxelSize = 0.1f;
     const float halfWidth = 3.0f; // narrow band half-width in voxels
 
-    const double half_duration = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere", grids);
-    int activeVoxelCountHalf = grids.back()->activeVoxelCount();
-    const double float_duration = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere", grids);
-    int activeVoxelCountFloat = grids.back()->activeVoxelCount();
+    TestResult<openvdb::HalfGrid> half_result = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere", grids);
+    TestResult<openvdb::FloatGrid> float_result = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere", grids);
+
 
     const std::string filename = "half_sphere.vdb";
     openvdb::io::File file(filename);
     file.write(grids);
     file.close();
     std::cout << " ==== Test create level set sphere ====" << std::endl;
-    std::cout << "Half  grid voxel count = " << activeVoxelCountHalf << " duration = " << half_duration << " seconds" << std::endl;
-    std::cout << "Float grid voxel count = " << activeVoxelCountHalf << " duration = " << float_duration << " seconds" << std::endl;
+    half_result.print();
+    float_result.print();
 }
 
 
