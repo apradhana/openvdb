@@ -92,7 +92,7 @@ convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr
 
 template<typename GridType>
 TestResult<GridType>
-testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::Vec3f center, std::string name, openvdb::GridPtrVec& grids)
+testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::Vec3f center, std::string name)
 {
     const tbb::tick_count start = tbb::tick_count::now();
     typename GridType::Ptr grid = openvdb::tools::createLevelSetSphere<GridType>(
@@ -104,27 +104,29 @@ testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::
 
     TestResult<GridType> result(duration, grid, grid->activeVoxelCount());
 
-    grids.push_back(grid);
-
     return result;
 }
 
 void testLevelSetSphere() {
-    openvdb::GridPtrVec grids;
+    const std::string fileName = "testLevelSetSphere.vdb";
+    const std::string logTitle = "==== Test create level set sphere ====\n";
+
     const float radius = 50.0f;
     const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
     const float voxelSize = 0.1f;
     const float halfWidth = 3.0f; // narrow band half-width in voxels
 
-    TestResult<openvdb::HalfGrid> half_result = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere", grids);
-    TestResult<openvdb::FloatGrid> float_result = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere", grids);
+    TestResult<openvdb::HalfGrid> half_result = testLevelSetSphereImpl<openvdb::HalfGrid>(radius, voxelSize, halfWidth, center, "half_sphere");
+    TestResult<openvdb::FloatGrid> float_result = testLevelSetSphereImpl<openvdb::FloatGrid>(radius, voxelSize, halfWidth, center, "float_sphere");
 
-
-    const std::string filename = "half_sphere.vdb";
-    openvdb::io::File file(filename);
+    openvdb::GridPtrVec grids;
+    grids.push_back(half_result.grid);
+    grids.push_back(float_result.grid);
+    openvdb::io::File file(fileName);
     file.write(grids);
     file.close();
-    std::cout << " ==== Test create level set sphere ====" << std::endl;
+
+    std::cout << logTitle;
     half_result.print();
     float_result.print();
 }
