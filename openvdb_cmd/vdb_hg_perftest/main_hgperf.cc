@@ -89,6 +89,23 @@ convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr
     std::cout << "convertHalfToFloatGrid::maxDif = " << maxDif << "\tactiveVoxelCount dif = " << (int)(fg->activeVoxelCount() - hg->activeVoxelCount()) << "\n";
 }
 
+void
+saveTestResults(TestResult<openvdb::FloatGrid> floatResult, TestResult<openvdb::HalfGrid> halfResult, std::string fileName)
+{
+    using namespace openvdb;
+
+    FloatGrid::Ptr halfInFloat = FloatGrid::create();
+    convertHalfToFloatGrid<HalfGrid>(gridPtrCast<HalfGrid>(halfResult.grid), halfInFloat, halfResult.grid->getName() + "_in_float");
+
+    GridPtrVec grids;
+    grids.push_back(floatResult.grid);
+    grids.push_back(halfInFloat);
+
+    openvdb::io::File file(fileName);
+    file.write(grids);
+    file.close();
+}
+
 
 template<typename GridType>
 TestResult<GridType>
@@ -240,6 +257,7 @@ void parseObjFile(std::string objFile, std::vector<openvdb::Vec3s>& points, std:
     std::cout << "OBJ file parsing duration = " << duration << " seconds" << std::endl;
 }
 
+
 void testMeshToVolume()
 {
     using namespace openvdb;
@@ -265,17 +283,7 @@ void testMeshToVolume()
     auto floatResult = testMeshToVolumeImpl<openvdb::FloatGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "float_dragon");
     auto halfResult = testMeshToVolumeImpl<openvdb::HalfGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "half_dragon");
 
-    openvdb::FloatGrid::Ptr halfInFloat = openvdb::FloatGrid::create();
-    convertHalfToFloatGrid<openvdb::HalfGrid>(gridPtrCast<openvdb::HalfGrid>(halfResult.grid), halfInFloat, "half_dragon_in_float");
-
-    openvdb::GridPtrVec grids;
-    grids.push_back(halfResult.grid);
-    grids.push_back(halfInFloat);
-
-    // Save to VDB file
-    io::File file(vdbFile);
-    file.write(grids);
-    file.close();
+    saveTestResults(floatResult, halfResult, vdbFile);
 
     floatResult.print();
     halfResult.print();
