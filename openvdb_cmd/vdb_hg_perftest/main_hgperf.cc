@@ -159,6 +159,7 @@ void testLevelSetPlatonic()
 
     // Create a level set platonic solid as a FloatGrid
     auto floatResult = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_octahedron");
+    auto halfResult = testLevelSetPlatonicImpl<openvdb::HalfGrid>(faceCount, scale, center, voxelSize, halfWidth, "half_octahedron");
 
     openvdb::GridPtrVec grids;
     grids.push_back(floatResult.grid);
@@ -168,6 +169,7 @@ void testLevelSetPlatonic()
 
     std::cout << logTitle;
     floatResult.print();
+    halfResult.print();
 }
 
 
