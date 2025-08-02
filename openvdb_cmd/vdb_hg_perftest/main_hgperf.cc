@@ -102,9 +102,7 @@ testLevelSetSphereImpl(float radius, float voxelSize, float halfWidth, openvdb::
     const tbb::tick_count end = tbb::tick_count::now();
     const double duration = (end - start).seconds();
 
-    TestResult<GridType> result(duration, grid, grid->activeVoxelCount());
-
-    return result;
+    return TestResult<GridType>(duration, grid, grid->activeVoxelCount());
 }
 
 void testLevelSetSphere() {
@@ -177,7 +175,8 @@ void testLevelSetPlatonic()
 
 
 template<typename GridType>
-float testMeshToVolumeImpl(std::vector<openvdb::Vec3s> points, std::vector<openvdb::Vec3I> triangles, std::vector<openvdb::Vec4I> quads, float exteriorBandWidth, float interiorBandWidth, openvdb::math::Transform::Ptr transform, std::string name, openvdb::GridPtrVec& grids)
+TestResult<GridType>
+testMeshToVolumeImpl(std::vector<openvdb::Vec3s> points, std::vector<openvdb::Vec3I> triangles, std::vector<openvdb::Vec4I> quads, float exteriorBandWidth, float interiorBandWidth, openvdb::math::Transform::Ptr transform, std::string name)
 {
     using namespace openvdb;
 
@@ -194,8 +193,8 @@ float testMeshToVolumeImpl(std::vector<openvdb::Vec3s> points, std::vector<openv
     if (!grid) {
         std::cerr << "Failed to create VDB grid from mesh." << std::endl;
     }
-    grids.push_back(grid);
-    return duration;
+
+    return TestResult<GridType>(duration, grid, grid->activeVoxelCount());
 }
 
 void parseObjFile(std::string objFile, std::vector<openvdb::Vec3s>& points, std::vector<openvdb::Vec3I>& triangles, std::vector<openvdb::Vec4I>& quads)
@@ -262,29 +261,24 @@ void testMeshToVolume()
     math::Transform::Ptr transform = math::Transform::createLinearTransform(voxelSize);
 
     // Convert mesh to level set
-    openvdb::GridPtrVec grids;
     float exteriorBandWidth = 3.0f, interiorBandWidth = 3.0f;
-    const double float_duration = testMeshToVolumeImpl<openvdb::FloatGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "float_dragon", grids);
-    const double half_duration = testMeshToVolumeImpl<openvdb::HalfGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "half_dragon", grids);
+    auto floatResult = testMeshToVolumeImpl<openvdb::FloatGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "float_dragon");
+    auto halfResult = testMeshToVolumeImpl<openvdb::HalfGrid>(points, triangles, quads, exteriorBandWidth, interiorBandWidth, transform, "half_dragon");
 
-    int activeVoxelCountFloat = grids.front()->activeVoxelCount();
-    int activeVoxelCountHalf = grids.back()->activeVoxelCount();
+    openvdb::FloatGrid::Ptr halfInFloat = openvdb::FloatGrid::create();
+    convertHalfToFloatGrid<openvdb::HalfGrid>(gridPtrCast<openvdb::HalfGrid>(halfResult.grid), halfInFloat, "half_dragon_in_float");
 
-    std::cout << "Float grid voxel count = " << activeVoxelCountFloat << " duration = " << float_duration << " seconds" << std::endl;
-    std::cout << "Half grid voxel count = " << activeVoxelCountHalf << " duration = " << half_duration << " seconds" << std::endl;
-
-    openvdb::FloatGrid::Ptr floatGrid = openvdb::FloatGrid::create();
-
-    convertHalfToFloatGrid<openvdb::HalfGrid>(gridPtrCast<openvdb::HalfGrid>(grids.back()), floatGrid, "half_dragon_in_float");
-
-    openvdb::GridPtrVec grids2;
-    grids2.push_back(grids.front());
-    grids2.push_back(floatGrid);
+    openvdb::GridPtrVec grids;
+    grids.push_back(halfResult.grid);
+    grids.push_back(halfInFloat);
 
     // Save to VDB file
     io::File file(vdbFile);
-    file.write(grids2);
+    file.write(grids);
     file.close();
+
+    floatResult.print();
+    halfResult.print();
 }
 
 int main()
