@@ -314,7 +314,7 @@ createLevelSetPlatonic(int faceCount,float scale, const Vec3f& center,
     float voxelSize, float halfWidth, InterruptT *interrupt)
 {
     // GridType::ValueType is required to be a floating-point scalar.
-    static_assert(std::is_floating_point<typename GridType::ValueType>::value,
+    static_assert(openvdb::is_floating_point<typename GridType::ValueType>::value,
         "level set grids must have scalar, floating-point value types");
 
     const math::Transform::Ptr xform = math::Transform::createLinearTransform( voxelSize );
