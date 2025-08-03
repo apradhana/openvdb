@@ -14,6 +14,7 @@
 #include <openvdb/tools/LevelSetSphere.h>
 #include <openvdb/tools/LevelSetPlatonic.h>
 #include <openvdb/tools/MeshToVolume.h>
+#include <openvdb/tools/VolumeToMesh.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -280,6 +281,63 @@ void testMeshToVolume()
     halfResult.print();
 }
 
+void testVolumeToMesh()
+{
+    using namespace openvdb;
+    std::string vdbFile = "dragon.vdb";
+    std::string logTitle = "==== Test volumeToMesh ====";
+    std::cout << logTitle << std::endl;
+
+    // Open the VDB file
+    io::File file(vdbFile);
+    file.open();
+    GridPtrVecPtr grids = file.getGrids();
+    if (!grids || grids->empty()) {
+        std::cerr << "No grids found in " << vdbFile << std::endl;
+        return;
+    }
+    // Find the first FloatGrid
+    FloatGrid::Ptr grid = nullptr;
+    for (auto& baseGrid : *grids) {
+        grid = gridPtrCast<FloatGrid>(baseGrid);
+        if (grid) break;
+    }
+    if (!grid) {
+        std::cerr << "No FloatGrid found in " << vdbFile << std::endl;
+        return;
+    }
+    std::cout << "Grid name: " << grid->getName() << std::endl;
+
+    // Run volumeToMesh
+    std::vector<openvdb::Vec3s> points;
+    std::vector<openvdb::Vec3I> triangles;
+    std::vector<openvdb::Vec4I> quads;
+    double isovalue = 0.0;
+    double adaptivity = 0.0;
+    bool relaxDisorientedTriangles = true;
+    openvdb::tools::volumeToMesh(*grid, points, triangles, quads, isovalue, adaptivity, relaxDisorientedTriangles);
+
+    std::cout << "volumeToMesh results:" << std::endl;
+    std::cout << "  points:    " << points.size() << std::endl;
+    std::cout << "  triangles: " << triangles.size() << std::endl;
+    std::cout << "  quads:     " << quads.size() << std::endl;
+
+    // Save the mesh to an OBJ file
+    std::string objFile = "dragon_mesh.obj";
+    std::ofstream out(objFile);
+    for (const auto& point : points) {
+        out << "v " << point[0] << " " << point[1] << " " << point[2] << std::endl;
+    }
+    for (const auto& triangle : triangles) {
+        out << "f " << triangle[0] + 1 << " " << triangle[1] + 1 << " " << triangle[2] + 1 << std::endl;
+    }
+    for (const auto& quad : quads) {
+        out << "f " << quad[0] + 1 << " " << quad[1] + 1 << " " << quad[2] + 1 << " " << quad[3] + 1 << std::endl;
+    }
+    out.close();
+    std::cout << "Mesh saved to " << objFile << std::endl;
+}
+
 int main()
 {
     openvdb::initialize();
@@ -287,6 +345,7 @@ int main()
     testLevelSetSphere();
     testLevelSetPlatonic();
     testMeshToVolume();
+    testVolumeToMesh();
 
     return 0;
 }
