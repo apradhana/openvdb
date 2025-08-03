@@ -41,6 +41,28 @@ struct CopyValuesOp
     openvdb::HalfGrid::Ptr hg;
     openvdb::FloatGrid::Ptr fg;
 };// CopyValuesOp
+
+template<typename InputGridT, typename OutputGridT>
+struct ConvertValuesOp
+{
+    ConvertValuesOp(typename InputGridT::Ptr inputGrid,
+                    typename OutputGridT::Ptr outputGrid) :
+                    inputGrid(inputGrid),
+                    outputGrid(outputGrid) {}
+
+    template <typename T>
+    void operator()(T &node, size_t) const
+    {
+        auto inputAcc = inputGrid->getAccessor();
+        for (typename T::ValueAllIter iter = node.beginValueAll(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            iter.setValue(inputAcc.getValue(ijk));
+        }
+    }
+
+    typename InputGridT::Ptr inputGrid;
+    typename OutputGridT::Ptr outputGrid;
+};// ConvertValuesOp
 } // namespace internal
 
 template<typename GridT>
@@ -67,7 +89,7 @@ convertHalfToFloatGrid(typename HalfGridT::Ptr hg, const openvdb::FloatGrid::Ptr
     fg->tree().topologyUnion(hg->tree());
 
     tree::LeafManager<FloatTree> lm(fg->tree());
-    ::internal::CopyValuesOp op(hg, fg);
+    ::internal::ConvertValuesOp<HalfGrid, FloatGrid> op(hg, fg);
     lm.foreach(op);
 
     auto fAcc = fg->getAccessor();
