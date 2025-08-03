@@ -21,27 +21,6 @@
 
 
 namespace internal {
-struct CopyValuesOp
-{
-    CopyValuesOp(openvdb::HalfGrid::Ptr hg,
-                 openvdb::FloatGrid::Ptr fg) :
-                 hg(hg),
-                 fg(fg) {}
-
-    template <typename T>
-    void operator()(T &node, size_t) const
-    {
-        auto halfAcc = hg->getAccessor();
-        for (typename T::ValueAllIter iter = node.beginValueAll(); iter; ++iter) {
-            auto ijk = iter.getCoord();
-            iter.setValue(halfAcc.getValue(ijk));
-        }
-    }
-
-    openvdb::HalfGrid::Ptr hg;
-    openvdb::FloatGrid::Ptr fg;
-};// CopyValuesOp
-
 template<typename InputGridT, typename OutputGridT>
 struct ConvertValuesOp
 {
@@ -73,10 +52,47 @@ struct TestResult {
 
     TestResult(double duration, typename GridT::Ptr grid, int activeVoxelCount) : duration(duration), grid(grid), activeVoxelCount(activeVoxelCount) {}
 
-    void print() const {
-        std::cout << "duration = " << duration << " seconds" << std::endl;
+    void print(std::string prefix) const {
+        std::cout << prefix << " duration = " << duration << " seconds, activeVoxelCount = " << activeVoxelCount << "\n";
     }
 };
+
+template<typename InputGridT, typename OutputGridT>
+void
+convertPayload(typename InputGridT::Ptr inputGrid, typename OutputGridT::Ptr outputGrid, std::string gridName)
+{
+    using namespace openvdb;
+
+    using OutputTreeType = typename OutputGridT::TreeType;
+
+    outputGrid->setName(gridName);
+    outputGrid->setTransform(inputGrid->transform().copy());
+    outputGrid->tree().topologyUnion(inputGrid->tree());
+
+    tree::LeafManager<OutputTreeType> lm(outputGrid->tree());
+    ::internal::ConvertValuesOp<InputGridT, OutputGridT> op(inputGrid, outputGrid);
+    lm.foreach(op);
+
+    auto outAcc = outputGrid->getAccessor();
+    auto inAcc = inputGrid->getAccessor();
+    float maxDif = 0.f;
+    for (auto iter = outputGrid->beginValueOn(); iter; ++iter) {
+        math::Coord const ijk = iter.getCoord();
+        auto const outv = outAcc.getValue(ijk);
+        auto const inv = inAcc.getValue(ijk);
+        float const dif = std::abs(outv - inv);
+        if (dif > maxDif) {
+            maxDif = dif;
+        }
+    }
+    std::cout << "convertPayload::maxDif = " << maxDif << "\tactiveVoxelCount dif = " << (int)(outputGrid->activeVoxelCount() - inputGrid->activeVoxelCount()) << "\n";
+
+
+    if (inputGrid->getGridClass() == GRID_LEVEL_SET) {
+        outputGrid->setGridClass(GRID_LEVEL_SET);
+        openvdb::tools::changeLevelSetBackground(outputGrid->tree(), 3.f);
+    }
+}
 
 template<typename HalfGridT>
 void
@@ -118,7 +134,7 @@ saveTestResults(TestResult<openvdb::FloatGrid> floatResult, TestResult<openvdb::
     using namespace openvdb;
 
     FloatGrid::Ptr halfInFloat = FloatGrid::create();
-    convertHalfToFloatGrid<HalfGrid>(gridPtrCast<HalfGrid>(halfResult.grid), halfInFloat, halfResult.grid->getName() + "_in_float");
+    convertPayload<HalfGrid, FloatGrid>(gridPtrCast<HalfGrid>(halfResult.grid), halfInFloat, halfResult.grid->getName() + "_in_float");
 
     GridPtrVec grids;
     grids.push_back(floatResult.grid);
@@ -161,8 +177,8 @@ void testLevelSetSphere() {
 
     saveTestResults(floatResult, halfResult, fileName);
 
-    halfResult.print();
-    floatResult.print();
+    halfResult.print("half_sphere ");
+    floatResult.print("float_sphere");
 }
 
 
@@ -200,8 +216,8 @@ void testLevelSetPlatonic()
 
     saveTestResults(floatResult, halfResult, fileName);
 
-    floatResult.print();
-    halfResult.print();
+    floatResult.print("float_octahedron");
+    halfResult.print("half_octahedron ");
 }
 
 
@@ -299,8 +315,8 @@ void testMeshToVolume()
 
     saveTestResults(floatResult, halfResult, vdbFile);
 
-    floatResult.print();
-    halfResult.print();
+    floatResult.print("float_dragon");
+    halfResult.print("half_dragon ");
 }
 
 void testVolumeToMesh()
