@@ -64,6 +64,7 @@ convertPayload(typename InputGridT::Ptr inputGrid, typename OutputGridT::Ptr out
     using namespace openvdb;
 
     using OutputTreeType = typename OutputGridT::TreeType;
+    using ValueType = typename OutputGridT::ValueType;
 
     outputGrid->setName(gridName);
     outputGrid->setTransform(inputGrid->transform().copy());
@@ -90,7 +91,7 @@ convertPayload(typename InputGridT::Ptr inputGrid, typename OutputGridT::Ptr out
 
     if (inputGrid->getGridClass() == GRID_LEVEL_SET) {
         outputGrid->setGridClass(GRID_LEVEL_SET);
-        openvdb::tools::changeLevelSetBackground(outputGrid->tree(), 3.f);
+        openvdb::tools::changeLevelSetBackground(outputGrid->tree(), ValueType(3.f));
     }
 }
 
@@ -376,12 +377,49 @@ void testVolumeToMesh()
     std::cout << "Mesh saved to " << objFile << std::endl;
 }
 
+void testChangeLevelSetBackground()
+{
+    using namespace openvdb;
+    std::string vdbFile = "dragon.vdb";
+    std::string logTitle = "==== Test changeLevelSetBackground ====";
+    std::cout << logTitle << std::endl;
+
+    io::File file(vdbFile);
+    file.open();
+    GridPtrVecPtr grids = file.getGrids();
+    if (!grids || grids->empty()) {
+        std::cerr << "No grids found in " << vdbFile << std::endl;
+        return;
+    }
+    FloatGrid::Ptr grid = nullptr;
+    for (auto& baseGrid : *grids) {
+        grid = gridPtrCast<FloatGrid>(baseGrid);
+        if (grid) break;
+    }
+    if (!grid) {
+        std::cerr << "No FloatGrid found in " << vdbFile << std::endl;
+        return;
+    }
+
+    HalfGrid::Ptr halfGrid = HalfGrid::create();
+    auto halfGridBgBefore = halfGrid->background();
+    halfGrid->setName(grid->getName() + "_half");
+    halfGrid->setTransform(grid->transform().copy());
+    halfGrid->tree().topologyUnion(grid->tree());
+
+    openvdb::tools::changeLevelSetBackground(halfGrid->tree(), 3.f);
+
+    std::cout << "changeLevelSetBackground results:" << std::endl;
+    std::cout << "  background before = " << halfGridBgBefore << ", after = " << halfGrid->background() << std::endl;
+}
+
 int main()
 {
     openvdb::initialize();
 
     testLevelSetSphere();
     testLevelSetPlatonic();
+    testChangeLevelSetBackground();
     testMeshToVolume();
     testVolumeToMesh();
 
