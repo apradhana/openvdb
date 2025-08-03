@@ -15,9 +15,12 @@
 #include <openvdb/tools/LevelSetPlatonic.h>
 #include <openvdb/tools/MeshToVolume.h>
 #include <openvdb/tools/VolumeToMesh.h>
+#include <openvdb/tools/ChangeBackground.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
+
+#define TEST_HALF_GRID 0
 
 
 namespace internal {
@@ -336,45 +339,49 @@ void testVolumeToMesh()
         return;
     }
     // Find the first FloatGrid
-    FloatGrid::Ptr grid = nullptr;
+    FloatGrid::Ptr floatGridDragon = nullptr;
     for (auto& baseGrid : *grids) {
-        grid = gridPtrCast<FloatGrid>(baseGrid);
-        if (grid) break;
+        floatGridDragon = gridPtrCast<FloatGrid>(baseGrid);
+        if (floatGridDragon) break;
     }
-    if (!grid) {
+    if (!floatGridDragon) {
         std::cerr << "No FloatGrid found in " << vdbFile << std::endl;
         return;
     }
-    std::cout << "Grid name: " << grid->getName() << std::endl;
+    HalfGrid::Ptr halfGridDragon = HalfGrid::create();
+    convertPayload<FloatGrid, HalfGrid>(floatGridDragon, halfGridDragon, floatGridDragon->getName() + "_half");
 
     // Run volumeToMesh
-    std::vector<openvdb::Vec3s> points;
-    std::vector<openvdb::Vec3I> triangles;
-    std::vector<openvdb::Vec4I> quads;
+    std::vector<openvdb::Vec3s> pointsFloat, pointsHalf;
+    std::vector<openvdb::Vec3I> trianglesFloat, trianglesHalf;
+    std::vector<openvdb::Vec4I> quadsFloat, quadsHalf;
     double isovalue = 0.0;
     double adaptivity = 0.0;
     bool relaxDisorientedTriangles = true;
-    openvdb::tools::volumeToMesh(*grid, points, triangles, quads, isovalue, adaptivity, relaxDisorientedTriangles);
+    openvdb::tools::volumeToMesh(*floatGridDragon, pointsFloat, trianglesFloat, quadsFloat, isovalue, adaptivity, relaxDisorientedTriangles);
+    std::cout << "volumeToMesh results for float grid:" << std::endl;
+    std::cout << "  points:    " << pointsFloat.size() << std::endl;
+    std::cout << "  triangles: " << trianglesFloat.size() << std::endl;
+    std::cout << "  quads:     " << quadsFloat.size() << std::endl;
+    std::string objFileFloat = "dragon_mesh_float.obj";
+    std::ofstream outFloat(objFileFloat);
+    for (const auto& triangle : trianglesFloat) {
+        outFloat << "f " << triangle[0] + 1 << " " << triangle[1] + 1 << " " << triangle[2] + 1 << std::endl;
+    }
+    for (const auto& quad : quadsFloat) {
+        outFloat << "f " << quad[0] + 1 << " " << quad[1] + 1 << " " << quad[2] + 1 << " " << quad[3] + 1 << std::endl;
+    }
+    outFloat.close();
+    std::cout << "Mesh saved to " << objFileFloat << std::endl;
 
-    std::cout << "volumeToMesh results:" << std::endl;
-    std::cout << "  points:    " << points.size() << std::endl;
-    std::cout << "  triangles: " << triangles.size() << std::endl;
-    std::cout << "  quads:     " << quads.size() << std::endl;
+#if TEST_HALF_GRID
+    openvdb::tools::volumeToMesh(*halfGridDragon, pointsHalf, trianglesHalf, quadsHalf, isovalue, adaptivity, relaxDisorientedTriangles);
+    std::cout << "volumeToMesh results for half grid:" << std::endl;
+    std::cout << "  points:    " << pointsHalf.size() << std::endl;
+    std::cout << "  triangles: " << trianglesHalf.size() << std::endl;
+    std::cout << "  quads:     " << quadsHalf.size() << std::endl;
+#endif
 
-    // Save the mesh to an OBJ file
-    std::string objFile = "dragon_mesh.obj";
-    std::ofstream out(objFile);
-    for (const auto& point : points) {
-        out << "v " << point[0] << " " << point[1] << " " << point[2] << std::endl;
-    }
-    for (const auto& triangle : triangles) {
-        out << "f " << triangle[0] + 1 << " " << triangle[1] + 1 << " " << triangle[2] + 1 << std::endl;
-    }
-    for (const auto& quad : quads) {
-        out << "f " << quad[0] + 1 << " " << quad[1] + 1 << " " << quad[2] + 1 << " " << quad[3] + 1 << std::endl;
-    }
-    out.close();
-    std::cout << "Mesh saved to " << objFile << std::endl;
 }
 
 void testChangeLevelSetBackground()
@@ -417,9 +424,14 @@ int main()
 {
     openvdb::initialize();
 
+    // authoring level set
     testLevelSetSphere();
     testLevelSetPlatonic();
+
+    // level set operations
     testChangeLevelSetBackground();
+
+    // conversion from mesh to level set
     testMeshToVolume();
     testVolumeToMesh();
 
