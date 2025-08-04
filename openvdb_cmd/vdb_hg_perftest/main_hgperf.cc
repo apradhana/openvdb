@@ -16,12 +16,10 @@
 #include <openvdb/tools/MeshToVolume.h>
 #include <openvdb/tools/VolumeToMesh.h>
 #include <openvdb/tools/ChangeBackground.h>
+#include <openvdb/tools/LevelSetMeasure.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
-
-#define TEST_HALF_GRID 0
-
 
 namespace internal {
 template<typename InputGridT, typename OutputGridT>
@@ -323,10 +321,42 @@ void testMeshToVolume()
     halfResult.print("half_dragon ");
 }
 
+void _writeObjFile(const std::string& filename,
+                  const std::vector<openvdb::Vec3s>& points,
+                  const std::vector<openvdb::Vec3I>& triangles,
+                  const std::vector<openvdb::Vec4I>& quads)
+{
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << filename << " for writing" << std::endl;
+        return;
+    }
+
+    // Write vertices
+    for (const auto& point : points) {
+        file << "v " << point[0] << " " << point[1] << " " << point[2] << std::endl;
+    }
+
+    // Write triangular faces
+    for (const auto& triangle : triangles) {
+        file << "f " << (triangle[0] + 1) << " " << (triangle[1] + 1) << " " << (triangle[2] + 1) << std::endl;
+    }
+
+    // Write quad faces
+    for (const auto& quad : quads) {
+        file << "f " << (quad[0] + 1) << " " << (quad[1] + 1) << " " << (quad[2] + 1) << " " << (quad[3] + 1) << std::endl;
+    }
+
+    file.close();
+    std::cout << "Mesh written to " << filename << std::endl;
+}
+
 void testVolumeToMesh()
 {
     using namespace openvdb;
     std::string vdbFile = "dragon.vdb";
+    std::string objFileFloat = "dragon_mesh_float.obj";
+    std::string objFileHalf = "dragon_mesh_half.obj";
     std::string logTitle = "==== Test volumeToMesh ====";
     std::cout << logTitle << std::endl;
 
@@ -359,29 +389,22 @@ void testVolumeToMesh()
     double adaptivity = 0.0;
     bool relaxDisorientedTriangles = true;
     openvdb::tools::volumeToMesh(*floatGridDragon, pointsFloat, trianglesFloat, quadsFloat, isovalue, adaptivity, relaxDisorientedTriangles);
+    openvdb::tools::volumeToMesh(*halfGridDragon, pointsHalf, trianglesHalf, quadsHalf, isovalue, adaptivity, relaxDisorientedTriangles);
+
+    _writeObjFile(objFileFloat, pointsFloat, trianglesFloat, quadsFloat);
+    _writeObjFile(objFileHalf, pointsHalf, trianglesHalf, quadsHalf);
+
+    std::cout << "Mesh saved to " << objFileFloat << std::endl;
+    std::cout << "Mesh saved to " << objFileHalf << std::endl;
+
     std::cout << "volumeToMesh results for float grid:" << std::endl;
     std::cout << "  points:    " << pointsFloat.size() << std::endl;
     std::cout << "  triangles: " << trianglesFloat.size() << std::endl;
     std::cout << "  quads:     " << quadsFloat.size() << std::endl;
-    std::string objFileFloat = "dragon_mesh_float.obj";
-    std::ofstream outFloat(objFileFloat);
-    for (const auto& triangle : trianglesFloat) {
-        outFloat << "f " << triangle[0] + 1 << " " << triangle[1] + 1 << " " << triangle[2] + 1 << std::endl;
-    }
-    for (const auto& quad : quadsFloat) {
-        outFloat << "f " << quad[0] + 1 << " " << quad[1] + 1 << " " << quad[2] + 1 << " " << quad[3] + 1 << std::endl;
-    }
-    outFloat.close();
-    std::cout << "Mesh saved to " << objFileFloat << std::endl;
-
-#if TEST_HALF_GRID
-    openvdb::tools::volumeToMesh(*halfGridDragon, pointsHalf, trianglesHalf, quadsHalf, isovalue, adaptivity, relaxDisorientedTriangles);
     std::cout << "volumeToMesh results for half grid:" << std::endl;
     std::cout << "  points:    " << pointsHalf.size() << std::endl;
     std::cout << "  triangles: " << trianglesHalf.size() << std::endl;
     std::cout << "  quads:     " << quadsHalf.size() << std::endl;
-#endif
-
 }
 
 void testChangeLevelSetBackground()
@@ -420,6 +443,96 @@ void testChangeLevelSetBackground()
     std::cout << "  background before = " << halfGridBgBefore << ", after = " << halfGrid->background() << std::endl;
 }
 
+void testLevelSetMeasure()
+{
+    using namespace openvdb;
+    std::string vdbFile = "dragon.vdb";
+    std::string logTitle = "==== Test LevelSetMeasure ====";
+    std::cout << logTitle << std::endl;
+
+    // Open the VDB file
+    io::File file(vdbFile);
+    file.open();
+    GridPtrVecPtr grids = file.getGrids();
+    if (!grids || grids->empty()) {
+        std::cerr << "No grids found in " << vdbFile << std::endl;
+        return;
+    }
+
+    // Find the first FloatGrid
+    FloatGrid::Ptr floatGrid = nullptr;
+    for (auto& baseGrid : *grids) {
+        floatGrid = gridPtrCast<FloatGrid>(baseGrid);
+        if (floatGrid) break;
+    }
+    if (!floatGrid) {
+        std::cerr << "No FloatGrid found in " << vdbFile << std::endl;
+        return;
+    }
+
+    // Create HalfGrid version
+    HalfGrid::Ptr halfGrid = HalfGrid::create();
+    convertPayload<FloatGrid, HalfGrid>(floatGrid, halfGrid, floatGrid->getName() + "_half");
+
+    std::cout << "Grid name: " << floatGrid->getName() << std::endl;
+    std::cout << "FloatGrid activeVoxelCount: " << floatGrid->activeVoxelCount() << std::endl;
+    std::cout << "HalfGrid activeVoxelCount: " << halfGrid->activeVoxelCount() << std::endl;
+
+    // Test LevelSetMeasure functions for FloatGrid
+    try {
+        Real floatArea = tools::levelSetArea(*floatGrid, true);
+        Real floatVolume = tools::levelSetVolume(*floatGrid, true);
+        int floatEuler = tools::levelSetEulerCharacteristic(*floatGrid);
+        int floatGenus = tools::levelSetGenus(*floatGrid);
+
+        std::cout << "FloatGrid measurements:" << std::endl;
+        std::cout << "  Surface Area: " << floatArea << " world units²" << std::endl;
+        std::cout << "  Volume: " << floatVolume << " world units³" << std::endl;
+        std::cout << "  Euler Characteristic: " << floatEuler << std::endl;
+        std::cout << "  Genus: " << floatGenus << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "FloatGrid measurement error: " << e.what() << std::endl;
+    }
+
+    // Test LevelSetMeasure functions for HalfGrid
+    try {
+        Real halfArea = tools::levelSetArea(*halfGrid, true);
+        Real halfVolume = tools::levelSetVolume(*halfGrid, true);
+        int halfEuler = tools::levelSetEulerCharacteristic(*halfGrid);
+        int halfGenus = tools::levelSetGenus(*halfGrid);
+
+        std::cout << "HalfGrid measurements:" << std::endl;
+        std::cout << "  Surface Area: " << halfArea << " world units²" << std::endl;
+        std::cout << "  Volume: " << halfVolume << " world units³" << std::endl;
+        std::cout << "  Euler Characteristic: " << halfEuler << std::endl;
+        std::cout << "  Genus: " << halfGenus << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "HalfGrid measurement error: " << e.what() << std::endl;
+    }
+
+    // Test LevelSetMeasure class directly for more detailed analysis
+    try {
+        tools::LevelSetMeasure<FloatGrid> measure(*floatGrid);
+        
+        Real area = measure.area(true);
+        Real volume = measure.volume(true);
+        Real avgMeanCurvature = measure.avgMeanCurvature(true);
+        Real avgGaussianCurvature = measure.avgGaussianCurvature(true);
+        int eulerChar = measure.eulerCharacteristic();
+        int genus = measure.genus();
+
+        std::cout << "Detailed FloatGrid analysis:" << std::endl;
+        std::cout << "  Surface Area: " << area << " world units²" << std::endl;
+        std::cout << "  Volume: " << volume << " world units³" << std::endl;
+        std::cout << "  Average Mean Curvature: " << avgMeanCurvature << std::endl;
+        std::cout << "  Average Gaussian Curvature: " << avgGaussianCurvature << std::endl;
+        std::cout << "  Euler Characteristic: " << eulerChar << std::endl;
+        std::cout << "  Genus: " << genus << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Detailed measurement error: " << e.what() << std::endl;
+    }
+}
+
 int main()
 {
     openvdb::initialize();
@@ -430,6 +543,9 @@ int main()
 
     // level set operations
     testChangeLevelSetBackground();
+
+    // level set measurement
+    testLevelSetMeasure();
 
     // conversion from mesh to level set
     testMeshToVolume();
