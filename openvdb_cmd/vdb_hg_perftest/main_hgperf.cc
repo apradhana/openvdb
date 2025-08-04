@@ -474,9 +474,8 @@ void testLevelSetMeasure()
     HalfGrid::Ptr halfGrid = HalfGrid::create();
     convertPayload<FloatGrid, HalfGrid>(floatGrid, halfGrid, floatGrid->getName() + "_half");
 
-    std::cout << "Grid name: " << floatGrid->getName() << std::endl;
-    std::cout << "FloatGrid activeVoxelCount: " << floatGrid->activeVoxelCount() << std::endl;
-    std::cout << "HalfGrid activeVoxelCount: " << halfGrid->activeVoxelCount() << std::endl;
+    std::cout << "Float grid name: " << floatGrid->getName() << " half grid name: " << halfGrid->getName() << std::endl;
+    std::cout << "FloatGrid activeVoxelCount: " << floatGrid->activeVoxelCount() << " half grid activeVoxelCount: " << halfGrid->activeVoxelCount() << std::endl;
 
     // Test LevelSetMeasure functions for FloatGrid
     try {
@@ -484,50 +483,46 @@ void testLevelSetMeasure()
         Real floatVolume = tools::levelSetVolume(*floatGrid, true);
         int floatEuler = tools::levelSetEulerCharacteristic(*floatGrid);
         int floatGenus = tools::levelSetGenus(*floatGrid);
-
-        std::cout << "FloatGrid measurements:" << std::endl;
-        std::cout << "  Surface Area: " << floatArea << " world units²" << std::endl;
-        std::cout << "  Volume: " << floatVolume << " world units³" << std::endl;
-        std::cout << "  Euler Characteristic: " << floatEuler << std::endl;
-        std::cout << "  Genus: " << floatGenus << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "FloatGrid measurement error: " << e.what() << std::endl;
-    }
-
-    // Test LevelSetMeasure functions for HalfGrid
-    try {
         Real halfArea = tools::levelSetArea(*halfGrid, true);
         Real halfVolume = tools::levelSetVolume(*halfGrid, true);
         int halfEuler = tools::levelSetEulerCharacteristic(*halfGrid);
         int halfGenus = tools::levelSetGenus(*halfGrid);
 
-        std::cout << "HalfGrid measurements:" << std::endl;
-        std::cout << "  Surface Area: " << halfArea << " world units²" << std::endl;
-        std::cout << "  Volume: " << halfVolume << " world units³" << std::endl;
-        std::cout << "  Euler Characteristic: " << halfEuler << std::endl;
-        std::cout << "  Genus: " << halfGenus << std::endl;
+        std::cout << "Measurements:" << std::endl;
+        std::cout << "  Diff Surface Area: " << floatArea - halfArea << " world units²" << std::endl;
+        std::cout << "  Diff Volume: " << floatVolume - halfVolume << " world units³" << std::endl;
+        std::cout << "  Diff Euler Characteristic: " << floatEuler - halfEuler << std::endl;
+        std::cout << "  Diff Genus: " << floatGenus - halfGenus << std::endl << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "HalfGrid measurement error: " << e.what() << std::endl;
+        std::cerr << "FloatGrid and HalfGrid measurement error: " << e.what() << std::endl;
     }
 
     // Test LevelSetMeasure class directly for more detailed analysis
     try {
-        tools::LevelSetMeasure<FloatGrid> measure(*floatGrid);
-        
-        Real area = measure.area(true);
-        Real volume = measure.volume(true);
-        Real avgMeanCurvature = measure.avgMeanCurvature(true);
-        Real avgGaussianCurvature = measure.avgGaussianCurvature(true);
-        int eulerChar = measure.eulerCharacteristic();
-        int genus = measure.genus();
+        tools::LevelSetMeasure<FloatGrid> measureFloat(*floatGrid);
+        tools::LevelSetMeasure<HalfGrid> measureHalf(*halfGrid);
+
+        Real areaFloat = measureFloat.area(true);
+        Real volumeFloat = measureFloat.volume(true);
+        Real avgMeanCurvatureFloat = measureFloat.avgMeanCurvature(true);
+        Real avgGaussianCurvatureFloat = measureFloat.avgGaussianCurvature(true);
+        int eulerCharFloat = measureFloat.eulerCharacteristic();
+        int genusFloat = measureFloat.genus();
+
+        Real areaHalf = measureHalf.area(true);
+        Real volumeHalf = measureHalf.volume(true);
+        Real avgMeanCurvatureHalf = measureHalf.avgMeanCurvature(true);
+        Real avgGaussianCurvatureHalf = measureHalf.avgGaussianCurvature(true);
+        int eulerCharHalf = measureHalf.eulerCharacteristic();
+        int genusHalf = measureHalf.genus();
 
         std::cout << "Detailed FloatGrid analysis:" << std::endl;
-        std::cout << "  Surface Area: " << area << " world units²" << std::endl;
-        std::cout << "  Volume: " << volume << " world units³" << std::endl;
-        std::cout << "  Average Mean Curvature: " << avgMeanCurvature << std::endl;
-        std::cout << "  Average Gaussian Curvature: " << avgGaussianCurvature << std::endl;
-        std::cout << "  Euler Characteristic: " << eulerChar << std::endl;
-        std::cout << "  Genus: " << genus << std::endl;
+        std::cout << "  Diff Surface Area: " << areaFloat - areaHalf << " world units²" << std::endl;
+        std::cout << "  Diff Volume: " << volumeFloat - volumeHalf << " world units³" << std::endl;
+        std::cout << "  Diff Average Mean Curvature: " << avgMeanCurvatureFloat - avgMeanCurvatureHalf << std::endl;
+        std::cout << "  Diff Average Gaussian Curvature: " << avgGaussianCurvatureFloat - avgGaussianCurvatureHalf << std::endl;
+        std::cout << "  Diff Euler Characteristic: " << eulerCharFloat - eulerCharHalf << std::endl;
+        std::cout << "  Diff Genus: " << genusFloat - genusHalf << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Detailed measurement error: " << e.what() << std::endl;
     }
