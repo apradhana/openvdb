@@ -488,9 +488,9 @@ void testLevelSetMeasure()
         int halfEuler = tools::levelSetEulerCharacteristic(*halfGrid);
         int halfGenus = tools::levelSetGenus(*halfGrid);
 
-        std::cout << "Measurements:" << std::endl;
-        std::cout << "  Diff Surface Area: " << floatArea - halfArea << " world units²" << std::endl;
-        std::cout << "  Diff Volume: " << floatVolume - halfVolume << " world units³" << std::endl;
+        std::cout << "Measure area, volume, Euler characteristic, genus separately:" << std::endl;
+        std::cout << "  Diff Surface Area: " << floatArea - halfArea << " world units squared" << std::endl;
+        std::cout << "  Diff Volume: " << floatVolume - halfVolume << " world units cubed" << std::endl;
         std::cout << "  Diff Euler Characteristic: " << floatEuler - halfEuler << std::endl;
         std::cout << "  Diff Genus: " << floatGenus - halfGenus << std::endl << std::endl;
     } catch (const std::exception& e) {
@@ -516,15 +516,15 @@ void testLevelSetMeasure()
         int eulerCharHalf = measureHalf.eulerCharacteristic();
         int genusHalf = measureHalf.genus();
 
-        std::cout << "Detailed FloatGrid analysis:" << std::endl;
-        std::cout << "  Diff Surface Area: " << areaFloat - areaHalf << " world units²" << std::endl;
-        std::cout << "  Diff Volume: " << volumeFloat - volumeHalf << " world units³" << std::endl;
+        std::cout << "Measure area, volume, Euler characteristic, genus using LevelSetMeasure class" << std::endl;
+        std::cout << "  Diff Surface Area: " << areaFloat - areaHalf << " world units squared" << std::endl;
+        std::cout << "  Diff Volume: " << volumeFloat - volumeHalf << " world units cubed" << std::endl;
         std::cout << "  Diff Average Mean Curvature: " << avgMeanCurvatureFloat - avgMeanCurvatureHalf << std::endl;
         std::cout << "  Diff Average Gaussian Curvature: " << avgGaussianCurvatureFloat - avgGaussianCurvatureHalf << std::endl;
         std::cout << "  Diff Euler Characteristic: " << eulerCharFloat - eulerCharHalf << std::endl;
         std::cout << "  Diff Genus: " << genusFloat - genusHalf << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "Detailed measurement error: " << e.what() << std::endl;
+        std::cerr << "LevelSetMeasure class measurement error: " << e.what() << std::endl;
     }
 }
 
