@@ -528,6 +528,32 @@ void testLevelSetMeasure()
     }
 }
 
+void testLevelSetAdvection()
+{
+    using namespace openvdb;
+    std::string logTitle = "==== Test LevelSetAdvection ====";
+    std::cout << logTitle << std::endl;
+
+    const int faceCount = 4; // 4=Tetrahedron, 6=Cube, 8=Octahedron, 12=Dodecahedron, 20=Icosahedron
+    const float scale = 1.0f;
+    const openvdb::Vec3f center(0.0f, 0.0f, 0.0f);
+    const float voxelSize = 0.1f;
+    const float halfWidth = 3.0f; // narrow band half-width in voxels
+
+    // Create a level set platonic solid as a FloatGrid
+    auto floatLS = testLevelSetPlatonicImpl<openvdb::FloatGrid>(faceCount, scale, center, voxelSize, halfWidth, "float_tetrahedron");
+    auto halfLS = testLevelSetPlatonicImpl<openvdb::HalfGrid>(faceCount, scale, center, voxelSize, halfWidth, "half_tetrahedron");
+
+    // Create velocity field
+    auto cubeRes = testLevelSetPlatonicImpl<openvdb::FloatGrid>(6, scale, center, voxelSize, halfWidth, "float_cube");
+    auto cubeLS = cubeRes.grid;
+    openvdb::Vec3fGrid::Ptr velocityField = openvdb::Vec3fGrid::create(openvdb::Vec3f(0.0f, 0.0f, 0.0f));
+    velocityField->setTransform(cubeLS->transform().copy());
+    velocityField->tree().topologyUnion(cubeLS->tree());
+    velocityField->setName("velocity_field");
+
+}
+
 int main()
 {
     openvdb::initialize();
