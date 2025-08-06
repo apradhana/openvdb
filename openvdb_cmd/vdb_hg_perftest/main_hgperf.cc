@@ -17,9 +17,13 @@
 #include <openvdb/tools/VolumeToMesh.h>
 #include <openvdb/tools/ChangeBackground.h>
 #include <openvdb/tools/LevelSetMeasure.h>
+#include <openvdb/tools/LevelSetAdvect.h>
+#include <openvdb/tools/LevelSetTracker.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 namespace internal {
 template<typename InputGridT, typename OutputGridT>
@@ -43,6 +47,29 @@ struct ConvertValuesOp
     typename InputGridT::Ptr inputGrid;
     typename OutputGridT::Ptr outputGrid;
 };// ConvertValuesOp
+
+template<typename VecGridT>
+struct RotationVelocityFieldOp
+{
+    using ValueT = typename VecGridT::ValueType;
+
+    RotationVelocityFieldOp(typename VecGridT::Ptr vel) : velGrid(vel) {}
+
+    template <typename T>
+    void operator()(T &node, size_t) const
+    {
+        auto velAcc = velGrid->getAccessor();
+        auto xform = velGrid->transform();
+        for (typename T::ValueAllIter iter = node.beginValueAll(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            auto xyz = xform.indexToWorld(ijk);
+            ValueT newVel(0.0f, 0.0f, 0.0f);
+            iter.setValue(newVel);
+        }
+    }
+
+    typename VecGridT::Ptr velGrid;
+};// RotationVelocityFieldOp
 } // namespace internal
 
 template<typename GridT>
@@ -527,7 +554,6 @@ void testLevelSetMeasure()
         std::cerr << "LevelSetMeasure class measurement error: " << e.what() << std::endl;
     }
 }
-
 void testLevelSetAdvection()
 {
     using namespace openvdb;
@@ -551,6 +577,10 @@ void testLevelSetAdvection()
     velocityField->setTransform(cubeLS->transform().copy());
     velocityField->tree().topologyUnion(cubeLS->tree());
     velocityField->setName("velocity_field");
+
+    tree::LeafManager<Vec3fGrid::TreeType> lm(velocityField->tree());
+    ::internal::RotationVelocityFieldOp<Vec3fGrid> op(velocityField);
+    lm.foreach(op);
 
 }
 
