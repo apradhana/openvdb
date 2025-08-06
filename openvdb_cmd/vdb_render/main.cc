@@ -914,42 +914,42 @@ main(int argc, char *argv[])
             }
         }
 
-        {
-            float TESTFLOAT = 65504.f + 100.f;
-            openvdb::math::half TESTHALF = 65504.f + 100.f;
-            std::string fileName = "testfloat.vdb";
-            openvdb::FloatGrid::Ptr floatGrid = openvdb::FloatGrid::create(2.f);
-            floatGrid->setTransform(openvdb::math::Transform::createLinearTransform(/*voxel size=*/1.0));
-            floatGrid->setName("float_grid");
-            floatGrid->setSaveFloatAsHalf(true);
-            openvdb::FloatGrid::Accessor floatAcc = floatGrid->getAccessor();
-            openvdb::Coord xyz(1000, -200000000, 30000000);
-            floatAcc.setValue(xyz, TESTFLOAT);
+        // {
+        //     float TESTFLOAT = 65504.f + 100.f;
+        //     openvdb::math::half TESTHALF = 65504.f + 100.f;
+        //     std::string fileName = "testfloat.vdb";
+        //     openvdb::FloatGrid::Ptr floatGrid = openvdb::FloatGrid::create(2.f);
+        //     floatGrid->setTransform(openvdb::math::Transform::createLinearTransform(/*voxel size=*/1.0));
+        //     floatGrid->setName("float_grid");
+        //     floatGrid->setSaveFloatAsHalf(true);
+        //     openvdb::FloatGrid::Accessor floatAcc = floatGrid->getAccessor();
+        //     openvdb::Coord xyz(1000, -200000000, 30000000);
+        //     floatAcc.setValue(xyz, TESTFLOAT);
 
-            openvdb::HalfGrid::Ptr halfGrid = openvdb::HalfGrid::create(2.f);
-            halfGrid->setTransform(openvdb::math::Transform::createLinearTransform(/*voxel size=*/1.0));
-            halfGrid->setName("half_grid");
-            halfGrid->setSaveFloatAsHalf(true);
-            openvdb::HalfGrid::Accessor halfAcc = halfGrid->getAccessor();
-            halfAcc.setValue(xyz, TESTHALF);
+        //     openvdb::HalfGrid::Ptr halfGrid = openvdb::HalfGrid::create(2.f);
+        //     halfGrid->setTransform(openvdb::math::Transform::createLinearTransform(/*voxel size=*/1.0));
+        //     halfGrid->setName("half_grid");
+        //     halfGrid->setSaveFloatAsHalf(true);
+        //     openvdb::HalfGrid::Accessor halfAcc = halfGrid->getAccessor();
+        //     halfAcc.setValue(xyz, TESTHALF);
 
-            openvdb::io::File writeFile(fileName);
-            openvdb::GridPtrVec grids;
-            grids.push_back(floatGrid);
-            grids.push_back(halfGrid);
-            writeFile.write(grids);
-            writeFile.close();
+        //     openvdb::io::File writeFile(fileName);
+        //     openvdb::GridPtrVec grids;
+        //     grids.push_back(floatGrid);
+        //     grids.push_back(halfGrid);
+        //     writeFile.write(grids);
+        //     writeFile.close();
 
-            openvdb::io::File readFile(fileName);
-            readFile.open();
-            openvdb::FloatGrid::Ptr readFloatGrid = openvdb::gridPtrCast<openvdb::FloatGrid>(readFile.readGrid("float_grid"));
-            openvdb::HalfGrid::Ptr readHalfGrid = openvdb::gridPtrCast<openvdb::HalfGrid>(readFile.readGrid("half_grid"));
-            openvdb::FloatGrid::Accessor readFloatAcc = readFloatGrid->getAccessor();
-            openvdb::HalfGrid::Accessor readHalfAcc = readHalfGrid->getAccessor();
-            std::cout << "readFloatGrid = " << readFloatGrid << "\treadHalfGrid = " << readHalfGrid << std::endl;
-            std::cout << "readFloatAcc.getValue(xyz) = " << readFloatAcc.getValue(xyz) << std::endl;
-            std::cout << "readHalfAcc.getValue(xyz) = " << readHalfAcc.getValue(xyz) << std::endl;
-        }
+        //     openvdb::io::File readFile(fileName);
+        //     readFile.open();
+        //     openvdb::FloatGrid::Ptr readFloatGrid = openvdb::gridPtrCast<openvdb::FloatGrid>(readFile.readGrid("float_grid"));
+        //     openvdb::HalfGrid::Ptr readHalfGrid = openvdb::gridPtrCast<openvdb::HalfGrid>(readFile.readGrid("half_grid"));
+        //     openvdb::FloatGrid::Accessor readFloatAcc = readFloatGrid->getAccessor();
+        //     openvdb::HalfGrid::Accessor readHalfAcc = readHalfGrid->getAccessor();
+        //     std::cout << "readFloatGrid = " << readFloatGrid << "\treadHalfGrid = " << readHalfGrid << std::endl;
+        //     std::cout << "readFloatAcc.getValue(xyz) = " << readFloatAcc.getValue(xyz) << std::endl;
+        //     std::cout << "readHalfAcc.getValue(xyz) = " << readHalfAcc.getValue(xyz) << std::endl;
+        // }
     } catch (std::exception& e) {
         OPENVDB_LOG_FATAL(e.what());
         retcode = EXIT_FAILURE;
