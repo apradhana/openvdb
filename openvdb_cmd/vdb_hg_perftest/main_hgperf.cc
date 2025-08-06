@@ -407,6 +407,7 @@ void testVolumeToMesh()
     }
     HalfGrid::Ptr halfGridDragon = HalfGrid::create();
     convertPayload<FloatGrid, HalfGrid>(floatGridDragon, halfGridDragon, floatGridDragon->getName() + "_half");
+    std::cout << "floatGridDragon activeVoxelCount: " << floatGridDragon->activeVoxelCount() << " halfGridDragon activeVoxelCount: " << halfGridDragon->activeVoxelCount() << std::endl;
 
     // Run volumeToMesh
     std::vector<openvdb::Vec3s> pointsFloat, pointsHalf;
@@ -415,20 +416,32 @@ void testVolumeToMesh()
     double isovalue = 0.0;
     double adaptivity = 0.0;
     bool relaxDisorientedTriangles = true;
-    openvdb::tools::volumeToMesh(*floatGridDragon, pointsFloat, trianglesFloat, quadsFloat, isovalue, adaptivity, relaxDisorientedTriangles);
-    openvdb::tools::volumeToMesh(*halfGridDragon, pointsHalf, trianglesHalf, quadsHalf, isovalue, adaptivity, relaxDisorientedTriangles);
+    double durationFloat, durationHalf;
+    {
+        const tbb::tick_count start = tbb::tick_count::now();
+        openvdb::tools::volumeToMesh(*floatGridDragon, pointsFloat, trianglesFloat, quadsFloat, isovalue, adaptivity, relaxDisorientedTriangles);
+        const tbb::tick_count end = tbb::tick_count::now();
+        durationFloat = (end - start).seconds();
+    }
+    {
+        const tbb::tick_count start = tbb::tick_count::now();
+        openvdb::tools::volumeToMesh(*halfGridDragon, pointsHalf, trianglesHalf, quadsHalf, isovalue, adaptivity, relaxDisorientedTriangles);
+        const tbb::tick_count end = tbb::tick_count::now();
+        durationHalf = (end - start).seconds();
+    }
 
     _writeObjFile(objFileFloat, pointsFloat, trianglesFloat, quadsFloat);
     _writeObjFile(objFileHalf, pointsHalf, trianglesHalf, quadsHalf);
 
-    std::cout << "Mesh saved to " << objFileFloat << std::endl;
-    std::cout << "Mesh saved to " << objFileHalf << std::endl;
-
     std::cout << "volumeToMesh results for float grid:" << std::endl;
+    std::cout << "  duration:  " << durationFloat << " seconds" << std::endl;
+    std::cout << "  mesh saved to:  " << objFileFloat << std::endl;
     std::cout << "  points:    " << pointsFloat.size() << std::endl;
     std::cout << "  triangles: " << trianglesFloat.size() << std::endl;
     std::cout << "  quads:     " << quadsFloat.size() << std::endl;
     std::cout << "volumeToMesh results for half grid:" << std::endl;
+    std::cout << "  duration:  " << durationHalf << " seconds" << std::endl;
+    std::cout << "  mesh saved to:  " << objFileHalf << std::endl;
     std::cout << "  points:    " << pointsHalf.size() << std::endl;
     std::cout << "  triangles: " << trianglesHalf.size() << std::endl;
     std::cout << "  quads:     " << quadsHalf.size() << std::endl;
