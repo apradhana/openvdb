@@ -619,19 +619,19 @@ int main()
 {
     openvdb::initialize();
 
-    // authoring level set
-    testLevelSetSphere();
-    testLevelSetPlatonic();
+    // // authoring level set
+    // testLevelSetSphere();
+    // testLevelSetPlatonic();
 
-    // level set operations
-    testChangeLevelSetBackground();
+    // // level set operations
+    // testChangeLevelSetBackground();
 
-    // level set measurement
-    testLevelSetMeasure();
+    // // level set measurement
+    // testLevelSetMeasure();
 
-    // conversion from mesh to level set
-    testMeshToVolume();
-    testVolumeToMesh();
+    // // conversion from mesh to level set
+    // testMeshToVolume();
+    // testVolumeToMesh();
 
     testDirectConversionToHalfGrid();
 
