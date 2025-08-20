@@ -451,18 +451,18 @@ void testDirectConversionToHalfGrid() {
     using namespace openvdb;
     std::string fileName = "./dragon.vdb";
 
-    // io::File file(fileName);
-    // file.open(false /* delay load*/, io::MappedFile::Notifier(), io::Archive::ScalarConversion::Half);
+    io::File file(fileName);
+    file.open(false /* delay load*/, io::MappedFile::Notifier(), io::Archive::ScalarConversion::Half);
 
-    // HalfGrid::Ptr grid;
-    // // Loop over the names of all of the grids in the file.
-    // for (io::File::NameIterator nameIter = file.beginName();
-    //     nameIter != file.endName(); ++nameIter)
-    // {
-    //     std::string gridName = nameIter.gridName();
-    //     grid = gridPtrCast<HalfGrid>(file.readGrid(gridName));
-    //     std::cout << "gridName = " << gridName << "grid = " << grid << std::endl;
-    // }
+    HalfGrid::Ptr grid;
+    // Loop over the names of all of the grids in the file.
+    for (io::File::NameIterator nameIter = file.beginName();
+        nameIter != file.endName(); ++nameIter)
+    {
+        std::string gridName = nameIter.gridName();
+        grid = gridPtrCast<HalfGrid>(file.readGrid(gridName));
+        std::cout << "gridName = " << gridName << "grid = " << grid << std::endl;
+    }
 }
 
 void testChangeLevelSetBackground()
