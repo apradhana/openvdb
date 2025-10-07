@@ -42,14 +42,14 @@ protected:
 
     /// Initialize an arbitrary ValueType from a scalar.
     static inline ValueT constValue(double d) {
-#ifdef __clang__
 #pragma GCC diagnostic push
+#if defined(__clang__)
 #pragma GCC diagnostic ignored "-Wimplicit-float-conversion"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
 #endif
-        return ValueT(d);
-#ifdef __clang__
+        return static_cast<ValueT>(d);
 #pragma GCC diagnostic pop
-#endif
     }
 
     /// Compare two numeric values for equality within an absolute tolerance.

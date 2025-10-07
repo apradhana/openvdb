@@ -440,14 +440,14 @@ struct CheckNormGrad
     /// @brief Constructor taking a grid and a range to be tested against.
     CheckNormGrad(const GridT&  grid, const ValueType& _min, const ValueType& _max)
         : acc(grid.getConstAccessor())
-#ifdef __clang__
 #pragma GCC diagnostic push
+#if defined(__clang__)
 #pragma GCC diagnostic ignored "-Wimplicit-float-conversion"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
 #endif
         , invdx2(ValueType(1.0/math::Pow2(grid.voxelSize()[0])))
-#ifdef __clang__
 #pragma GCC diagnostic pop
-#endif
         , minVal2(_min*_min)
         , maxVal2(_max*_max)
     {
