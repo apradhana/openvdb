@@ -268,7 +268,7 @@ TEST_F(TestDiagnostics, testDiagnoseHalf)
     using half = openvdb::math::half;
 
     const half radius = 4.3f;
-    const openvdb::Vec3H center(half(15.8), half(13.2), half(16.7));
+    const openvdb::Vec3H center(half(15.8f), half(13.2f), half(16.7f));
     const half voxelSize = 0.1f, width = 2.0f, gamma=voxelSize*width;
 
     HalfGrid::Ptr gridSphere =
