@@ -167,7 +167,7 @@ else()
     TestPoissonSolver.cc
     TestPotentialFlow.cc
     TestPrePostAPI.cc
-    # TestQuadraticInterp.cc
+    TestQuadraticInterp.cc
     TestQuantizedUnitVec.cc
     TestQuat.cc
     TestRay.cc
@@ -192,7 +192,7 @@ else()
     TestVec3Metadata.cc
     TestVolumeRayIntersector.cc
     TestVolumeToMesh.cc
-    # TestVolumeToSpheres.cc
+    TestVolumeToSpheres.cc
   )
 endif()
 
