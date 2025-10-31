@@ -81,6 +81,7 @@ struct is_arithmetic : std::is_arithmetic<T> {};
 template<>
 struct is_arithmetic<math::half> : std::true_type {};
 // Helper variable template (equivalent to std::is_arithmetic_v)
+// TODO: Comment from Nick: Put these in Types, alongside the other traits
 template<typename T>
 inline constexpr bool is_arithmetic_v = is_arithmetic<T>::value;
 
@@ -170,6 +171,8 @@ template<> inline std::string negative(const std::string& val) { return val; }
 
 //@{
 /// Tolerance for floating-point comparison
+// TODO: Comment from Nick: A comment for the choice
+// TODO: Comment from GHurstUnither: It's equal to 2^−10,which is essentially the machine epsilon for math::half.
 template<typename T> struct Tolerance   { static T value() { return zeroVal<T>(); } };
 template<> struct Tolerance<math::half> { static math::half value() { return math::half(0.00097656f); } };
 template<> struct Tolerance<float>      { static float value() { return 1e-8f; } };
@@ -642,7 +645,7 @@ Pow(double b, double e)
 // ==========> Max <==================
 
 namespace internal {
-
+// TODO: Comment from Nick: You can probably just delete these internal functions and change Max() just do a < b ? b : a instead of calling std::max - note that you need to use the less than op, your code currently isn't equivalent (max uses lt and returns first arg when equal)
 inline const math::half&
 max_impl(const math::half& a, const math::half& b)
 {
@@ -720,7 +723,7 @@ Max(const Type& a, const Type& b, const Type& c, const Type& d,
 // ==========> Min <==================
 
 namespace internal {
-
+// TODO: Comment from Nick: You can probably just delete these internal functions and change Min() just do a < b ? b : a instead of calling std::max - note that you need to use the less than op, your code currently isn't equivalent (min uses lt and returns first arg when equal)
 inline const math::half&
 min_impl(const math::half& a, const math::half& b)
 {

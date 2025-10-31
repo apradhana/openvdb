@@ -68,6 +68,7 @@ using BBoxd = math::BBox<Vec3d>;
 using Vec4R = math::Vec4<Real>;
 using Vec4I = math::Vec4<Index32>;
 using Vec4f = math::Vec4<float>;
+// TODO: Comment from Nick: Did you consider adding alias for half matrices? Or rather, was there a specific reason we only add aliases for vec2/3/4s?
 using Vec4H = math::Vec4<Half>;
 using math::Vec4i;
 using math::Vec4s;
@@ -499,6 +500,8 @@ struct ComputeTypeFor
 };
 
 // Specialization for half -> float
+// TODO: Comment from Nick: Why not use PromoteType here and below
+// TODO: Comment from Nick: Have you considered using ValueTraits or like types to support all VDB types which can be templated on scalars to promote half element types?
 template <>
 struct ComputeTypeFor<Half>
 {
@@ -546,6 +549,7 @@ template<typename FromType, typename ToType> struct CopyConstness<const FromType
 /// @endcond
 
 ////////////////////////////////////////
+// TODO: Comment from Nick: Would be better to derive from std::true_type?
 template<class T>
 struct is_floating_point : std::is_floating_point<T> { };
 

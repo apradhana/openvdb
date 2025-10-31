@@ -663,6 +663,16 @@ using Vec3i = Vec3<int32_t>;
 using Vec3ui = Vec3<uint32_t>;
 using Vec3s = Vec3<float>;
 using Vec3d = Vec3<double>;
+// TODO: Comment from Nick:
+// So none of Vec3 methods (length/cross/etc) will use ComputeType? I've run into some code such as:
+//
+// ComputeType(Vec3H().length());
+// Where the intended use should probably be:
+//
+// ComputeType(Vec3H()).length();
+// This ties in to the somewhat arbitrary line that has been drawn with where the CT stops being propagated. It should probably apply to the underlying math of the types when running on grid operations, but this is not an easy distinction to make - without it it is easy to break.
+//
+// I'd like others to comment if they have thoughts.
 using Vec3h = Vec3<math::half>;
 
 OPENVDB_IS_POD(Vec3i)
