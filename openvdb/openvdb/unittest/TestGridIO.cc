@@ -26,6 +26,7 @@ public:
 protected:
     template<typename GridType> void readAllTest();
     void testCreateWriteReadHalf();
+    void testConvertFloatToHalf();
 };
 
 
@@ -272,6 +273,22 @@ void TestGridIO::testCreateWriteReadHalf() {
     vdbfile.close();
 
     ::remove("something.vdb2");
+}
+
+void TestGridIO::testConvertFloatToHalf() {
+    using namespace openvdb;
+    std::string PATH = "/media/andre/data/dev/openvdb/_assets/bunny.vdb";
+    io::File file(PATH);
+    file.open();
+
+    GridBase::Ptr baseGrid;
+    for (io::File::NameIterator nameIter = file.beginName();
+        nameIter != file.endName(); ++nameIter)
+    {
+            baseGrid = file.readGrid(nameIter.gridName());
+    }
+    file.close();
+    FloatGrid::Ptr grid = gridPtrCast<FloatGrid>(baseGrid);
 }
 
 TEST_F(TestGridIO, testReadAllBool) { readAllTest<openvdb::BoolGrid>(); }
