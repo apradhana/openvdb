@@ -33,6 +33,11 @@ public:
     using NameMap = std::multimap<Name, GridDescriptor>;
     using NameMapCIter = NameMap::const_iterator;
 
+    enum class ScalarConversion {
+        NONE,
+        FLOAT_TO_HALF
+    };
+
     explicit File(const std::string& filename);
     ~File() override;
 
@@ -64,9 +69,9 @@ public:
     /// @throw IoError if the file is not a valid VDB file.
     /// @return @c true if the file's UUID has changed since it was last read.
     /// @see setCopyMaxBytes
-    bool open(bool delayLoad = true, const MappedFile::Notifier& = MappedFile::Notifier());
+    bool open(bool delayLoad = true, const MappedFile::Notifier& = MappedFile::Notifier(), const ScalarConversion = ScalarConversion::NONE);
 #else
-    bool open(bool /*delayLoad*/ = false);
+    bool open(bool /*delayLoad*/ = false, const ScalarConversion = ScalarConversion::NONE);
 #endif
 
     /// Return @c true if the file has been opened for reading.
@@ -213,6 +218,8 @@ private:
 
     struct Impl;
     std::unique_ptr<Impl> mImpl;
+    // TODO: make this goes under mImpl
+    ScalarConversion mScalarConversion;
 };
 
 

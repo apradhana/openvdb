@@ -279,7 +279,7 @@ void TestGridIO::testConvertFloatToHalf() {
     using namespace openvdb;
     std::string PATH = "/media/andre/data/dev/openvdb/_assets/bunny.vdb";
     io::File file(PATH);
-    file.open();
+    file.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
 
     GridBase::Ptr baseGrid;
     for (io::File::NameIterator nameIter = file.beginName();
@@ -288,7 +288,7 @@ void TestGridIO::testConvertFloatToHalf() {
             baseGrid = file.readGrid(nameIter.gridName());
     }
     file.close();
-    FloatGrid::Ptr grid = gridPtrCast<FloatGrid>(baseGrid);
+    // HalfGrid::Ptr grid = gridPtrCast<HalfGrid>(baseGrid);
 }
 
 TEST_F(TestGridIO, testReadAllBool) { readAllTest<openvdb::BoolGrid>(); }
@@ -297,3 +297,4 @@ TEST_F(TestGridIO, testReadAllHalf) { readAllTest<openvdb::HalfGrid>(); }
 TEST_F(TestGridIO, testReadAllVec3S) { readAllTest<openvdb::Vec3SGrid>(); }
 TEST_F(TestGridIO, testReadAllFloat5432) { Float5432Grid::registerGrid(); readAllTest<Float5432Grid>(); }
 TEST_F(TestGridIO, testCreateWriteReadHalf) { testCreateWriteReadHalf(); }
+TEST_F(TestGridIO, testConvertFloatToHalf) { testConvertFloatToHalf(); }

@@ -60,7 +60,7 @@ struct File::Impl
     {
         file.Archive::readGrid(grid, gd, file.inputStream());
     }
-
+    // TODO: pass the scalar conversion to the unarchive function
     static void unarchive(const File& file, GridBase::Ptr& grid,
         const GridDescriptor& gd, const CoordBBox& indexBBox)
     {
@@ -121,6 +121,7 @@ File::File(const std::string& filename): mImpl(new Impl)
     mImpl->mCopyMaxBytes = Impl::getDefaultCopyMaxBytes();
 #endif
     setInputHasGridOffsets(true);
+    mScalarConversion = ScalarConversion::NONE;
 }
 
 
@@ -280,15 +281,16 @@ File::isOpen() const
 
 bool
 #ifdef OPENVDB_USE_DELAYED_LOADING
-File::open(bool delayLoad, const MappedFile::Notifier& notifier)
+File::open(bool delayLoad, const MappedFile::Notifier& notifier, const ScalarConversion scalarConversion)
 #else
-File::open(bool /*delayLoad = true*/)
+File::open(bool /*delayLoad = true*/, const ScalarConversion scalarConversion)
 #endif // OPENVDB_USE_DELAYED_LOADING
 {
     if (isOpen()) {
         OPENVDB_THROW(IoError, filename() << " is already open");
     }
     mImpl->mInStream.reset();
+    mScalarConversion = scalarConversion;
 
     // Open the file.
     std::unique_ptr<std::istream> newStream;
@@ -766,7 +768,19 @@ File::createGrid(const GridDescriptor& gd) const
             << gd.gridType() << " is not registered");
     }
 
-    GridBase::Ptr grid = GridBase::createGrid(gd.gridType());
+    GridBase::Ptr grid = nullptr;
+    if (mScalarConversion == ScalarConversion::NONE) {
+        grid = GridBase::createGrid(gd.gridType());
+    } else {
+        if (gd.gridType() == "Tree_float_5_4_3") {
+            grid = GridBase::createGrid("Tree_half_5_4_3");
+        } else {
+            OPENVDB_THROW(KeyError, "Cannot convert grid "
+                << GridDescriptor::nameAsString(gd.uniqueName())
+                << " from " << filename() << ": grid type "
+                << gd.gridType() << " is not supported for conversion");
+        }
+    }
     if (grid) grid->setSaveFloatAsHalf(gd.saveFloatAsHalf());
 
     return grid;
