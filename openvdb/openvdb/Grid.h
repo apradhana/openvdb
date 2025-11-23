@@ -1625,6 +1625,7 @@ template<typename TreeT>
 inline void
 Grid<TreeT>::readBuffers(std::istream& is)
 {
+    std::cout << "Begin [Grid<TreeT>::readBuffers - Grid.h]" << std::endl;
     io::checkFormatVersion(is);
 
     if (!hasMultiPassIO()) {
@@ -1640,6 +1641,7 @@ Grid<TreeT>::readBuffers(std::istream& is)
             tree().readBuffers(is, saveFloatAsHalf());
         }
     }
+    std::cout << "End [Grid<TreeT>::readBuffers - Grid.h]" << std::endl;
 }
 
 
@@ -1649,6 +1651,7 @@ template<typename TreeT>
 inline void
 Grid<TreeT>::readBuffers(std::istream& is, const CoordBBox& bbox)
 {
+    std::cout << "Begin [Grid<TreeT>::readBuffers(CoordBBox) - Grid.h]" << std::endl;
     io::checkFormatVersion(is);
 
     if (!hasMultiPassIO()) {
@@ -1667,6 +1670,7 @@ Grid<TreeT>::readBuffers(std::istream& is, const CoordBBox& bbox)
         // so instead clip afterwards.
         tree().clip(bbox);
     }
+    std::cout << "End [Grid<TreeT>::readBuffers(CoordBBox) - Grid.h]" << std::endl;
 }
 
 

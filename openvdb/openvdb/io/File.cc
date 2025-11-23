@@ -46,31 +46,39 @@ struct File::Impl
     template<typename BoxType>
     static GridBase::Ptr readGrid(const File& file, const GridDescriptor& gd, const BoxType& bbox)
     {
+        std::cout << "Begin [File::Impl::readGrid - File.cc]" << std::endl;
         // This method should not be called for files that don't contain grid offsets.
         OPENVDB_ASSERT(file.inputHasGridOffsets());
 
         GridBase::Ptr grid = file.createGrid(gd);
         gd.seekToGrid(file.inputStream());
         unarchive(file, grid, gd, bbox);
+        std::cout << "End [File::Impl::readGrid - File.cc]" << std::endl;
         return grid;
     }
 
     static void unarchive(const File& file, GridBase::Ptr& grid,
         const GridDescriptor& gd, NoBBox)
     {
+        std::cout << "Begin [File::Impl::unarchive(NoBBox) - File.cc]" << std::endl;
         file.Archive::readGrid(grid, gd, file.inputStream());
+        std::cout << "End [File::Impl::unarchive(NoBBox) - File.cc]" << std::endl;
     }
     // TODO: pass the scalar conversion to the unarchive function
     static void unarchive(const File& file, GridBase::Ptr& grid,
         const GridDescriptor& gd, const CoordBBox& indexBBox)
     {
+        std::cout << "Begin [File::Impl::unarchive(CoordBBox) - File.cc]" << std::endl;
         file.Archive::readGrid(grid, gd, file.inputStream(), indexBBox);
+        std::cout << "End [File::Impl::unarchive(CoordBBox) - File.cc]" << std::endl;
     }
 
     static void unarchive(const File& file, GridBase::Ptr& grid,
         const GridDescriptor& gd, const BBoxd& worldBBox)
     {
+        std::cout << "Begin [File::Impl::unarchive(BBoxd) - File.cc]" << std::endl;
         file.Archive::readGrid(grid, gd, file.inputStream(), worldBBox);
+        std::cout << "End [File::Impl::unarchive(BBoxd) - File.cc]" << std::endl;
     }
 
     static Index64 getDefaultCopyMaxBytes()

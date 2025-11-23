@@ -248,6 +248,8 @@ inline void
 readData(std::istream& is, T* data, Index count, uint32_t compression,
     DelayedLoadMetadata* metadata = nullptr, size_t metadataOffset = size_t(0))
 {
+    // TODO: remove this
+    // std::cout << "Begin [io::readData - Compression.h]" << std::endl;
     const bool seek = data == nullptr;
     if (seek) {
         OPENVDB_ASSERT(!getStreamMetadataPtr(is) || getStreamMetadataPtr(is)->seekable());
@@ -266,6 +268,7 @@ readData(std::istream& is, T* data, Index count, uint32_t compression,
     } else {
         is.read(reinterpret_cast<char*>(data), sizeof(T) * count);
     }
+    // std::cout << "End [io::readData - Compression.h]" << std::endl;
 }
 
 /// Specialization for std::string input
@@ -466,6 +469,8 @@ inline void
 readCompressedValues(std::istream& is, ValueT* destBuf, Index destCount,
     const MaskT& valueMask, bool fromHalf)
 {
+    // TODO: remove this
+    // std::cout << "Begin [io::readCompressedValues - Compression.h]" << std::endl;
     checkFormatVersion(is);
 
     // Get the stream's compression settings.
@@ -584,6 +589,7 @@ readCompressedValues(std::istream& is, ValueT* destBuf, Index destCount,
             }
         }
     }
+    // std::cout << "End [io::readCompressedValues - Compression.h]" << std::endl;
 }
 
 

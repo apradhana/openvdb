@@ -3217,9 +3217,11 @@ template<typename ChildT, Index Log2Dim>
 inline void
 InternalNode<ChildT, Log2Dim>::readBuffers(std::istream& is, bool fromHalf)
 {
+    std::cout << "Begin [InternalNode<ChildT, Log2Dim>::readBuffers - InternalNode.h]" << std::endl;
     for (ChildOnIter iter = this->beginChildOn(); iter; ++iter) {
         iter->readBuffers(is, fromHalf);
     }
+    std::cout << "End [InternalNode<ChildT, Log2Dim>::readBuffers - InternalNode.h]" << std::endl;
 }
 
 
@@ -3228,6 +3230,7 @@ inline void
 InternalNode<ChildT, Log2Dim>::readBuffers(std::istream& is,
     const CoordBBox& clipBBox, bool fromHalf)
 {
+    std::cout << "Begin [InternalNode<ChildT, Log2Dim>::readBuffers(CoordBBox) - InternalNode.h]" << std::endl;
     for (ChildOnIter iter = this->beginChildOn(); iter; ++iter) {
         // Stream in the branch rooted at this child.
         // (We can't skip over children that lie outside the clipping region,
@@ -3242,6 +3245,7 @@ InternalNode<ChildT, Log2Dim>::readBuffers(std::istream& is,
         background = *static_cast<const ValueType*>(bgPtr);
     }
     this->clip(clipBBox, background);
+    std::cout << "End [InternalNode<ChildT, Log2Dim>::readBuffers(CoordBBox) - InternalNode.h]" << std::endl;
 }
 
 

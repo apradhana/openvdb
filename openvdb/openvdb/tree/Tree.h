@@ -1301,8 +1301,10 @@ template<typename RootNodeType>
 inline void
 Tree<RootNodeType>::readBuffers(std::istream &is, bool saveFloatAsHalf)
 {
+    std::cout << "Begin [Tree<RootNodeType>::readBuffers - Tree.h]" << std::endl;
     this->clearAllAccessors();
     mRoot.readBuffers(is, saveFloatAsHalf);
+    std::cout << "End [Tree<RootNodeType>::readBuffers - Tree.h]" << std::endl;
 }
 
 
@@ -1310,8 +1312,10 @@ template<typename RootNodeType>
 inline void
 Tree<RootNodeType>::readBuffers(std::istream &is, const CoordBBox& bbox, bool saveFloatAsHalf)
 {
+    std::cout << "Begin [Tree<RootNodeType>::readBuffers(CoordBBox) - Tree.h]" << std::endl;
     this->clearAllAccessors();
     mRoot.readBuffers(is, bbox, saveFloatAsHalf);
+    std::cout << "End [Tree<RootNodeType>::readBuffers(CoordBBox) - Tree.h]" << std::endl;
 }
 
 
