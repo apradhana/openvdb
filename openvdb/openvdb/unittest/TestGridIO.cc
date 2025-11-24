@@ -278,16 +278,32 @@ void TestGridIO::testCreateWriteReadHalf() {
 void TestGridIO::testConvertFloatToHalf() {
     using namespace openvdb;
     std::string PATH = "/media/andre/data/dev/openvdb/_assets/bunny.vdb";
-    io::File file(PATH);
-    file.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
 
-    GridBase::Ptr baseGrid;
-    for (io::File::NameIterator nameIter = file.beginName();
-        nameIter != file.endName(); ++nameIter)
     {
-            baseGrid = file.readGrid(nameIter.gridName());
+        io::File file(PATH);
+        file.open(false, io::MappedFile::Notifier());
+
+        GridBase::Ptr baseGrid;
+        for (io::File::NameIterator nameIter = file.beginName();
+            nameIter != file.endName(); ++nameIter)
+        {
+                baseGrid = file.readGrid(nameIter.gridName());
+        }
+        file.close();
     }
-    file.close();
+
+    {
+        io::File file(PATH);
+        file.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
+
+        GridBase::Ptr baseGrid;
+        for (io::File::NameIterator nameIter = file.beginName();
+            nameIter != file.endName(); ++nameIter)
+        {
+                baseGrid = file.readGrid(nameIter.gridName());
+        }
+        file.close();
+    }
     // HalfGrid::Ptr grid = gridPtrCast<HalfGrid>(baseGrid);
 }
 
