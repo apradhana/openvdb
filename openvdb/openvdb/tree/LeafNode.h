@@ -1376,9 +1376,7 @@ template<typename T, Index Log2Dim>
 inline void
 LeafNode<T,Log2Dim>::readBuffers(std::istream& is, bool fromHalf)
 {
-    std::cout << "Begin [LeafNode<T,Log2Dim>::readBuffers - LeafNode.h]" << std::endl;
     this->readBuffers(is, CoordBBox::inf(), fromHalf);
-    std::cout << "End [LeafNode<T,Log2Dim>::readBuffers - LeafNode.h]" << std::endl;
 }
 
 
@@ -1386,7 +1384,6 @@ template<typename T, Index Log2Dim>
 inline void
 LeafNode<T,Log2Dim>::readBuffers(std::istream& is, const CoordBBox& clipBBox, bool fromHalf)
 {
-    std::cout << "Begin [LeafNode<T,Log2Dim>::readBuffers(CoordBBox) - LeafNode.h]" << std::endl;
     io::checkFormatVersion(is);
 
     SharedPtr<io::StreamMetadata> meta = io::getStreamMetadataPtr(is);
@@ -1460,7 +1457,6 @@ LeafNode<T,Log2Dim>::readBuffers(std::istream& is, const CoordBBox& clipBBox, bo
 
     // increment the leaf number
     if (meta)   meta->setLeaf(meta->leaf() + 1);
-    std::cout << "End [LeafNode<T,Log2Dim>::readBuffers(CoordBBox) - LeafNode.h]" << std::endl;
 }
 
 
