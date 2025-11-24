@@ -1140,6 +1140,7 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
     std::cout << "  Grid type: " << grid->type() << std::endl;
     std::cout << "  GridDescriptor type: " << gd.gridType() << std::endl;
     std::cout << "  GridDescriptor saveFloatAsHalf: " << gd.saveFloatAsHalf() << std::endl;
+
     struct Local {
         static void readBuffers(GridBase& g, std::istream& istrm, NoBBox) { g.readBuffers(istrm); }
         static void readBuffers(GridBase& g, std::istream& istrm, const CoordBBox& indexBBox) {
@@ -1147,6 +1148,49 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
         }
         static void readBuffers(GridBase& g, std::istream& istrm, const BBoxd& worldBBox) {
             g.readBuffers(istrm, g.constTransform().worldToIndexNodeCentered(worldBBox));
+        }
+        
+        /// @brief Helper to dispatch readTopology with type conversion
+        /// @param grid The target grid to read into
+        /// @param sourceTreeType The tree type stored in the file
+        /// @param is The input stream
+        static void readTopologyWithConversion(GridBase::Ptr grid, 
+                                               const std::string& sourceTreeType, 
+                                               std::istream& is)
+        {
+            const std::string targetType = grid->type();
+            
+            // If types match, use normal readTopology
+            if (targetType == sourceTreeType) {
+                std::cout << "  Same types, using normal readTopology" << std::endl;
+                grid->readTopology(is);
+                return;
+            }
+            
+            std::cout << "  Type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
+            
+            // Dispatch based on source and target types
+            // Handle float -> half conversion
+            if (sourceTreeType == FloatTree::treeType() && targetType == HalfTree::treeType()) {
+                std::cout << "  Converting Float to Half" << std::endl;
+                if (HalfGrid* halfGrid = dynamic_cast<HalfGrid*>(grid.get())) {
+                    halfGrid->tree().root().template readTopologyWithValueType<float>(is, false);
+                    return;
+                }
+            }
+            
+            // Handle half -> float conversion
+            if (sourceTreeType == HalfTree::treeType() && targetType == FloatTree::treeType()) {
+                std::cout << "  Converting Half to Float" << std::endl;
+                if (FloatGrid* floatGrid = dynamic_cast<FloatGrid*>(grid.get())) {
+                    floatGrid->tree().root().template readTopologyWithValueType<math::half>(is, false);
+                    return;
+                }
+            }
+            
+            // Fallback: use normal readTopology
+            std::cout << "  Warning: Unsupported conversion, using normal readTopology" << std::endl;
+            grid->readTopology(is);
         }
     };
 
@@ -1213,9 +1257,9 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
     std::cout << "doReadGrid - Archive.cc: grid->removeMeta(GridBase::META_FILE_DELAYED_LOAD) done" << std::endl;
     grid->readTransform(is);
     std::cout << "doReadGrid - Archive.cc: grid->readTransform(is) done" << std::endl;
-    // TODO: Get rid of this: THIS IS WHERE I'M STUCK
     if (!gd.isInstance()) {
-        grid->readTopology(is);
+        Local::readTopologyWithConversion(grid, gd.gridType(), is);
+        std::cout << "doReadGrid - Archive.cc: Local::readTopologyWithConversion(grid, gd.gridType(), is) done" << std::endl;
         Local::readBuffers(*grid, is, bbox);
     }
     std::cout << "doReadGrid - Archive.cc: grid->readTopology(is) done" << std::endl;

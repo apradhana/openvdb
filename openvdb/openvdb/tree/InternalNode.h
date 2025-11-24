@@ -459,6 +459,11 @@ public:
     //
     void writeTopology(std::ostream&, bool toHalf = false) const;
     void readTopology(std::istream&, bool fromHalf = false);
+    
+    /// @brief Read topology from a stream, converting from SourceValueT to ValueType
+    template<typename SourceValueT>
+    void readTopologyWithValueType(std::istream&, bool fromHalf = false);
+    
     void writeBuffers(std::ostream&, bool toHalf = false) const;
     void readBuffers(std::istream&, bool fromHalf = false);
     void readBuffers(std::istream&, const CoordBBox&, bool fromHalf = false);
@@ -2418,6 +2423,15 @@ template<typename ChildT, Index Log2Dim>
 inline void
 InternalNode<ChildT, Log2Dim>::readTopology(std::istream& is, bool fromHalf)
 {
+    // Default: read with same type (no conversion)
+    readTopologyWithValueType<ValueType>(is, fromHalf);
+}
+
+template<typename ChildT, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+InternalNode<ChildT, Log2Dim>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
+{
     io::checkFormatVersion(is);
 
     const ValueType background = (!io::getGridBackgroundValuePtr(is) ? zeroVal<ValueType>()
@@ -2428,15 +2442,29 @@ InternalNode<ChildT, Log2Dim>::readTopology(std::istream& is, bool fromHalf)
 
     const Index numValues = NUM_VALUES;
     {
-        // Read in (and uncompress, if necessary) all of this node's values
-        // into a contiguous array.
-        std::unique_ptr<ValueType[]> valuePtr(new ValueType[numValues]);
-        ValueType* values = valuePtr.get();
-        io::readCompressedValues(is, values, numValues, mValueMask, fromHalf);
+        // For now, if types differ, we need to handle this differently
+        // This is a simplified version that works when SourceValueT == ValueType
+        if constexpr (std::is_same<SourceValueT, ValueType>::value) {
+            // No conversion needed
+            std::unique_ptr<ValueType[]> valuePtr(new ValueType[numValues]);
+            ValueType* values = valuePtr.get();
+            io::readCompressedValues(is, values, numValues, mValueMask, false);
 
-        // Copy values from the array into this node's table.
-        for (ValueAllIter iter = this->beginValueAll(); iter; ++iter) {
-            mNodes[iter.pos()].setValue(values[iter.pos()]);
+            // Copy values from the array into this node's table.
+            for (ValueAllIter iter = this->beginValueAll(); iter; ++iter) {
+                mNodes[iter.pos()].setValue(values[iter.pos()]);
+            }
+        } else {
+            // TODO: Handle type conversion through compression layer
+            // For MVP, read as source type then convert
+            std::unique_ptr<SourceValueT[]> sourcePtr(new SourceValueT[numValues]);
+            SourceValueT* sourceValues = sourcePtr.get();
+            io::readCompressedValues(is, sourceValues, numValues, mValueMask, false);
+
+            // Convert and copy values
+            for (ValueAllIter iter = this->beginValueAll(); iter; ++iter) {
+                mNodes[iter.pos()].setValue(static_cast<ValueType>(sourceValues[iter.pos()]));
+            }
         }
     }
 
@@ -2444,7 +2472,7 @@ InternalNode<ChildT, Log2Dim>::readTopology(std::istream& is, bool fromHalf)
     for (ChildOnIter iter = this->beginChildOn(); iter; ++iter) {
         ChildNodeType* child = new ChildNodeType(PartialCreate(), iter.getCoord(), background);
         mNodes[iter.pos()].setChild(child);
-        child->readTopology(is, fromHalf);
+        child->template readTopologyWithValueType<SourceValueT>(is);
     }
 }
 

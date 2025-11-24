@@ -384,6 +384,11 @@ public:
     /// @param is        the stream from which to read
     /// @param fromHalf  if true, floating-point input values are assumed to be 16-bit
     void readTopology(std::istream& is, bool fromHalf = false);
+    
+    /// @brief Read topology from a stream, converting from SourceValueT to ValueType
+    template<typename SourceValueT>
+    void readTopologyWithValueType(std::istream&, bool fromHalf = false);
+    
     /// @brief Write out just the topology.
     /// @param os      the stream to which to write
     /// @param toHalf  if true, output floating-point values as 16-bit half floats
@@ -1326,6 +1331,15 @@ template<typename T, Index Log2Dim>
 inline void
 LeafNode<T, Log2Dim>::readTopology(std::istream& is, bool /*fromHalf*/)
 {
+    mValueMask.load(is);
+}
+
+template<typename T, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+LeafNode<T, Log2Dim>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
+{
+    // Topology is independent of value type, just load the mask
     mValueMask.load(is);
 }
 

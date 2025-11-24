@@ -204,6 +204,11 @@ public:
     //
     /// Read in just the topology.
     void readTopology(std::istream&, bool fromHalf = false);
+    
+    /// @brief Read topology from a stream, converting from SourceValueT to ValueType
+    template<typename SourceValueT>
+    void readTopologyWithValueType(std::istream&, bool fromHalf = false);
+    
     /// Write out just the topology.
     void writeTopology(std::ostream&, bool toHalf = false) const;
 
@@ -988,6 +993,15 @@ template<Index Log2Dim>
 inline void
 LeafNode<bool, Log2Dim>::readTopology(std::istream& is, bool /*fromHalf*/)
 {
+    mValueMask.load(is);
+}
+
+template<Index Log2Dim>
+template<typename SourceValueT>
+inline void
+LeafNode<bool, Log2Dim>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
+{
+    // Topology is independent of value type, just load the mask
     mValueMask.load(is);
 }
 
