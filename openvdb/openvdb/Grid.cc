@@ -99,7 +99,6 @@ GridBase::createGrid(const Name& name)
     if (iter == registry->mMap.end()) {
         OPENVDB_THROW(LookupError, "Cannot create grid of unregistered type " << name);
     }
-
     return (iter->second)();
 }
 

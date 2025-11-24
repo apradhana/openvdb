@@ -1750,6 +1750,9 @@ template<typename GridType>
 inline typename GridType::Ptr
 createGrid(const typename GridType::ValueType& background)
 {
+    std::cout << "createGrid<GridType>::create(background)" << std::endl;
+    std::cout << "type(background): " << typeNameAsString<typename GridType::ValueType>() << std::endl;
+    std::cout << "sizeof(background): " << sizeof(typename GridType::ValueType) << " bytes" << std::endl;
     return GridType::create(background);
 }
 

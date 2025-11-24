@@ -2389,7 +2389,13 @@ RootNode<ChildT>::readTopology(std::istream& is, bool fromHalf)
     this->clear();
 
     // Read a RootNode that was stored in the current format.
+    std::cout << "RootNode::readTopology - type(ValueType): " << typeNameAsString<ValueType>() << std::endl;
+    std::cout << "RootNode::readTopology - sizeof(ValueType): " << sizeof(ValueType) << " bytes" << std::endl;
+    std::cout << "RootNode::readTopology - fromHalf: " << fromHalf << std::endl;
 
+    // float backgroundFloat = 0.0f;
+    // is.read(reinterpret_cast<char*>(&backgroundFloat), sizeof(float));
+    // mBackground = static_cast<ValueType>(backgroundFloat);
     is.read(reinterpret_cast<char*>(&mBackground), sizeof(ValueType));
     io::setGridBackgroundValuePtr(is, &mBackground);
 
@@ -2401,15 +2407,19 @@ RootNode<ChildT>::readTopology(std::istream& is, bool fromHalf)
 
     Int32 vec[3];
     ValueType value;
+    // float valueFloat = 0.0f;
     bool active;
 
     // Read tiles.
     for (Index n = 0; n < numTiles; ++n) {
         is.read(reinterpret_cast<char*>(vec), 3 * sizeof(Int32));
         is.read(reinterpret_cast<char*>(&value), sizeof(ValueType));
+        // is.read(reinterpret_cast<char*>(&valueFloat), sizeof(float));
+        // value = static_cast<ValueType>(valueFloat);
         is.read(reinterpret_cast<char*>(&active), sizeof(bool));
         mTable.emplace(Coord(vec), Tile(value, active));
     }
+    exit(0);
 
     // Read child nodes.
     for (Index n = 0; n < numChildren; ++n) {

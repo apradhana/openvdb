@@ -1137,6 +1137,9 @@ void
 doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const BoxType& bbox)
 {
     std::cout << "Begin [doReadGrid - Archive.cc]" << std::endl;
+    std::cout << "  Grid type: " << grid->type() << std::endl;
+    std::cout << "  GridDescriptor type: " << gd.gridType() << std::endl;
+    std::cout << "  GridDescriptor saveFloatAsHalf: " << gd.saveFloatAsHalf() << std::endl;
     struct Local {
         static void readBuffers(GridBase& g, std::istream& istrm, NoBBox) { g.readBuffers(istrm); }
         static void readBuffers(GridBase& g, std::istream& istrm, const CoordBBox& indexBBox) {

@@ -768,6 +768,10 @@ File::findDescriptor(const Name& name) const
 GridBase::Ptr
 File::createGrid(const GridDescriptor& gd) const
 {
+    std::cout << "File::createGrid - gd.gridType(): " << gd.gridType() << std::endl;
+    std::cout << "File::createGrid - gd.saveFloatAsHalf(): " << gd.saveFloatAsHalf() << std::endl;
+    std::cout << "File::createGrid - mScalarConversion: " << int(mScalarConversion) << std::endl;
+    
     // Create the grid.
     if (!GridBase::isRegistered(gd.gridType())) {
         OPENVDB_THROW(KeyError, "Cannot read grid "
@@ -778,9 +782,11 @@ File::createGrid(const GridDescriptor& gd) const
 
     GridBase::Ptr grid = nullptr;
     if (mScalarConversion == ScalarConversion::NONE) {
+        std::cout << "File::createGrid - Creating grid with type: " << gd.gridType() << std::endl;
         grid = GridBase::createGrid(gd.gridType());
     } else {
         if (gd.gridType() == "Tree_float_5_4_3") {
+            std::cout << "File::createGrid - Converting float to half" << std::endl;
             grid = GridBase::createGrid("Tree_half_5_4_3");
         } else {
             OPENVDB_THROW(KeyError, "Cannot convert grid "
