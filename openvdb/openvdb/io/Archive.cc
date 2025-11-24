@@ -1260,6 +1260,7 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
     if (!gd.isInstance()) {
         Local::readTopologyWithConversion(grid, gd.gridType(), is);
         std::cout << "doReadGrid - Archive.cc: Local::readTopologyWithConversion(grid, gd.gridType(), is) done" << std::endl;
+        exit(0);
         Local::readBuffers(*grid, is, bbox);
     }
     std::cout << "doReadGrid - Archive.cc: grid->readTopology(is) done" << std::endl;
