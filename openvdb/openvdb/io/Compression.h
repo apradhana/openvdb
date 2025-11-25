@@ -470,7 +470,7 @@ readCompressedValues(std::istream& is, ValueT* destBuf, Index destCount,
     const MaskT& valueMask, bool fromHalf)
 {
     // TODO: remove this
-    // std::cout << "Begin [io::readCompressedValues - Compression.h]" << std::endl;
+    std::cout << "==== Begin [io::readCompressedValues - Compression.h]" << std::endl;
     checkFormatVersion(is);
 
     // Get the stream's compression settings.
@@ -589,7 +589,7 @@ readCompressedValues(std::istream& is, ValueT* destBuf, Index destCount,
             }
         }
     }
-    // std::cout << "End [io::readCompressedValues - Compression.h]" << std::endl;
+    std::cout << "==== End [io::readCompressedValues - Compression.h]" << std::endl;
 }
 
 

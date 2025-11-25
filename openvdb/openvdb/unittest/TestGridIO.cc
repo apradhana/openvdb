@@ -365,6 +365,46 @@ void TestGridIO::testConvertFloatToHalf() {
     EXPECT_NE(gridHalf.get(), nullptr);
     EXPECT_EQ(gridFloatNull.get(), nullptr);
 
+
+    /// Print tree statistics for FloatGrid
+    std::cout << "=== FloatGrid Statistics ===" << std::endl;
+    std::cout << "Background: " << gridFloat->tree().background() << std::endl;
+    std::cout << "Leaf nodes: " << gridFloat->tree().leafCount() << std::endl;
+    
+    auto floatNodeCounts = gridFloat->tree().nodeCount();
+    std::cout << "Node counts by level: ";
+    for (size_t i = 0; i < floatNodeCounts.size(); ++i) {
+        std::cout << "L" << i << "=" << floatNodeCounts[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Non-leaf nodes: " << gridFloat->tree().nonLeafCount() << std::endl;
+    std::cout << "Root tiles: " << gridFloat->tree().root().tileCount() << std::endl;
+    std::cout << "Root child nodes: " << gridFloat->tree().root().childCount() << std::endl;
+
+    // Print tree statistics for HalfGrid
+    std::cout << "\n=== HalfGrid Statistics ===" << std::endl;
+    std::cout << "Background: " << gridHalf->tree().background() << std::endl;
+    std::cout << "Leaf nodes: " << gridHalf->tree().leafCount() << std::endl;
+    
+    auto halfNodeCounts = gridHalf->tree().nodeCount();
+    std::cout << "Node counts by level: ";
+    for (size_t i = 0; i < halfNodeCounts.size(); ++i) {
+        std::cout << "L" << i << "=" << halfNodeCounts[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Non-leaf nodes: " << gridHalf->tree().nonLeafCount() << std::endl;
+    std::cout << "Root tiles: " << gridHalf->tree().root().tileCount() << std::endl;
+    std::cout << "Root child nodes: " << gridHalf->tree().root().childCount() << std::endl;
+
+    // Compare node counts with expectations
+    EXPECT_EQ(gridFloat->tree().leafCount(), gridHalf->tree().leafCount());
+    EXPECT_EQ(gridFloat->tree().nonLeafCount(), gridHalf->tree().nonLeafCount());
+    EXPECT_EQ(floatNodeCounts.size(), halfNodeCounts.size());
+    for (size_t i = 0; i < floatNodeCounts.size(); ++i) {
+        EXPECT_EQ(floatNodeCounts[i], halfNodeCounts[i]);
+    }
+    ///
+
     auto floatAcc = gridFloat->getAccessor();
     auto halfAcc = gridHalf->getAccessor();
     float maxDif = 0.f;
@@ -380,6 +420,7 @@ void TestGridIO::testConvertFloatToHalf() {
     int diffActiveVoxelCount = (int)(gridFloat->activeVoxelCount() - gridHalf->activeVoxelCount());
     EXPECT_EQ(diffActiveVoxelCount, 0);
     EXPECT_LT(maxDif, 1e-6f);
+
 
 }
 

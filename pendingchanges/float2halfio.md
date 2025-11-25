@@ -30,3 +30,11 @@ What is a filtering step in the work by Ivo?
 ```shell
 ./vdb_test --gtest_filter=TestLeafIOTest*:TestFile*:TestGridDescriptor*:TestTree*:-TestLeafIOTest.testBufferInt:TestLeafIOTest.testBufferFloat:TestLeafIOTest.testBufferDouble:TestLeafIOTest.testBufferByte:TestLeafIOTest.testBufferVec3R:TestFile.testWriteGrid:TestFile.testWriteMultipleGrids:TestFile.testReadGridDescriptors:TestFile.testEmptyGridIO:TestFile.testDelayedLoadMetadata:TestGridDescriptor.testIO:TestTree.testHalf:TestTree.testIO
 ```
+
+## What statistics are you checking?
+RootNode::readTopologyWithValueType - sizeof(SourceValueT): 4 bytes
+RootNode::readTopologyWithValueType - ValueType: float
+RootNode::readTopologyWithValueType - sizeof(ValueType): 4 bytes
+RootNode::readTopologyWithValueType - mBackground: 0.150024
+RootNode::readTopologyWithValueType - numTiles: 0
+RootNode::readTopologyWithValueType - numChildren: 8
