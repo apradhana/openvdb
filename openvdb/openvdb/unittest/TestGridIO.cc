@@ -4,9 +4,9 @@
 #include <openvdb/Exceptions.h>
 #include <openvdb/openvdb.h>
 #include <gtest/gtest.h>
-
 #include <cstdio> // for remove()
-
+#include <openvdb/tools/ChangeBackground.h>
+#include <openvdb/tree/LeafManager.h>
 
 class TestGridIO: public ::testing::Test
 {
@@ -274,38 +274,113 @@ void TestGridIO::testCreateWriteReadHalf() {
 
     ::remove("something.vdb2");
 }
+namespace internal {
+template<typename InputGridT, typename OutputGridT>
+struct ConvertValuesOp
+{
+    ConvertValuesOp(typename InputGridT::Ptr inputGrid,
+                    typename OutputGridT::Ptr outputGrid) :
+                    inputGrid(inputGrid),
+                    outputGrid(outputGrid) {}
+
+    template <typename T>
+    void operator()(T &node, size_t) const
+    {
+        auto inputAcc = inputGrid->getAccessor();
+        for (typename T::ValueAllIter iter = node.beginValueAll(); iter; ++iter) {
+            auto ijk = iter.getCoord();
+            iter.setValue(inputAcc.getValue(ijk));
+        }
+    }
+
+    typename InputGridT::Ptr inputGrid;
+    typename OutputGridT::Ptr outputGrid;
+};// ConvertValuesOp
+}// namespace internal
+
+template<typename InputGridT, typename OutputGridT>
+void
+convertPayload(typename InputGridT::Ptr inputGrid, typename OutputGridT::Ptr outputGrid, std::string gridName)
+{
+    using namespace openvdb;
+
+    using OutputTreeType = typename OutputGridT::TreeType;
+    using ValueType = typename OutputGridT::ValueType;
+
+    outputGrid->setName(gridName);
+    outputGrid->setTransform(inputGrid->transform().copy());
+    outputGrid->tree().topologyUnion(inputGrid->tree());
+
+    tree::LeafManager<OutputTreeType> lm(outputGrid->tree());
+    ::internal::ConvertValuesOp<InputGridT, OutputGridT> op(inputGrid, outputGrid);
+    lm.foreach(op);
+
+    auto outAcc = outputGrid->getAccessor();
+    auto inAcc = inputGrid->getAccessor();
+    float maxDif = 0.f;
+    for (auto iter = outputGrid->beginValueOn(); iter; ++iter) {
+        math::Coord const ijk = iter.getCoord();
+        auto const outv = outAcc.getValue(ijk);
+        auto const inv = inAcc.getValue(ijk);
+        float const dif = std::abs(outv - inv);
+        if (dif > maxDif) {
+            maxDif = dif;
+        }
+    }
+    std::cout << "convertPayload::maxDif = " << maxDif << "\tactiveVoxelCount dif = " << (int)(outputGrid->activeVoxelCount() - inputGrid->activeVoxelCount()) << "\n";
+
+
+    if (inputGrid->getGridClass() == GRID_LEVEL_SET) {
+        outputGrid->setGridClass(GRID_LEVEL_SET);
+        openvdb::tools::changeLevelSetBackground(outputGrid->tree(), ValueType(3.f));
+    }
+}
 
 void TestGridIO::testConvertFloatToHalf() {
     using namespace openvdb;
     std::string PATH = "/media/andre/data/dev/openvdb/_assets/bunny.vdb";
 
-    {
-        io::File file(PATH);
-        file.open(false, io::MappedFile::Notifier());
+    io::File fileFloat(PATH);
+    io::File fileHalf(PATH);
+    fileFloat.open(false, io::MappedFile::Notifier());
+    fileHalf.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
 
-        GridBase::Ptr baseGrid;
-        for (io::File::NameIterator nameIter = file.beginName();
-            nameIter != file.endName(); ++nameIter)
-        {
-                baseGrid = file.readGrid(nameIter.gridName());
-        }
-        file.close();
+    GridBase::Ptr baseGridFloat;
+    for (auto nameIter = fileFloat.beginName(); nameIter != fileFloat.endName(); ++nameIter) {
+        baseGridFloat = fileFloat.readGrid(nameIter.gridName());
     }
+    fileFloat.close();
+    FloatGrid::Ptr gridFloat = gridPtrCast<FloatGrid>(baseGridFloat);
+    HalfGrid::Ptr gridHalfNull = gridPtrCast<HalfGrid>(baseGridFloat);
+    EXPECT_NE(gridFloat.get(), nullptr);
+    EXPECT_EQ(gridHalfNull.get(), nullptr);
 
-    {
-        io::File file(PATH);
-        file.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
-
-        GridBase::Ptr baseGrid;
-        for (io::File::NameIterator nameIter = file.beginName();
-            nameIter != file.endName(); ++nameIter)
-        {
-                baseGrid = file.readGrid(nameIter.gridName());
-        }
-        file.close();
-        HalfGrid::Ptr grid = gridPtrCast<HalfGrid>(baseGrid);
-        std::cout << "TestGridIO::testReadFloat2Half - grid: " << grid << std::endl;
+    GridBase::Ptr baseGridHalf;
+    for (auto nameIter = fileHalf.beginName(); nameIter != fileHalf.endName(); ++nameIter) {
+        baseGridHalf = fileHalf.readGrid(nameIter.gridName());
     }
+    fileHalf.close();
+    HalfGrid::Ptr gridHalf = gridPtrCast<HalfGrid>(baseGridHalf);
+    FloatGrid::Ptr gridFloatNull = gridPtrCast<FloatGrid>(baseGridHalf);
+    EXPECT_NE(gridHalf.get(), nullptr);
+    EXPECT_EQ(gridFloatNull.get(), nullptr);
+
+    auto floatAcc = gridFloat->getAccessor();
+    auto halfAcc = gridHalf->getAccessor();
+    float maxDif = 0.f;
+    for (auto iter = gridHalf->beginValueOn(); iter; ++iter) {
+        math::Coord const ijk = iter.getCoord();
+        auto const floatv = floatAcc.getValue(ijk);
+        auto const halfv = halfAcc.getValue(ijk);
+        float const dif = std::abs(floatv - halfv);
+        if (dif > maxDif) {
+            maxDif = dif;
+        }
+    }
+    int diffActiveVoxelCount = (int)(gridFloat->activeVoxelCount() - gridHalf->activeVoxelCount());
+    EXPECT_EQ(diffActiveVoxelCount, 0);
+    EXPECT_LT(maxDif, 1e-6f);
+
 }
 
 TEST_F(TestGridIO, testReadAllBool) { readAllTest<openvdb::BoolGrid>(); }
