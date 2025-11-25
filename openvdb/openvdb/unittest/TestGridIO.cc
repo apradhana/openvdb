@@ -303,8 +303,9 @@ void TestGridIO::testConvertFloatToHalf() {
                 baseGrid = file.readGrid(nameIter.gridName());
         }
         file.close();
+        HalfGrid::Ptr grid = gridPtrCast<HalfGrid>(baseGrid);
+        std::cout << "TestGridIO::testReadFloat2Half - grid: " << grid << std::endl;
     }
-    // HalfGrid::Ptr grid = gridPtrCast<HalfGrid>(baseGrid);
 }
 
 TEST_F(TestGridIO, testReadAllBool) { readAllTest<openvdb::BoolGrid>(); }
