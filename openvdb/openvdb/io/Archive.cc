@@ -1169,6 +1169,15 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
             
             std::cout << "  Type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
             
+            // Read the buffer count (from TreeBase::readTopology)
+            // This is needed to maintain stream alignment
+            // THIS WAS A BUG of not calling this. As a result, the stream was not aligned and we have mBackground = 0 instead of 0.15 and numTiles being 1041866752 instead of 0.
+            int32_t bufferCount;
+            is.read(reinterpret_cast<char*>(&bufferCount), sizeof(int32_t));
+            if (bufferCount != 1) {
+                OPENVDB_LOG_WARN("multi-buffer trees are no longer supported");
+            }
+
             // Dispatch based on source and target types
             // Handle float -> half conversion
             if (sourceTreeType == FloatTree::treeType() && targetType == HalfTree::treeType()) {
