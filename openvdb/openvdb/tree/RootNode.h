@@ -2401,11 +2401,6 @@ RootNode<ChildT>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
     this->clear();
 
     // Read a RootNode that was stored in the current format.
-    std::cout << "RootNode::readTopologyWithValueType - SourceValueT: " << typeNameAsString<SourceValueT>() << std::endl;
-    std::cout << "RootNode::readTopologyWithValueType - sizeof(SourceValueT): " << sizeof(SourceValueT) << " bytes" << std::endl;
-    std::cout << "RootNode::readTopologyWithValueType - ValueType: " << typeNameAsString<ValueType>() << std::endl;
-    std::cout << "RootNode::readTopologyWithValueType - sizeof(ValueType): " << sizeof(ValueType) << " bytes" << std::endl;
-
     // Read background value from stream (as SourceValueT) and convert to ValueType
     SourceValueT sourceBackground;
     is.read(reinterpret_cast<char*>(&sourceBackground), sizeof(SourceValueT));
@@ -2424,7 +2419,6 @@ RootNode<ChildT>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
     Int32 vec[3];
     SourceValueT sourceValue;
     bool active;
-    std::cout << "RootNode::readTopologyWithValueType - Reading tiles" << std::endl;
     // Read tiles.
     for (Index n = 0; n < numTiles; ++n) {
         is.read(reinterpret_cast<char*>(vec), 3 * sizeof(Int32));
@@ -2433,7 +2427,6 @@ RootNode<ChildT>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
         // Convert from source type to target type
         mTable.emplace(Coord(vec), Tile(static_cast<ValueType>(sourceValue), active));
     }
-    std::cout << "RootNode::readTopologyWithValueType - Reading child nodes" << std::endl;
     // Read child nodes.
     for (Index n = 0; n < numChildren; ++n) {
         is.read(reinterpret_cast<char*>(vec), 3 * sizeof(Int32));
@@ -2442,7 +2435,6 @@ RootNode<ChildT>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
         child->template readTopologyWithValueType<SourceValueT>(is);
         mTable.emplace(Coord(vec), *child);
     }
-    std::cout << "RootNode::readTopologyWithValueType - Done reading" << std::endl;
 
     return true; // not empty
 }

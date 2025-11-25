@@ -1211,7 +1211,6 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
         void* ptr;
     };
     OnExit restore(is);
-    std::cout << "doReadGrid - Archive.cc: OnExit restored" << std::endl;
 
     // Stream metadata varies per grid, and it needs to persist
     // in case delayed load is in effect.
@@ -1224,12 +1223,9 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
     }
     streamMetadata->setHalfFloat(grid->saveFloatAsHalf());
     io::setStreamMetadataPtr(is, streamMetadata, /*transfer=*/false);
-    std::cout << "doReadGrid - Archive.cc: streamMetadata set" << std::endl;
     io::setGridClass(is, GRID_UNKNOWN);
     io::setGridBackgroundValuePtr(is, nullptr);
-    std::cout << "doReadGrid - Archive.cc: grid->readMeta(is)" << std::endl;
     grid->readMeta(is);
-    std::cout << "doReadGrid - Archive.cc: grid->readMeta(is) done" << std::endl;
     // Add a description of the compression settings to the grid as metadata.
     /// @todo Would this be useful?
     //const uint32_t c = getDataCompression(is);
@@ -1248,14 +1244,11 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
             grid->removeMeta(GridBase::META_FILE_DELAYED_LOAD);
         }
     }
-    std::cout << "doReadGrid - Archive.cc: grid->removeMeta(GridBase::META_FILE_DELAYED_LOAD) done" << std::endl;
     streamMetadata->gridMetadata() = static_cast<MetaMap&>(*grid);
     const GridClass gridClass = grid->getGridClass();
     io::setGridClass(is, gridClass);
-    std::cout << "doReadGrid - Archive.cc: grid->setGridClass(is) done" << std::endl;
     // reset leaf value to zero
     streamMetadata->setLeaf(0);
-    std::cout << "doReadGrid - Archive.cc: streamMetadata->setLeaf(0) done" << std::endl;
     // drop DelayedLoadMetadata from the grid as it is only useful for IO
     // a stream metadata non-zero value disables this behaviour for testing
     if (streamMetadata->__test() == uint32_t(0)) {
@@ -1263,16 +1256,11 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
             grid->removeMeta(GridBase::META_FILE_DELAYED_LOAD);
         }
     }
-    std::cout << "doReadGrid - Archive.cc: grid->removeMeta(GridBase::META_FILE_DELAYED_LOAD) done" << std::endl;
     grid->readTransform(is);
-    std::cout << "doReadGrid - Archive.cc: grid->readTransform(is) done" << std::endl;
     if (!gd.isInstance()) {
         Local::readTopologyWithConversion(grid, gd.gridType(), is);
-        std::cout << "doReadGrid - Archive.cc: Local::readTopologyWithConversion(grid, gd.gridType(), is) done" << std::endl;
-        // exit(0);
         Local::readBuffers(*grid, is, bbox);
     }
-    std::cout << "doReadGrid - Archive.cc: grid->readTopology(is) done" << std::endl;
     std::cout << "End [doReadGrid - Archive.cc]" << std::endl;
 }
 
