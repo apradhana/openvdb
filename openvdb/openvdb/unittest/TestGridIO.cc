@@ -27,6 +27,7 @@ protected:
     template<typename GridType> void readAllTest();
     void testCreateWriteReadHalf();
     void testConvertFloatToHalf();
+    void testConvertFloatToHalfOneVoxel();
 };
 
 
@@ -365,7 +366,6 @@ void TestGridIO::testConvertFloatToHalf() {
     EXPECT_NE(gridHalf.get(), nullptr);
     EXPECT_EQ(gridFloatNull.get(), nullptr);
 
-
     /// Print tree statistics for FloatGrid
     std::cout << "=== FloatGrid Statistics ===" << std::endl;
     std::cout << "Background: " << gridFloat->tree().background() << std::endl;
@@ -403,7 +403,6 @@ void TestGridIO::testConvertFloatToHalf() {
     for (size_t i = 0; i < floatNodeCounts.size(); ++i) {
         EXPECT_EQ(floatNodeCounts[i], halfNodeCounts[i]);
     }
-    ///
 
     auto floatAcc = gridFloat->getAccessor();
     auto halfAcc = gridHalf->getAccessor();
@@ -448,7 +447,28 @@ void TestGridIO::testConvertFloatToHalf() {
         fileWrite.write(grids);
         fileWrite.close();
     }
+}
 
+void TestGridIO::testConvertFloatToHalfOneVoxel() {
+    using namespace openvdb;
+
+    std::string PATH = "/media/andre/data/dev/openvdb/_assets/one_voxel.vdb";
+    {
+        FloatGrid::Ptr testGrid = FloatGrid::create(static_cast<float>(0.5));
+        auto accessor = testGrid->getAccessor();
+        testGrid->setTransform(math::Transform::createLinearTransform(0.1));
+        testGrid->setName("testGrid");
+        // Associate some metadata with the grid.
+        testGrid->insertMeta("testAttribute", openvdb::FloatMetadata(50.0));
+        Coord xyz(1000, -20000000, 30000000);
+        accessor.setValue(xyz, static_cast<float>(3.14159265359));
+
+        io::File fileWrite(PATH);
+        openvdb::GridPtrVec grids;
+        grids.push_back(testGrid);
+        fileWrite.write(grids);
+        fileWrite.close();
+    }
 
 }
 
@@ -459,3 +479,4 @@ TEST_F(TestGridIO, testReadAllVec3S) { readAllTest<openvdb::Vec3SGrid>(); }
 TEST_F(TestGridIO, testReadAllFloat5432) { Float5432Grid::registerGrid(); readAllTest<Float5432Grid>(); }
 TEST_F(TestGridIO, testCreateWriteReadHalf) { testCreateWriteReadHalf(); }
 TEST_F(TestGridIO, testConvertFloatToHalf) { testConvertFloatToHalf(); }
+TEST_F(TestGridIO, testConvertFloatToHalfOneVoxel) { testConvertFloatToHalfOneVoxel(); }
