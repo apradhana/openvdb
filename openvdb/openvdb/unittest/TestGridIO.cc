@@ -338,7 +338,7 @@ convertPayload(typename InputGridT::Ptr inputGrid, typename OutputGridT::Ptr out
 
 void TestGridIO::testConvertFloatToHalf() {
     using namespace openvdb;
-    std::string PATH = "/media/andre/data/dev/openvdb/_assets/bunny.vdb";
+    std::string PATH = "/media/andre/data/dev/openvdb/_assets/dragon.vdb";
 
     io::File fileFloat(PATH);
     io::File fileHalf(PATH);
@@ -420,6 +420,34 @@ void TestGridIO::testConvertFloatToHalf() {
     int diffActiveVoxelCount = (int)(gridFloat->activeVoxelCount() - gridHalf->activeVoxelCount());
     EXPECT_EQ(diffActiveVoxelCount, 0);
     EXPECT_LT(maxDif, 1e-6f);
+
+    {
+        FloatGrid::Ptr outputGrid = FloatGrid::create();
+        outputGrid->setName(gridHalf->getName());
+        outputGrid->setTransform(gridHalf->transform().copy());
+        outputGrid->setGridClass(gridHalf->getGridClass());
+        outputGrid->tree().topologyUnion(gridHalf->tree());
+        float background = gridHalf->tree().background();
+        if (gridHalf->getGridClass() == GRID_LEVEL_SET) {
+            openvdb::tools::changeLevelSetBackground(outputGrid->tree(), background);
+        }
+
+        auto outAcc = outputGrid->getAccessor();
+        auto inAcc = gridHalf->getAccessor();
+        float maxDif = 0.f;
+        for (auto iter = gridHalf->beginValueOn(); iter; ++iter) {
+            math::Coord const ijk = iter.getCoord();
+            auto const outv = outAcc.getValue(ijk);
+            auto const inv = inAcc.getValue(ijk);
+            outAcc.setValue(ijk, static_cast<float>(inv));
+        }
+
+        openvdb::io::File fileWrite("andre.vdb");
+        openvdb::GridPtrVec grids;
+        grids.push_back(outputGrid);
+        fileWrite.write(grids);
+        fileWrite.close();
+    }
 
 
 }

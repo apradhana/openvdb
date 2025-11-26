@@ -38,3 +38,20 @@ RootNode::readTopologyWithValueType - sizeof(ValueType): 4 bytes
 RootNode::readTopologyWithValueType - mBackground: 0.150024
 RootNode::readTopologyWithValueType - numTiles: 0
 RootNode::readTopologyWithValueType - numChildren: 8
+
+## Other directory:
+Original branch:
+feature/hg_vdb_render_ghurst/feature/half_grid_support
+
+## What cmake command did you use?
+cmake
+cmake .. -DCMAKE_BUILD_TYPE=Release -DOPENVDB_BUILD_UNITTESTS=ON
+
+## The right answer for dragon level set:
+=== HalfGrid Statistics ===
+Background: 0.300049
+Leaf nodes: 124166
+Node counts by level: L0=124166 L1=318 L2=8 L3=1
+Non-leaf nodes: 327
+Root tiles: 0
+Root child nodes: 8
