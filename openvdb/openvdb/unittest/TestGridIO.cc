@@ -469,6 +469,61 @@ void TestGridIO::testConvertFloatToHalfOneVoxel() {
         fileWrite.write(grids);
         fileWrite.close();
     }
+    io::File fileFloat(PATH);
+    io::File fileHalf(PATH);
+    fileFloat.open(false, io::MappedFile::Notifier());
+    fileHalf.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
+
+    GridBase::Ptr baseGridFloat;
+    for (auto nameIter = fileFloat.beginName(); nameIter != fileFloat.endName(); ++nameIter) {
+        baseGridFloat = fileFloat.readGrid(nameIter.gridName());
+    }
+    fileFloat.close();
+    FloatGrid::Ptr gridFloat = gridPtrCast<FloatGrid>(baseGridFloat);
+    HalfGrid::Ptr gridHalfNull = gridPtrCast<HalfGrid>(baseGridFloat);
+    EXPECT_NE(gridFloat.get(), nullptr);
+    EXPECT_EQ(gridHalfNull.get(), nullptr);
+
+    GridBase::Ptr baseGridHalf;
+    for (auto nameIter = fileHalf.beginName(); nameIter != fileHalf.endName(); ++nameIter) {
+        baseGridHalf = fileHalf.readGrid(nameIter.gridName());
+    }
+    fileHalf.close();
+    HalfGrid::Ptr gridHalf = gridPtrCast<HalfGrid>(baseGridHalf);
+    FloatGrid::Ptr gridFloatNull = gridPtrCast<FloatGrid>(baseGridHalf);
+    EXPECT_NE(gridHalf.get(), nullptr);
+    EXPECT_EQ(gridFloatNull.get(), nullptr);
+
+    /// Print tree statistics for FloatGrid
+    std::cout << "=== FloatGrid Statistics ===" << std::endl;
+    std::cout << "Background: " << gridFloat->tree().background() << std::endl;
+    std::cout << "Leaf nodes: " << gridFloat->tree().leafCount() << std::endl;
+
+    auto floatNodeCounts = gridFloat->tree().nodeCount();
+    std::cout << "Node counts by level: ";
+    for (size_t i = 0; i < floatNodeCounts.size(); ++i) {
+        std::cout << "L" << i << "=" << floatNodeCounts[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Non-leaf nodes: " << gridFloat->tree().nonLeafCount() << std::endl;
+    std::cout << "Root tiles: " << gridFloat->tree().root().tileCount() << std::endl;
+    std::cout << "Root child nodes: " << gridFloat->tree().root().childCount() << std::endl;
+
+    // Print tree statistics for HalfGrid
+    std::cout << "\n=== HalfGrid Statistics ===" << std::endl;
+    std::cout << "Background: " << gridHalf->tree().background() << std::endl;
+    std::cout << "Leaf nodes: " << gridHalf->tree().leafCount() << std::endl;
+
+    auto halfNodeCounts = gridHalf->tree().nodeCount();
+    std::cout << "Node counts by level: ";
+    for (size_t i = 0; i < halfNodeCounts.size(); ++i) {
+        std::cout << "L" << i << "=" << halfNodeCounts[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Non-leaf nodes: " << gridHalf->tree().nonLeafCount() << std::endl;
+    std::cout << "Root tiles: " << gridHalf->tree().root().tileCount() << std::endl;
+    std::cout << "Root child nodes: " << gridHalf->tree().root().childCount() << std::endl;
+
 
 }
 
