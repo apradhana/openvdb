@@ -1,5 +1,8 @@
-[ ] Create half grid
-[ ] Read from stream2memory
+[X] Create half grid
+[X] Read from stream2memory
+[ ] Check whether adding ConverterReader in GridDescriptor changes the ABI.
+[ ] Add an argument in readTopology in RootNode for ConvertingReader.
+[ ] Create convertingReader in GridDescriptor.cc while we are creating grid, then pass it down to Archive::doRead and later to RootNode::readTopology and LeafNode::read
 
 How to run test:
 ```shell
