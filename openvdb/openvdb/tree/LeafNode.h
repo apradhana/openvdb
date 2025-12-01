@@ -388,6 +388,9 @@ public:
     /// @brief Read topology from a stream, converting from SourceValueT to ValueType
     template<typename SourceValueT>
     void readTopologyWithValueType(std::istream&, bool fromHalf = false);
+
+    template<typename SourceValueT>
+    void readTopologyWithValueType(std::istream&, io::ConversionReader<SourceValueT, ValueType>& reader, bool fromHalf = false);
     
     /// @brief Write out just the topology.
     /// @param os      the stream to which to write
@@ -1338,6 +1341,16 @@ template<typename T, Index Log2Dim>
 template<typename SourceValueT>
 inline void
 LeafNode<T, Log2Dim>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
+{
+    // Topology is independent of value type, just load the mask
+    mValueMask.load(is);
+}
+
+
+template<typename T, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+LeafNode<T, Log2Dim>::readTopologyWithValueType(std::istream& is, io::ConversionReader<SourceValueT, ValueType>& reader, bool /*fromHalf*/)
 {
     // Topology is independent of value type, just load the mask
     mValueMask.load(is);

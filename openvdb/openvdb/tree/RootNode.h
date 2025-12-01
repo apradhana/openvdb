@@ -585,6 +585,10 @@ public:
     template<typename SourceValueT>
     bool readTopologyWithValueType(std::istream&, bool fromHalf = false);
 
+    /// @brief Read the topology from a stream, converting from SourceValueT to ValueType
+    template<typename SourceValueT>
+    bool readTopologyWithValueType(std::istream&, io::ConversionReader<SourceValueT, ValueType>& reader, bool fromHalf = false);
+
     void writeBuffers(std::ostream&, bool toHalf = false) const;
     void readBuffers(std::istream&, bool fromHalf = false);
     void readBuffers(std::istream&, const CoordBBox&, bool fromHalf = false);
@@ -2437,6 +2441,57 @@ RootNode<ChildT>::readTopologyWithValueType(std::istream& is, bool /*fromHalf*/)
     }
 
     return true; // not empty
+}
+
+
+template<typename ChildT>
+template<typename SourceValueT>
+inline bool
+RootNode<ChildT>::readTopologyWithValueType(std::istream& is, io::ConversionReader<SourceValueT, ValueType>& reader, bool /*fromHalf*/)
+{
+    io::checkFormatVersion(is);
+
+    // Delete the existing tree.
+    this->clear();
+
+    // Read a RootNode that was stored in the current format.
+    // Read background value from stream (as SourceValueT) and convert to ValueType
+    SourceValueT sourceBackground;
+    is.read(reinterpret_cast<char*>(&sourceBackground), sizeof(SourceValueT));
+    mBackground = static_cast<ValueType>(sourceBackground);
+    io::setGridBackgroundValuePtr(is, &mBackground);
+    std::cout << "RootNode::readTopologyWithValueType - mBackground: " << mBackground << std::endl;
+
+    Index numTiles = 0, numChildren = 0;
+    is.read(reinterpret_cast<char*>(&numTiles), sizeof(Index));
+    is.read(reinterpret_cast<char*>(&numChildren), sizeof(Index));
+    std::cout << "RootNode::readTopologyWithValueType - numTiles: " << numTiles << std::endl;
+    std::cout << "RootNode::readTopologyWithValueType - numChildren: " << numChildren << std::endl;
+
+    if (numTiles == 0 && numChildren == 0) return false;
+
+    Int32 vec[3];
+    SourceValueT sourceValue;
+    bool active;
+    // Read tiles.
+    for (Index n = 0; n < numTiles; ++n) {
+        is.read(reinterpret_cast<char*>(vec), 3 * sizeof(Int32));
+        is.read(reinterpret_cast<char*>(&sourceValue), sizeof(SourceValueT));
+        is.read(reinterpret_cast<char*>(&active), sizeof(bool));
+        // Convert from source type to target type
+        mTable.emplace(Coord(vec), Tile(static_cast<ValueType>(sourceValue), active));
+    }
+    // Read child nodes.
+    for (Index n = 0; n < numChildren; ++n) {
+        is.read(reinterpret_cast<char*>(vec), 3 * sizeof(Int32));
+        Coord origin(vec);
+        ChildT* child = new ChildT(PartialCreate(), origin, mBackground);
+        child->template readTopologyWithValueType<SourceValueT>(is);
+        mTable.emplace(Coord(vec), *child);
+    }
+
+    return true; // not empty
+
 }
 
 
