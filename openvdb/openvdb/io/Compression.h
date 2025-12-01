@@ -756,6 +756,209 @@ writeCompressedValues(std::ostream& os, const ValueT* srcBuf, Index srcCount,
     }
 }
 
+template<typename ValueT, typename ValueFromT>
+struct TypedConvertingReader
+{
+    using HalfT = typename RealToHalf<ValueFromT>::HalfT;
+
+    static constexpr bool doConversion              = !std::is_same<ValueT, ValueFromT>::value;
+    static constexpr bool fromHalfFlagIsRelevant    = RealToHalf<ValueFromT>::isReal;
+
+    template<typename ReadT>
+    static void readHelper(
+        std::istream& is, ValueT* data, Index count, uint32_t compression,
+        DelayedLoadMetadata* metadata, size_t metadataOffset)
+    {
+        if constexpr (std::is_same<ValueT, ReadT>::value)
+        {
+            // either reads or skips through compressed data (count == 0) or it
+            // is seeking (data == nullptr)
+            io::readData(is, data, count, compression, metadata, metadataOffset);
+        }
+        else
+        {
+            // reading
+            if (data && count > 0)
+            {
+                std::vector<ReadT> buffer(count);
+                io::readData(is, buffer.data(), count, compression, metadata, metadataOffset);
+                std::copy(buffer.begin(), buffer.end(), data);
+            }
+            // either skips through compressed data (count == 0) or it is
+            // seeking (data == nullptr)
+            else
+            {
+                // reinterpret_cast<ReadT*>(data) might produce not-aligned
+                // pointer, but io::readData will not write to it, so it should
+                // be safe. We must not skip this statement, nor we can pass
+                // nullptr instead of data, it causes failures in the testsuite.
+                // Now it behaves exactly as before.
+                io::readData(is, reinterpret_cast<ReadT*>(data), count,
+                    compression, metadata, metadataOffset);
+            }
+        }
+    }
+
+    void read(
+        std::istream& is, ValueT* data, Index count, uint32_t compression,
+        DelayedLoadMetadata* metadata = nullptr, size_t metadataOffset = size_t(0),
+        bool fromHalf = false) const
+    {
+        // this if-statement is here to maintain the original logic when
+        // HalfReader<T> is being used. It can't be removed as it breaks bunch
+        // of tests in the testsuite.
+        if (fromHalf && fromHalfFlagIsRelevant && count < 1)
+            return;
+
+        // due to std::vector<bool> being weird and not fitting the overall
+        // templating idea here (it doesn't have data() method), the following
+        // will fail to do non-identity conversion for bool-typed data. But for
+        // bool-typed data there is just identity at the moment.
+        if constexpr (fromHalfFlagIsRelevant)
+        {
+            if (fromHalf)
+            {
+                readHelper<HalfT>(is, data, count, compression, metadata, metadataOffset);
+            }
+            else
+            {
+                readHelper<ValueFromT>(is, data, count, compression, metadata, metadataOffset);
+            }
+        }
+        else
+        {
+            readHelper<ValueFromT>(is, data, count, compression, metadata, metadataOffset);
+        }
+    }
+
+    void read(std::istream& is, ValueT& data) const
+    {
+        if constexpr (doConversion)
+        {
+            ValueFromT buffer;
+            is.read(reinterpret_cast<char*>(&buffer), /*bytes=*/sizeof(ValueFromT));
+            data = buffer;
+        }
+        else
+        {
+            is.read(reinterpret_cast<char*>(&data), /*bytes=*/sizeof(ValueT));
+        }
+    }
+
+    void seekElement(std::istream& is, int offset, std::ios_base::seekdir dir) const
+    {
+        if constexpr (doConversion)
+        {
+            is.seekg(/*bytes=*/sizeof(ValueFromT) * offset, dir);
+        }
+        else
+        {
+            is.seekg(/*bytes=*/sizeof(ValueT) * offset, dir);
+        }
+    }
+};
+
+template<typename BuildType, typename ValueType>
+struct ConversionReader
+{
+    using HalfT = typename RealToHalf<BuildType>::HalfT;
+
+    static constexpr bool doConversion           = !std::is_same<BuildType, ValueType>::value;
+    static constexpr bool fromHalfFlagIsRelevant = RealToHalf<BuildType>::isReal;
+
+    static void readHelper(
+        std::istream& is, ValueType* data, Index count, uint32_t compression,
+        DelayedLoadMetadata* metadata, size_t metadataOffset)
+    {
+        if constexpr (std::is_same<BuildType, ValueType>::value)
+        {
+            // either reads or skips through compressed data (count == 0) or it
+            // is seeking (data == nullptr)
+            io::readData(is, data, count, compression, metadata, metadataOffset);
+        }
+        else
+        {
+            // TODO: double check this
+            if (data && count > 0)
+            {
+                std::vector<ValueType> buffer(count);
+                io::readData(is, buffer.data(), count, compression, metadata, metadataOffset);
+                std::copy(buffer.begin(), buffer.end(), data);
+            }
+            // either skips through compressed data (count == 0) or it is
+            // seeking (data == nullptr)
+            else
+            {
+                // reinterpret_cast<ValueType*>(data) might produce not-aligned
+                // pointer, but io::readData will not write to it, so it should
+                // be safe. We must not skip this statement, nor we can pass
+                // nullptr instead of data, it causes failures in the testsuite.
+                // Now it behaves exactly as before.
+                io::readData(is, reinterpret_cast<ValueType*>(data), count,
+                    compression, metadata, metadataOffset);
+            }
+        }
+    }
+
+    void read(
+        std::istream& is, ValueType* data, Index count, uint32_t compression,
+        DelayedLoadMetadata* metadata = nullptr, size_t metadataOffset = size_t(0),
+        bool fromHalf = false) const
+    {
+        // this if-statement is here to maintain the original logic when
+        // HalfReader<T> is being used. It can't be removed as it breaks bunch
+        // of tests in the testsuite.
+        if (fromHalf && fromHalfFlagIsRelevant && count < 1)
+            return;
+
+        // due to std::vector<bool> being weird and not fitting the overall
+        // templating idea here (it doesn't have data() method), the following
+        // will fail to do non-identity conversion for bool-typed data. But for
+        // bool-typed data there is just identity at the moment.
+        if constexpr (fromHalfFlagIsRelevant)
+        {
+            if (fromHalf)
+            {
+                ConversionReader::template readHelper<HalfT>(is, data, count, compression, metadata, metadataOffset);
+            }
+            else
+            {
+                ConversionReader::template readHelper<BuildType>(is, data, count, compression, metadata, metadataOffset);
+            }
+        }
+        else
+        {
+            ConversionReader::template readHelper<BuildType>(is, data, count, compression, metadata, metadataOffset);
+        }
+    }
+
+    void read(std::istream& is, ValueType& data) const
+    {
+        if constexpr (doConversion)
+        {
+            BuildType buffer;
+            is.read(reinterpret_cast<char*>(&buffer), /*bytes=*/sizeof(BuildType));
+            data = buffer;
+        }
+        else
+        {
+            is.read(reinterpret_cast<char*>(&data), /*bytes=*/sizeof(ValueType));
+        }
+    }
+
+    void seekElement(std::istream& is, int offset, std::ios_base::seekdir dir) const
+    {
+        if constexpr (doConversion)
+        {
+            is.seekg(/*bytes=*/sizeof(BuildType) * offset, dir);
+        }
+        else
+        {
+            is.seekg(/*bytes=*/sizeof(ValueType) * offset, dir);
+        }
+    }
+};
+
 } // namespace io
 } // namespace OPENVDB_VERSION_NAME
 } // namespace openvdb
