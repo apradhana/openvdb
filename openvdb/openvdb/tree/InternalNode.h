@@ -468,6 +468,13 @@ public:
     void readBuffers(std::istream&, bool fromHalf = false);
     void readBuffers(std::istream&, const CoordBBox&, bool fromHalf = false);
 
+    /// @brief Read buffers from a stream with type conversion from SourceValueT to ValueType
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream&);
+    /// @brief Read buffers with type conversion that intersect the given bounding box
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream&, const CoordBBox&);
+
 
     //
     // Unsafe methods
@@ -3262,6 +3269,35 @@ InternalNode<ChildT, Log2Dim>::readBuffers(std::istream& is,
         // because buffers are serialized in depth-first order and need to be
         // unserialized in the same order.)
         iter->readBuffers(is, clipBBox, fromHalf);
+    }
+
+    // Get this tree's background value.
+    ValueType background = zeroVal<ValueType>();
+    if (const void* bgPtr = io::getGridBackgroundValuePtr(is)) {
+        background = *static_cast<const ValueType*>(bgPtr);
+    }
+    this->clip(clipBBox, background);
+}
+
+
+template<typename ChildT, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+InternalNode<ChildT, Log2Dim>::readBuffersWithValueType(std::istream& is)
+{
+    for (ChildOnIter iter = this->beginChildOn(); iter; ++iter) {
+        iter->template readBuffersWithValueType<SourceValueT>(is);
+    }
+}
+
+
+template<typename ChildT, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+InternalNode<ChildT, Log2Dim>::readBuffersWithValueType(std::istream& is, const CoordBBox& clipBBox)
+{
+    for (ChildOnIter iter = this->beginChildOn(); iter; ++iter) {
+        iter->template readBuffersWithValueType<SourceValueT>(is, clipBBox);
     }
 
     // Get this tree's background value.

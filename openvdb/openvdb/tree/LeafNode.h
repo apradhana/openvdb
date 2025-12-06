@@ -406,6 +406,16 @@ public:
     /// @param bbox      an index-space bounding box
     /// @param fromHalf  if true, floating-point input values are assumed to be 16-bit
     void readBuffers(std::istream& is, const CoordBBox& bbox, bool fromHalf = false);
+
+    /// @brief Read buffers from a stream with type conversion from SourceValueT to ValueType
+    /// @param is        the stream from which to read
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream& is);
+    /// @brief Read buffers with type conversion that intersect the given bounding box.
+    /// @param is        the stream from which to read
+    /// @param bbox      an index-space bounding box
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream& is, const CoordBBox& bbox);
     /// @brief Write buffers to a stream.
     /// @param os      the stream to which to write
     /// @param toHalf  if true, output floating-point values as 16-bit half floats
@@ -1465,6 +1475,92 @@ LeafNode<T,Log2Dim>::readBuffers(std::istream& is, const CoordBBox& clipBBox, bo
             } else {
                 io::readData<T>(is, temp.mData, SIZE, zipped);
             }
+        }
+    }
+
+    // increment the leaf number
+    if (meta)   meta->setLeaf(meta->leaf() + 1);
+}
+
+
+template<typename T, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+LeafNode<T, Log2Dim>::readBuffersWithValueType(std::istream& is)
+{
+    this->readBuffersWithValueType<SourceValueT>(is, CoordBBox::inf());
+}
+
+
+template<typename T, Index Log2Dim>
+template<typename SourceValueT>
+inline void
+LeafNode<T, Log2Dim>::readBuffersWithValueType(std::istream& is, const CoordBBox& clipBBox)
+{
+    io::checkFormatVersion(is);
+
+    SharedPtr<io::StreamMetadata> meta = io::getStreamMetadataPtr(is);
+    const bool seekable = meta && meta->seekable();
+
+#ifdef OPENVDB_USE_DELAYED_LOADING
+    std::streamoff maskpos = is.tellg();
+#endif
+
+    if (seekable) {
+        // Seek over the value mask.
+        mValueMask.seek(is);
+    } else {
+        // Read in the value mask.
+        mValueMask.load(is);
+    }
+
+    int8_t numBuffers = 1;
+
+    CoordBBox nodeBBox = this->getNodeBoundingBox();
+    if (!clipBBox.hasOverlap(nodeBBox)) {
+        // This node lies completely outside the clipping region.
+        skipCompressedValues(seekable, is, /*fromHalf=*/false);
+        mValueMask.setOff();
+        mBuffer.setOutOfCore(false);
+    } else {
+#ifdef OPENVDB_USE_DELAYED_LOADING
+        // Delayed loading not supported with type conversion
+        // Must read and convert immediately
+#endif
+        mBuffer.allocate();
+
+        // Read compressed values as SourceValueT and convert to ValueType
+        if constexpr (std::is_same<SourceValueT, ValueType>::value) {
+            // No conversion needed
+            io::readCompressedValues(is, mBuffer.mData, SIZE, mValueMask, /*fromHalf=*/false);
+        } else {
+            // Read as SourceValueT, then convert to ValueType
+            std::unique_ptr<SourceValueT[]> sourceBuffer(new SourceValueT[SIZE]);
+            io::readCompressedValues(is, sourceBuffer.get(), SIZE, mValueMask, /*fromHalf=*/false);
+
+            // Convert values
+            for (Index i = 0; i < SIZE; ++i) {
+                mBuffer.mData[i] = static_cast<ValueType>(sourceBuffer[i]);
+            }
+        }
+        mBuffer.setOutOfCore(false);
+
+        // Get this tree's background value.
+        T background = zeroVal<T>();
+        if (const void* bgPtr = io::getGridBackgroundValuePtr(is)) {
+            background = *static_cast<const T*>(bgPtr);
+        }
+        this->clip(clipBBox, background);
+    }
+
+    if (numBuffers > 1) {
+        // Read in and discard auxiliary buffers that were created with earlier
+        // versions of the library.  (Auxiliary buffers are not mask compressed.)
+        const bool zipped = io::getDataCompression(is) & io::COMPRESS_ZIP;
+        Buffer temp;
+        for (int i = 1; i < numBuffers; ++i) {
+            // Read as SourceValueT but discard
+            io::readData<SourceValueT>(is, reinterpret_cast<SourceValueT*>(temp.mData), SIZE, zipped);
         }
     }
 

@@ -593,6 +593,13 @@ public:
     void readBuffers(std::istream&, bool fromHalf = false);
     void readBuffers(std::istream&, const CoordBBox&, bool fromHalf = false);
 
+    /// @brief Read buffers from a stream with type conversion from SourceValueT to ValueType
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream&);
+    /// @brief Read buffers with type conversion that intersect the given bounding box
+    template<typename SourceValueT>
+    void readBuffersWithValueType(std::istream&, const CoordBBox&);
+
 
     //
     // Voxel access
@@ -2537,6 +2544,37 @@ RootNode<ChildT>::readBuffers(std::istream& is, const CoordBBox& clipBBox, bool 
     // Clip root-level tiles and prune children that were clipped.
     this->clip(clipBBox);
     std::cout << "End [RootNode<ChildT>::readBuffers(CoordBBox) - RootNode.h]" << std::endl;
+}
+
+
+template<typename ChildT>
+template<typename SourceValueT>
+inline void
+RootNode<ChildT>::readBuffersWithValueType(std::istream& is)
+{
+    std::cout << "Begin [RootNode<ChildT>::readBuffersWithValueType - RootNode.h]" << std::endl;
+    for (MapIter i = mTable.begin(), e = mTable.end(); i != e; ++i) {
+        if (isChild(i)) getChild(i).template readBuffersWithValueType<SourceValueT>(is);
+    }
+    std::cout << "End [RootNode<ChildT>::readBuffersWithValueType - RootNode.h]" << std::endl;
+}
+
+
+template<typename ChildT>
+template<typename SourceValueT>
+inline void
+RootNode<ChildT>::readBuffersWithValueType(std::istream& is, const CoordBBox& clipBBox)
+{
+    std::cout << "Begin [RootNode<ChildT>::readBuffersWithValueType(CoordBBox) - RootNode.h]" << std::endl;
+    for (MapIter i = mTable.begin(), e = mTable.end(); i != e; ++i) {
+        if (isChild(i)) {
+            ChildT& child = getChild(i);
+            child.template readBuffersWithValueType<SourceValueT>(is, clipBBox);
+        }
+    }
+    // Clip root-level tiles and prune children that were clipped.
+    this->clip(clipBBox);
+    std::cout << "End [RootNode<ChildT>::readBuffersWithValueType(CoordBBox) - RootNode.h]" << std::endl;
 }
 
 
