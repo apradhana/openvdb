@@ -58,3 +58,63 @@ Node counts by level: L0=124166 L1=318 L2=8 L3=1
 Non-leaf nodes: 327
 Root tiles: 0
 Root child nodes: 8
+
+## Dec 2
+Archive::readGrid()
+  → RootNode::readTopologyWithValueType<SourceValueT>()
+    → InternalNode::readTopologyWithValueType<SourceValueT>()
+      → LeafNode::readTopologyWithValueType<SourceValueT>()
+
+Grid::readBuffers(is, CoordBBox) [Grid.h:1652]
+  → Tree::readBuffers(is, CoordBBox, saveFloatAsHalf) [Tree.h:1313]
+    → RootNode::readBuffers(is, CoordBBox, fromHalf) [RootNode.h:2522]
+      → InternalNode::readBuffers(is, CoordBBox, fromHalf) [InternalNode.h:3264]
+        → LeafNode::readBuffers(is, CoordBBox, fromHalf) [LeafNode.h:1398]
+
+From PointIndexLeafNode::readBuffers(CoordBBox) (line 1739 in tools/PointIndexGrid.h)
+PointIndexLeafNode<T, Log2Dim>::readBuffers(std::istream& is, const CoordBBox& bbox, bool fromHalf)
+{
+    // Read and clip voxel values.
+    BaseLeaf::readBuffers(is, bbox, fromHalf);
+    ...
+}
+
+Seems like you need to add readBuffersWithValue.
+
+## Dec 1
+
+Why we can't mix template with virtual function.
+
+Option 2: Use Type Erasure with a Base Reader Class
+If you need polymorphic behavior, create a non-template base reader interface:
+
+// In io/Compression.h or appropriate header
+namespace io {
+    class ReaderBase {
+    public:
+        virtual ~ReaderBase() = default;
+        // Add virtual methods needed for reading
+    };
+
+    template<typename ValueT, typename ValueFromT>
+    class TypedConvertingReader : public ReaderBase {
+        // Your implementation
+    };
+}
+
+// Then in GridBase:
+virtual void readTopology(std::istream&, io::ReaderBase& reader) = 0;
+
+
+Explanation of the Error
+The error "templates may not be 'virtual'" is a fundamental C++ language restriction. You cannot combine the virtual and template keywords on the same function. Here's why:
+The Core Problem
+Virtual Functions (Runtime Polymorphism):
+Use a vtable (virtual function table) created at compile time
+Function calls are resolved at runtime through pointer/reference indirection
+The vtable has fixed entries - the compiler needs to know exactly which functions exist
+Template Functions (Compile-time Polymorphism):
+Are instantiated on-demand when you use them with specific types
+The compiler generates a new function for each unique set of template arguments
+This happens at compile time, potentially creating many different functions
+Why They're Incompatible
