@@ -59,6 +59,13 @@ Non-leaf nodes: 327
 Root tiles: 0
 Root child nodes: 8
 
+## Dec 6
+What needs to be checked:
+1. Compression: The current readBuffers handles compressed data. You'd need to handle decompression in the conversion path or decompress first, then convert.
+2. Delayed Loading: If delayed loading is enabled, buffers aren't read immediately - they're loaded on demand. You'd need to store the conversion type for later.
+3. Node Masks: Active value masks would need to remain consistent during conversion.
+4. Template Explosion: Adding templates at multiple node levels increases compilation time and binary size.
+
 ## Dec 5
 Call stack from readGrid to Archive::doReadGrid:
 1. TestGridIO::testConvertFloatToHalf (TestGridIO.cc:362)
