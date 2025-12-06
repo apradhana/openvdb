@@ -34,6 +34,11 @@ public:
     using Ptr = SharedPtr<Archive>;
     using ConstPtr = SharedPtr<const Archive>;
 
+    enum class ScalarConversion {
+        NONE,
+        FLOAT_TO_HALF
+    };
+
     static const uint32_t DEFAULT_COMPRESSION_FLAGS;
 
     Archive();
@@ -132,13 +137,13 @@ protected:
     static int32_t readGridCount(std::istream&);
 
     /// Populate the given grid from the input stream.
-    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&);
+    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, Archive::ScalarConversion = Archive::ScalarConversion::NONE);
     /// @brief Populate the given grid from the input stream, but only where it
     /// intersects the given world-space bounding box.
-    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, const BBoxd&);
+    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, const BBoxd&, Archive::ScalarConversion = Archive::ScalarConversion::NONE);
     /// @brief Populate the given grid from the input stream, but only where it
     /// intersects the given index-space bounding box.
-    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, const CoordBBox&);
+    static void readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, const CoordBBox&, Archive::ScalarConversion = Archive::ScalarConversion::NONE);
 
     using NamedGridMap = std::map<Name /*uniqueName*/, GridBase::Ptr>;
 

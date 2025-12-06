@@ -33,11 +33,6 @@ public:
     using NameMap = std::multimap<Name, GridDescriptor>;
     using NameMapCIter = NameMap::const_iterator;
 
-    enum class ScalarConversion {
-        NONE,
-        FLOAT_TO_HALF
-    };
-
     explicit File(const std::string& filename);
     ~File() override;
 

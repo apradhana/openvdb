@@ -1268,7 +1268,7 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
 
 
 void
-Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is)
+Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, Archive::ScalarConversion scalarConversion)
 {
     std::cout << "Begin [Archive::readGrid - Archive.cc]" << std::endl;
     // Read the compression settings for this grid and tag the stream with them
@@ -1281,7 +1281,7 @@ Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is
 
 void
 Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd,
-    std::istream& is, const BBoxd& worldBBox)
+    std::istream& is, const BBoxd& worldBBox, Archive::ScalarConversion scalarConversion)
 {
     std::cout << "Begin [Archive::readGrid(BBoxd) - Archive.cc]" << std::endl;
     readGridCompression(is);
@@ -1291,7 +1291,7 @@ Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd,
 
 void
 Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd,
-    std::istream& is, const CoordBBox& indexBBox)
+    std::istream& is, const CoordBBox& indexBBox, Archive::ScalarConversion scalarConversion)
 {
     std::cout << "Begin [Archive::readGrid(CoordBBox) - Archive.cc]" << std::endl;
     readGridCompression(is);

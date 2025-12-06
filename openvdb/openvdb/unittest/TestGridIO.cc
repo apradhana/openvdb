@@ -344,7 +344,7 @@ void TestGridIO::testConvertFloatToHalf() {
     io::File fileFloat(PATH);
     io::File fileHalf(PATH);
     fileFloat.open(false, io::MappedFile::Notifier());
-    fileHalf.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
+    fileHalf.open(false, io::MappedFile::Notifier(), io::Archive::ScalarConversion::FLOAT_TO_HALF);
 
     GridBase::Ptr baseGridFloat;
     for (auto nameIter = fileFloat.beginName(); nameIter != fileFloat.endName(); ++nameIter) {
@@ -472,7 +472,7 @@ void TestGridIO::testConvertFloatToHalfOneVoxel() {
     io::File fileFloat(PATH);
     io::File fileHalf(PATH);
     fileFloat.open(false, io::MappedFile::Notifier());
-    fileHalf.open(false, io::MappedFile::Notifier(), io::File::ScalarConversion::FLOAT_TO_HALF);
+    fileHalf.open(false, io::MappedFile::Notifier(), io::Archive::ScalarConversion::FLOAT_TO_HALF);
 
     GridBase::Ptr baseGridFloat;
     for (auto nameIter = fileFloat.beginName(); nameIter != fileFloat.endName(); ++nameIter) {
