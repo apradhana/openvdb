@@ -61,15 +61,14 @@ struct File::Impl
         const GridDescriptor& gd, NoBBox)
     {
         std::cout << "Begin [File::Impl::unarchive(NoBBox) - File.cc]" << std::endl;
-        file.Archive::readGrid(grid, gd, file.inputStream());
+        file.Archive::readGrid(grid, gd, file.inputStream(), file.mImpl->mScalarConversion);
         std::cout << "End [File::Impl::unarchive(NoBBox) - File.cc]" << std::endl;
     }
-    // TODO: pass the scalar conversion to the unarchive function
     static void unarchive(const File& file, GridBase::Ptr& grid,
         const GridDescriptor& gd, const CoordBBox& indexBBox)
     {
         std::cout << "Begin [File::Impl::unarchive(CoordBBox) - File.cc]" << std::endl;
-        file.Archive::readGrid(grid, gd, file.inputStream(), indexBBox);
+        file.Archive::readGrid(grid, gd, file.inputStream(), indexBBox, file.mImpl->mScalarConversion);
         std::cout << "End [File::Impl::unarchive(CoordBBox) - File.cc]" << std::endl;
     }
 
@@ -77,7 +76,7 @@ struct File::Impl
         const GridDescriptor& gd, const BBoxd& worldBBox)
     {
         std::cout << "Begin [File::Impl::unarchive(BBoxd) - File.cc]" << std::endl;
-        file.Archive::readGrid(grid, gd, file.inputStream(), worldBBox);
+        file.Archive::readGrid(grid, gd, file.inputStream(), worldBBox, file.mImpl->mScalarConversion);
         std::cout << "End [File::Impl::unarchive(BBoxd) - File.cc]" << std::endl;
     }
 

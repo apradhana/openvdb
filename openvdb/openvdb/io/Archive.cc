@@ -1134,9 +1134,10 @@ struct NoBBox {};
 
 template<typename BoxType>
 void
-doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const BoxType& bbox)
+doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const BoxType& bbox, Archive::ScalarConversion scalarConversion = Archive::ScalarConversion::NONE)
 {
     std::cout << "Begin [doReadGrid - Archive.cc]" << std::endl;
+    std::cout << "  Scalar conversion: " << int(scalarConversion) << std::endl;
     std::cout << "  Grid type: " << grid->type() << std::endl;
     std::cout << "  GridDescriptor type: " << gd.gridType() << std::endl;
     std::cout << "  GridDescriptor saveFloatAsHalf: " << gd.saveFloatAsHalf() << std::endl;
@@ -1275,7 +1276,7 @@ Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is
     // so that downstream functions can reference them.
     readGridCompression(is);
 
-    doReadGrid(grid, gd, is, NoBBox());
+    doReadGrid(grid, gd, is, NoBBox(), scalarConversion);
     std::cout << "End [Archive::readGrid - Archive.cc]" << std::endl;
 }
 
@@ -1285,7 +1286,7 @@ Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd,
 {
     std::cout << "Begin [Archive::readGrid(BBoxd) - Archive.cc]" << std::endl;
     readGridCompression(is);
-    doReadGrid(grid, gd, is, worldBBox);
+    doReadGrid(grid, gd, is, worldBBox, scalarConversion);
     std::cout << "End [Archive::readGrid(BBoxd) - Archive.cc]" << std::endl;
 }
 
@@ -1295,7 +1296,7 @@ Archive::readGrid(GridBase::Ptr grid, const GridDescriptor& gd,
 {
     std::cout << "Begin [Archive::readGrid(CoordBBox) - Archive.cc]" << std::endl;
     readGridCompression(is);
-    doReadGrid(grid, gd, is, indexBBox);
+    doReadGrid(grid, gd, is, indexBBox, scalarConversion);
     std::cout << "End [Archive::readGrid(CoordBBox) - Archive.cc]" << std::endl;
 }
 
