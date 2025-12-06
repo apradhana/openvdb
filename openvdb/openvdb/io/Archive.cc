@@ -1151,6 +1151,120 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
             g.readBuffers(istrm, g.constTransform().worldToIndexNodeCentered(worldBBox));
         }
         
+        /// @brief Helper to dispatch readBuffers with type conversion - NoBBox overload
+        static void readBuffersWithValueType(GridBase::Ptr grid, const std::string& sourceTreeType,
+                                             std::istream& istrm, NoBBox)
+        {
+            const std::string targetType = grid->type();
+
+            // If types match, use normal readBuffers
+            if (targetType == sourceTreeType) {
+                std::cout << "  Same types, using normal readBuffers" << std::endl;
+                grid->readBuffers(istrm);
+                return;
+            }
+
+            std::cout << "  Buffer type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
+
+            // Handle float -> half conversion
+            if (sourceTreeType == FloatTree::treeType() && targetType == HalfTree::treeType()) {
+                std::cout << "  Converting Float buffers to Half" << std::endl;
+                if (HalfGrid* halfGrid = dynamic_cast<HalfGrid*>(grid.get())) {
+                    halfGrid->tree().root().template readBuffersWithValueType<float>(istrm);
+                    return;
+                }
+            }
+
+            // Handle half -> float conversion
+            if (sourceTreeType == HalfTree::treeType() && targetType == FloatTree::treeType()) {
+                std::cout << "  Converting Half buffers to Float" << std::endl;
+                if (FloatGrid* floatGrid = dynamic_cast<FloatGrid*>(grid.get())) {
+                    floatGrid->tree().root().template readBuffersWithValueType<math::half>(istrm);
+                    return;
+                }
+            }
+
+            // Fallback: use normal readBuffers
+            std::cout << "  Warning: Unsupported buffer conversion, using normal readBuffers" << std::endl;
+            grid->readBuffers(istrm);
+        }
+
+        /// @brief Helper to dispatch readBuffers with type conversion - CoordBBox overload
+        static void readBuffersWithValueType(GridBase::Ptr grid, const std::string& sourceTreeType,
+                                             std::istream& istrm, const CoordBBox& bbox)
+        {
+            const std::string targetType = grid->type();
+
+            // If types match, use normal readBuffers
+            if (targetType == sourceTreeType) {
+                std::cout << "  Same types, using normal readBuffers" << std::endl;
+                grid->readBuffers(istrm, bbox);
+                return;
+            }
+
+            std::cout << "  Buffer type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
+
+            // Handle float -> half conversion
+            if (sourceTreeType == FloatTree::treeType() && targetType == HalfTree::treeType()) {
+                std::cout << "  Converting Float buffers to Half" << std::endl;
+                if (HalfGrid* halfGrid = dynamic_cast<HalfGrid*>(grid.get())) {
+                    halfGrid->tree().root().template readBuffersWithValueType<float>(istrm, bbox);
+                    return;
+                }
+            }
+
+            // Handle half -> float conversion
+            if (sourceTreeType == HalfTree::treeType() && targetType == FloatTree::treeType()) {
+                std::cout << "  Converting Half buffers to Float" << std::endl;
+                if (FloatGrid* floatGrid = dynamic_cast<FloatGrid*>(grid.get())) {
+                    floatGrid->tree().root().template readBuffersWithValueType<math::half>(istrm, bbox);
+                    return;
+                }
+            }
+            // Fallback: use normal readBuffers
+            std::cout << "  Warning: Unsupported buffer conversion, using normal readBuffers" << std::endl;
+            grid->readBuffers(istrm, bbox);
+        }
+
+        /// @brief Helper to dispatch readBuffers with type conversion - BBoxd overload
+        static void readBuffersWithValueType(GridBase::Ptr grid, const std::string& sourceTreeType,
+                                             std::istream& istrm, const BBoxd& worldBBox)
+        {
+            const std::string targetType = grid->type();
+            const CoordBBox indexBBox = grid->constTransform().worldToIndexNodeCentered(worldBBox);
+
+            // If types match, use normal readBuffers
+            if (targetType == sourceTreeType) {
+                std::cout << "  Same types, using normal readBuffers" << std::endl;
+                grid->readBuffers(istrm, indexBBox);
+                return;
+            }
+
+            std::cout << "  Buffer type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
+
+            // Handle float -> half conversion
+            if (sourceTreeType == FloatTree::treeType() && targetType == HalfTree::treeType()) {
+                std::cout << "  Converting Float buffers to Half" << std::endl;
+                if (HalfGrid* halfGrid = dynamic_cast<HalfGrid*>(grid.get())) {
+                    halfGrid->tree().root().template readBuffersWithValueType<float>(istrm, indexBBox);
+                    return;
+                }
+            }
+
+            // Handle half -> float conversion
+            if (sourceTreeType == HalfTree::treeType() && targetType == FloatTree::treeType()) {
+                std::cout << "  Converting Half buffers to Float" << std::endl;
+                if (FloatGrid* floatGrid = dynamic_cast<FloatGrid*>(grid.get())) {
+                    floatGrid->tree().root().template readBuffersWithValueType<math::half>(istrm, indexBBox);
+                    return;
+                }
+            }
+
+            // Fallback: use normal readBuffers
+            std::cout << "  Warning: Unsupported buffer conversion, using normal readBuffers" << std::endl;
+            grid->readBuffers(istrm, indexBBox);
+        }
+
         /// @brief Helper to dispatch readTopology with type conversion
         /// @param grid The target grid to read into
         /// @param sourceTreeType The tree type stored in the file
@@ -1160,16 +1274,16 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
                                                std::istream& is)
         {
             const std::string targetType = grid->type();
-            
+
             // If types match, use normal readTopology
             if (targetType == sourceTreeType) {
                 std::cout << "  Same types, using normal readTopology" << std::endl;
                 grid->readTopology(is);
                 return;
             }
-            
+
             std::cout << "  Type conversion needed: " << sourceTreeType << " -> " << targetType << std::endl;
-            
+
             // Read the buffer count (from TreeBase::readTopology)
             // This is needed to maintain stream alignment
             // THIS WAS A BUG of not calling this. As a result, the stream was not aligned and we have mBackground = 0 instead of 0.15 and numTiles being 1041866752 instead of 0.
@@ -1260,7 +1374,11 @@ doReadGrid(GridBase::Ptr grid, const GridDescriptor& gd, std::istream& is, const
     grid->readTransform(is);
     if (!gd.isInstance()) {
         Local::readTopologyWithConversion(grid, gd.gridType(), is);
-        Local::readBuffers(*grid, is, bbox);
+        if (scalarConversion != Archive::ScalarConversion::NONE) {
+            Local::readBuffersWithValueType(grid, gd.gridType(), is, bbox);
+        } else {
+            Local::readBuffers(*grid, is, bbox);
+        }
     }
     std::cout << "End [doReadGrid - Archive.cc]" << std::endl;
 }
