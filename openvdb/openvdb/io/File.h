@@ -213,8 +213,6 @@ private:
 
     struct Impl;
     std::unique_ptr<Impl> mImpl;
-    // TODO: make this goes under mImpl
-    ScalarConversion mScalarConversion;
 };
 
 

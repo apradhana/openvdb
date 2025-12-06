@@ -107,6 +107,8 @@ struct File::Impl
     Archive::NamedGridMap mNamedGrids;
     // All grids stored in the file (used only when mHasGridOffsets is false)
     GridPtrVecPtr mGrids;
+    // The scalar conversion to use for the file
+    Archive::ScalarConversion mScalarConversion = Archive::ScalarConversion::NONE;
 #ifdef OPENVDB_USE_DELAYED_LOADING
     // The memory-mapped file
     MappedFile::Ptr mFileMapping;
@@ -129,7 +131,6 @@ File::File(const std::string& filename): mImpl(new Impl)
     mImpl->mCopyMaxBytes = Impl::getDefaultCopyMaxBytes();
 #endif
     setInputHasGridOffsets(true);
-    mScalarConversion = ScalarConversion::NONE;
 }
 
 
@@ -298,7 +299,7 @@ File::open(bool /*delayLoad = true*/, const ScalarConversion scalarConversion)
         OPENVDB_THROW(IoError, filename() << " is already open");
     }
     mImpl->mInStream.reset();
-    mScalarConversion = scalarConversion;
+    mImpl->mScalarConversion = scalarConversion;
 
     // Open the file.
     std::unique_ptr<std::istream> newStream;
@@ -770,7 +771,7 @@ File::createGrid(const GridDescriptor& gd) const
 {
     std::cout << "File::createGrid - gd.gridType(): " << gd.gridType() << std::endl;
     std::cout << "File::createGrid - gd.saveFloatAsHalf(): " << gd.saveFloatAsHalf() << std::endl;
-    std::cout << "File::createGrid - mScalarConversion: " << int(mScalarConversion) << std::endl;
+    std::cout << "File::createGrid - mImpl->mScalarConversion: " << int(mImpl->mScalarConversion) << std::endl;
     
     // Create the grid.
     if (!GridBase::isRegistered(gd.gridType())) {
@@ -781,7 +782,7 @@ File::createGrid(const GridDescriptor& gd) const
     }
 
     GridBase::Ptr grid = nullptr;
-    if (mScalarConversion == ScalarConversion::NONE) {
+    if (mImpl->mScalarConversion == ScalarConversion::NONE) {
         std::cout << "File::createGrid - Creating grid with type: " << gd.gridType() << std::endl;
         grid = GridBase::createGrid(gd.gridType());
     } else {
