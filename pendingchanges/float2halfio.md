@@ -59,6 +59,38 @@ Non-leaf nodes: 327
 Root tiles: 0
 Root child nodes: 8
 
+## Dec 5
+Call stack from readGrid to Archive::doReadGrid:
+1. TestGridIO::testConvertFloatToHalf (TestGridIO.cc:362)
+   └─ baseGridHalf = fileHalf.readGrid(nameIter.gridName());
+
+2. File::readGrid(const Name&) (File.cc:602-605)
+   └─ return readGridByName(name, BBoxd());
+
+3. File::readGridByName(const Name&, const BBoxd&) (File.cc:617)
+   └─ grid = (clip ? readGrid(gd, bbox) : readGrid(gd));
+      [assuming clip=false, calls readGrid(gd)]
+
+4. File::readGrid(const GridDescriptor&) const (File.cc:827-830)
+   └─ return Impl::readGrid(*this, gd, Impl::NoBBox());
+
+5. File::Impl::readGrid<NoBBox>(const File&, const GridDescriptor&, const NoBBox&) (File.cc:47-58)
+   └─ GridBase::Ptr grid = file.createGrid(gd);
+   └─ gd.seekToGrid(file.inputStream());
+   └─ unarchive(file, grid, gd, bbox);
+
+6. File::Impl::unarchive(const File&, GridBase::Ptr&, const GridDescriptor&, NoBBox) (File.cc:61-66)
+   └─ file.Archive::readGrid(grid, gd, file.inputStream());
+
+7. Archive::readGrid(GridBase::Ptr, const GridDescriptor&, std::istream&, ScalarConversion) (Archive.cc:1271-1280)
+   └─ readGridCompression(is);
+   └─ doReadGrid(grid, gd, is, NoBBox());
+
+8. doReadGrid<NoBBox>(GridBase::Ptr, const GridDescriptor&, std::istream&, const NoBBox&) (Archive.cc:1137-1265)
+   [Final destination - performs the actual grid reading]
+   
+This tells me that I only need to add ScalarConversion argument inside File::Impl::unarchive
+
 ## Dec 2
 Archive::readGrid()
   → RootNode::readTopologyWithValueType<SourceValueT>()
