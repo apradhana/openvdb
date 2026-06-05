@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <math.h>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@
 #include <openvdb/points/PointScatter.h> // for point sampling
 #include <openvdb/tools/Composite.h> // for tools::compMax
 #include <openvdb/tools/GridOperators.h> // for divergence and gradient
+#include <openvdb/tools/Interpolation.h> // for BoxSampler
 #include <openvdb/tools/MeshToVolume.h> // for createLevelSetBox
 #include <openvdb/tools/Morphology.h> // for erodeActiveValues
 #include <openvdb/tools/PoissonSolver.h> // for poisson solve
@@ -56,6 +58,8 @@ private:
 
     // Update particle position based on velocity on the grid
     void advectParticles(float const dt);
+    void projectParticlesOutOfCollider();
+    void enforceParticleColliderVelocity();
 
     // Make the velocity on the grid to be divergence free
     void pressureProjection(bool print);
@@ -228,6 +232,106 @@ private:
     };// ComputeFlipVelocityOp
 
 
+    struct ColliderSDFSampler
+    {
+        ColliderSDFSampler(FloatGrid::ConstPtr collider) : collider(collider) {}
+
+        double sample(Vec3d const& position) const
+        {
+            return tools::BoxSampler::sample(
+                collider->tree(), collider->transform().worldToIndex(position));
+        }
+
+        Vec3d normal(Vec3d const& position) const
+        {
+            const Vec3d ijk = collider->transform().worldToIndex(position);
+            Vec3d grad(
+                tools::BoxSampler::sample(collider->tree(), ijk + Vec3d(1, 0, 0)) -
+                    tools::BoxSampler::sample(collider->tree(), ijk - Vec3d(1, 0, 0)),
+                tools::BoxSampler::sample(collider->tree(), ijk + Vec3d(0, 1, 0)) -
+                    tools::BoxSampler::sample(collider->tree(), ijk - Vec3d(0, 1, 0)),
+                tools::BoxSampler::sample(collider->tree(), ijk + Vec3d(0, 0, 1)) -
+                    tools::BoxSampler::sample(collider->tree(), ijk - Vec3d(0, 0, 1)));
+            const double length = grad.length();
+            if (length > 1.0e-12) return grad / length;
+            return Vec3d(0.0, 1.0, 0.0);
+        }
+
+        FloatGrid::ConstPtr collider;
+    };
+
+
+    struct ProjectParticleOutOfColliderOp
+    {
+        ProjectParticleOutOfColliderOp(FloatGrid::ConstPtr collider,
+                                       double const padding) :
+                                       sampler(collider),
+                                       padding(padding) {}
+
+        template <typename T>
+        void reset(T&, size_t) {}
+
+        template <typename IndexIterT>
+        void apply(Vec3d& position, const IndexIterT&) const
+        {
+            const double phi = sampler.sample(position);
+            if (phi < padding) {
+                position += (padding - phi) * sampler.normal(position);
+            }
+        }
+
+        ColliderSDFSampler sampler;
+        double padding;
+    };
+
+
+    struct EnforceParticleColliderVelocityOp
+    {
+        EnforceParticleColliderVelocityOp(Index64 const posAtrIdx,
+                                          Index64 const velAtrIdx,
+                                          math::Transform const& transform,
+                                          FloatGrid::ConstPtr collider,
+                                          double const padding) :
+                                          posAtrIdx(posAtrIdx),
+                                          velAtrIdx(velAtrIdx),
+                                          transform(transform),
+                                          sampler(collider),
+                                          padding(padding) {}
+
+        void operator()(const tree::LeafManager<points::PointDataTree>::LeafRange& range) const {
+            for (auto leafIter = range.begin(); leafIter; ++leafIter) {
+                points::AttributeArray const& posArray = leafIter->constAttributeArray(posAtrIdx);
+                points::AttributeArray& velArray = leafIter->attributeArray(velAtrIdx);
+                points::AttributeHandle<Vec3f> posHandle(posArray);
+                points::AttributeWriteHandle<Vec3s> velHandle(velArray);
+
+                for (auto indexIter = leafIter->beginIndexOn(); indexIter; ++indexIter) {
+                    const Vec3d indexPosition =
+                        indexIter.getCoord().asVec3d() + Vec3d(posHandle.get(*indexIter));
+                    const Vec3d worldPosition = transform.indexToWorld(indexPosition);
+                    Vec3s velocity = velHandle.get(*indexIter);
+                    const double phi = sampler.sample(worldPosition);
+
+                    if (phi < padding) {
+                        const Vec3d n = sampler.normal(worldPosition);
+                        const double normalVelocity = Vec3d(velocity).dot(n);
+                        if (normalVelocity < 0.0) {
+                            velocity = Vec3s(Vec3d(velocity) - normalVelocity * n);
+                        }
+                    }
+                    velHandle.set(*indexIter, velocity);
+                }
+            }
+        }
+
+        Index64 posAtrIdx;
+        Index64 velAtrIdx;
+        math::Transform const& transform;
+        ColliderSDFSampler sampler;
+        double padding;
+    };
+
+
     float mVoxelSize = 0.1f;
     Vec3s mGravity = Vec3s(0.f, -9.8f, 0.f);
     int mPointsPerVoxel = 8;
@@ -379,6 +483,34 @@ FlipSolver::initializeDamBreak() {
     mBBoxLS->topologyDifference(*fluidLSInit);
     mBBoxLS->setName("collider");
     openvdb::tools::pruneInactive(mBBoxLS->tree());
+
+    const Vec3d domainMin = mXform->indexToWorld(minFICoord.asVec3d() - Vec3d(0.5));
+    const Vec3d domainMax = mXform->indexToWorld(maxFIIntrCoord.asVec3d() + Vec3d(0.5));
+    mCollider = FloatGrid::create(-padding);
+    mCollider->setTransform(mXform);
+    mCollider->setGridClass(GRID_LEVEL_SET);
+    mCollider->setName("collider_sdf");
+    auto colliderAcc = mCollider->getAccessor();
+    for (CoordBBox::Iterator<true> iter(CoordBBox(minBBoxcoord, maxBBoxcoord)); iter; ++iter) {
+        const Vec3d p = mXform->indexToWorld((*iter).asVec3d());
+        double outsideDistance2 = 0.0;
+        double insideDistance = std::numeric_limits<double>::max();
+        for (int axis = 0; axis < 3; ++axis) {
+            if (p[axis] < domainMin[axis]) {
+                const double d = domainMin[axis] - p[axis];
+                outsideDistance2 += d * d;
+            } else if (p[axis] > domainMax[axis]) {
+                const double d = p[axis] - domainMax[axis];
+                outsideDistance2 += d * d;
+            } else {
+                insideDistance = std::min(
+                    insideDistance,
+                    std::min(p[axis] - domainMin[axis], domainMax[axis] - p[axis]));
+            }
+        }
+        const double phi = outsideDistance2 > 0.0 ? -std::sqrt(outsideDistance2) : insideDistance;
+        colliderAcc.setValue(*iter, static_cast<float>(phi));
+    }
 
     mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
     mPoints->setName("Points");
@@ -621,6 +753,31 @@ FlipSolver::advectParticles(float const dt) {
     int const steps = 1;
 
     points::advectPoints(*mPoints, *mVNext, integrationOrder, dt, steps);
+    projectParticlesOutOfCollider();
+}
+
+
+void
+FlipSolver::projectParticlesOutOfCollider() {
+    FlipSolver::ProjectParticleOutOfColliderOp op(mCollider, 1.0e-4 * mVoxelSize);
+    points::movePoints(*mPoints, op);
+    enforceParticleColliderVelocity();
+}
+
+
+void
+FlipSolver::enforceParticleColliderVelocity() {
+    auto leafIter = (mPoints->tree()).beginLeaf();
+    if (!leafIter) return;
+
+    auto descriptor = leafIter->attributeSet().descriptor();
+    Index64 posIdx = descriptor.find("P");
+    Index64 velIdx = descriptor.find("velocity");
+
+    tree::LeafManager<points::PointDataTree> leafManager(mPoints->tree());
+    FlipSolver::EnforceParticleColliderVelocityOp op(
+        posIdx, velIdx, *mXform, mCollider, 1.0e-3 * mVoxelSize);
+    tbb::parallel_for(leafManager.leafRange(), op);
 }
 
 
