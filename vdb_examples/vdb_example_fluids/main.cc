@@ -85,29 +85,26 @@ private:
         {
             float const dirichletBC = 0.f;
             bool isInsideCollider = collider->tree().isValueOn(neighbor);
-            auto vNgbr = vCurr->tree().getValue(neighbor);
-
-            // TODO: Double check this:
             if (isInsideCollider) {
                 double delta = 0.0;
                 // Neumann pressure from bbox
                 if (neighbor.x() + 1 == ijk.x() /* left x-face */) {
-                    delta += /* voxelSize * */ vNgbr[0];
+                    delta += /* voxelSize * */ vCurr->tree().getValue(ijk)[0];
                 }
                 if (neighbor.x() - 1 == ijk.x() /* right x-face */) {
-                    delta -= /* voxelSize * */ vNgbr[0];
+                    delta -= /* voxelSize * */ vCurr->tree().getValue(neighbor)[0];
                 }
                 if (neighbor.y() + 1 == ijk.y() /* bottom y-face */) {
-                    delta += /* voxelSize * */ vNgbr[1];
+                    delta += /* voxelSize * */ vCurr->tree().getValue(ijk)[1];
                 }
                 if (neighbor.y() - 1 == ijk.y() /* top y-face */) {
-                    delta -= /* voxelSize * */ vNgbr[1];
+                    delta -= /* voxelSize * */ vCurr->tree().getValue(neighbor)[1];
                 }
                 if (neighbor.z() + 1 == ijk.z() /* back z-face */) {
-                    delta += /* voxelSize *  */ vNgbr[2];
+                    delta += /* voxelSize *  */ vCurr->tree().getValue(ijk)[2];
                 }
                 if (neighbor.z() - 1 == ijk.z() /* front z-face */) {
-                    delta -= /* voxelSize *  */ vNgbr[2];
+                    delta -= /* voxelSize *  */ vCurr->tree().getValue(neighbor)[2];
                 }
                 // Note: in the SOP_OpenVDB_Remove_Divergence, we need to multiply
                 // this by 0.5, because the gradient that's used is using
@@ -465,23 +462,20 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
     for (auto iter = vecGrid.beginValueOn(); iter; ++iter) {
         math::Coord ijk = iter.getCoord();
         math::Coord im1jk = ijk.offsetBy(-1, 0, 0);
-        math::Coord ip1jk = ijk.offsetBy(1, 0, 0);
         math::Coord ijm1k = ijk.offsetBy(0, -1, 0);
-        math::Coord ijp1k = ijk.offsetBy(0, 1, 0);
         math::Coord ijkm1 = ijk.offsetBy(0, 0, -1);
-        math::Coord ijkp1 = ijk.offsetBy(0, 0, 1);
 
-        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ip1jk)) {
+        if (bboxAcc.isValueOn(im1jk) || bboxAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(0, val[1], val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijp1k)) {
+        if (bboxAcc.isValueOn(ijm1k) || bboxAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], 0, val[2]);
             acc.setValue(ijk, newVal);
         }
-        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijkp1)) {
+        if (bboxAcc.isValueOn(ijkm1) || bboxAcc.isValueOn(ijk)) {
             auto val = acc.getValue(ijk);
             Vec3s newVal = Vec3s(val[0], val[1], 0);
             acc.setValue(ijk, newVal);
