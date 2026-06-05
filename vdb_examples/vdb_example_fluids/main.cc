@@ -354,7 +354,7 @@ FlipSolver::initializeDamBreak() {
     mXform = math::Transform::createLinearTransform(mVoxelSize);
     float const padding = 2 * mVoxelSize;
 
-    Vec3s minFI = Vec3s(0.f, 0.f, 0.f);
+    Vec3s minFI = Vec3s(mVoxelSize, mVoxelSize, mVoxelSize);
     Vec3s maxFI = Vec3s(2.f + mVoxelSize, 4.f + mVoxelSize, 5.f + mVoxelSize);
     Coord minFICoord = mXform->worldToIndexNodeCentered(minFI);
     Coord maxFICoord = mXform->worldToIndexNodeCentered(maxFI);
