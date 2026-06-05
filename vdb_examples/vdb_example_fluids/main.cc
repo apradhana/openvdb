@@ -67,6 +67,7 @@ private:
     void gridVelocityUpdate(float const dt);
 
     void velocityBCCorrection(Vec3SGrid& vecGrid);
+    void extrapolateVelocity(Vec3SGrid& vecGrid, int const iterations);
 
     void addGravity(float const dt);
     void computeFlipVelocity();
@@ -617,6 +618,46 @@ FlipSolver::velocityBCCorrection(Vec3SGrid& vecGrid) {
 
 
 void
+FlipSolver::extrapolateVelocity(Vec3SGrid& vecGrid, int const iterations) {
+    if (iterations <= 0) return;
+
+    const Coord offsets[6] = {
+        Coord(-1, 0, 0), Coord(1, 0, 0),
+        Coord(0, -1, 0), Coord(0, 1, 0),
+        Coord(0, 0, -1), Coord(0, 0, 1)
+    };
+
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        Vec3SGrid::Ptr oldGrid = vecGrid.deepCopy();
+        auto oldAcc = oldGrid->getConstAccessor();
+        auto acc = vecGrid.getAccessor();
+
+        for (auto iter = oldGrid->beginValueOn(); iter; ++iter) {
+            const Coord ijk = iter.getCoord();
+
+            for (Coord const& offset : offsets) {
+                const Coord neighbor = ijk + offset;
+                if (oldAcc.isValueOn(neighbor)) continue;
+
+                Vec3s sum(0.0f);
+                int count = 0;
+                for (Coord const& averageOffset : offsets) {
+                    const Coord averageCoord = neighbor + averageOffset;
+                    if (oldAcc.isValueOn(averageCoord)) {
+                        sum += oldAcc.getValue(averageCoord);
+                        ++count;
+                    }
+                }
+                if (count > 0) {
+                    acc.setValue(neighbor, sum / float(count));
+                }
+            }
+        }
+    }
+}
+
+
+void
 FlipSolver::pressureProjection(bool print) {
     using TreeType = FloatTree;
     using ValueType = TreeType::ValueType;
@@ -687,6 +728,10 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     pressureProjection(false /* print */);
     velocityBCCorrection(*mVNext);
     computeFlipVelocity();
+    extrapolateVelocity(*mVNext, 3);
+    velocityBCCorrection(*mVNext);
+    extrapolateVelocity(*mVDiff, 3);
+    velocityBCCorrection(*mVDiff);
 }
 
 
