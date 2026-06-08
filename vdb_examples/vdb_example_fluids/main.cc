@@ -732,6 +732,8 @@ FlipSolver::gridVelocityUpdate(float const dt) {
     velocityBCCorrection(*mVNext);
     extrapolateVelocity(*mVDiff, 3);
     velocityBCCorrection(*mVDiff);
+    mDivAfter = tools::divergence(*mVNext);
+    mDivAfter->setName("div_after");
 }
 
 
@@ -845,14 +847,20 @@ FlipSolver::writeVDBsVerbose(int const frame) {
     openvdb::io::File file(fileName.c_str());
 
     openvdb::GridPtrVec grids;
-    grids.push_back(mBBoxLS);
-    grids.push_back(mCollider);
-    grids.push_back(mVCurr);
-    grids.push_back(mVNext);
-    grids.push_back(mDivBefore);
-    grids.push_back(mDivAfter);
-    grids.push_back(mPressure);
-    grids.push_back(mInterior);
+    auto addGrid = [&grids](GridBase::Ptr const& grid) {
+        if (grid) grids.push_back(grid);
+    };
+    addGrid(mPoints);
+    addGrid(mBBoxLS);
+    addGrid(mCollider);
+    addGrid(mVOld);
+    addGrid(mVCurr);
+    addGrid(mVNext);
+    addGrid(mVDiff);
+    addGrid(mDivBefore);
+    addGrid(mDivAfter);
+    addGrid(mPressure);
+    addGrid(mInterior);
     file.write(grids);
     file.close();
 }
