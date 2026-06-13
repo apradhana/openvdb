@@ -473,6 +473,15 @@ FlipSolver::initializeDamBreak() {
     negativeSpace->denseFill(CoordBBox(minFICoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
     negativeSpace->setTransform(mXform);
 
+    Vec3s obstacleMin = Vec3s(7.0f, minFI[1], 2.0f);
+    Vec3s obstacleMax = Vec3s(8.0f, maxIntr[1], 3.0f);
+    Coord obstacleMinCoord = mXform->worldToIndexNodeCentered(obstacleMin);
+    Coord obstacleMaxCoord = mXform->worldToIndexNodeCentered(obstacleMax);
+    FloatGrid::Ptr obstacleMask = FloatGrid::create(/*bg = */0.f);
+    obstacleMask->denseFill(
+        CoordBBox(obstacleMinCoord, obstacleMaxCoord), /*value = */ 1.0, /*active = */ true);
+    obstacleMask->setTransform(mXform);
+
     Vec3s minBBoxvec = Vec3s(-padding, -padding, -padding);
     Vec3s maxBBoxvec = Vec3s(14.f + padding + mVoxelSize, 5.f + padding + mVoxelSize, 5.f + padding + mVoxelSize);
     Coord minBBoxcoord = mXform->worldToIndexNodeCentered(minBBoxvec);
@@ -482,34 +491,42 @@ FlipSolver::initializeDamBreak() {
     mBBoxLS->setTransform(mXform);
     mBBoxLS->topologyDifference(*negativeSpace);
     mBBoxLS->topologyDifference(*fluidLSInit);
+    mBBoxLS->topologyUnion(*obstacleMask);
     mBBoxLS->setName("collider");
     openvdb::tools::pruneInactive(mBBoxLS->tree());
 
     const Vec3d domainMin = mXform->indexToWorld(minFICoord.asVec3d() - Vec3d(0.5));
     const Vec3d domainMax = mXform->indexToWorld(maxFIIntrCoord.asVec3d() + Vec3d(0.5));
+    const Vec3d obstacleDomainMin = mXform->indexToWorld(obstacleMinCoord.asVec3d() - Vec3d(0.5));
+    const Vec3d obstacleDomainMax = mXform->indexToWorld(obstacleMaxCoord.asVec3d() + Vec3d(0.5));
     mCollider = FloatGrid::create(-padding);
     mCollider->setTransform(mXform);
     mCollider->setGridClass(GRID_LEVEL_SET);
     mCollider->setName("collider_sdf");
     auto colliderAcc = mCollider->getAccessor();
-    for (CoordBBox::Iterator<true> iter(CoordBBox(minBBoxcoord, maxBBoxcoord)); iter; ++iter) {
-        const Vec3d p = mXform->indexToWorld((*iter).asVec3d());
+    auto boxInteriorPhi = [](Vec3d const& p, Vec3d const& boxMin, Vec3d const& boxMax) {
         double outsideDistance2 = 0.0;
         double insideDistance = std::numeric_limits<double>::max();
         for (int axis = 0; axis < 3; ++axis) {
-            if (p[axis] < domainMin[axis]) {
-                const double d = domainMin[axis] - p[axis];
+            if (p[axis] < boxMin[axis]) {
+                const double d = boxMin[axis] - p[axis];
                 outsideDistance2 += d * d;
-            } else if (p[axis] > domainMax[axis]) {
-                const double d = p[axis] - domainMax[axis];
+            } else if (p[axis] > boxMax[axis]) {
+                const double d = p[axis] - boxMax[axis];
                 outsideDistance2 += d * d;
             } else {
                 insideDistance = std::min(
                     insideDistance,
-                    std::min(p[axis] - domainMin[axis], domainMax[axis] - p[axis]));
+                    std::min(p[axis] - boxMin[axis], boxMax[axis] - p[axis]));
             }
         }
-        const double phi = outsideDistance2 > 0.0 ? -std::sqrt(outsideDistance2) : insideDistance;
+        return outsideDistance2 > 0.0 ? -std::sqrt(outsideDistance2) : insideDistance;
+    };
+    for (CoordBBox::Iterator<true> iter(CoordBBox(minBBoxcoord, maxBBoxcoord)); iter; ++iter) {
+        const Vec3d p = mXform->indexToWorld((*iter).asVec3d());
+        const double containerPhi = boxInteriorPhi(p, domainMin, domainMax);
+        const double obstaclePhi = -boxInteriorPhi(p, obstacleDomainMin, obstacleDomainMax);
+        const double phi = std::min(containerPhi, obstaclePhi);
         colliderAcc.setValue(*iter, static_cast<float>(phi));
     }
 
@@ -631,6 +648,12 @@ FlipSolver::extrapolateVelocity(Vec3SGrid& vecGrid, int const iterations) {
         Vec3SGrid::Ptr oldGrid = vecGrid.deepCopy();
         auto oldAcc = oldGrid->getConstAccessor();
         auto acc = vecGrid.getAccessor();
+        ColliderSDFSampler colliderSampler(mCollider);
+        auto isDeepInsideCollider = [this, &colliderSampler](Coord const& coord) {
+            if (!mCollider) return false;
+            const Vec3d position = mXform->indexToWorld(coord.asVec3d());
+            return colliderSampler.sample(position) < -0.5 * double(mVoxelSize);
+        };
 
         for (auto iter = oldGrid->beginValueOn(); iter; ++iter) {
             const Coord ijk = iter.getCoord();
@@ -638,11 +661,13 @@ FlipSolver::extrapolateVelocity(Vec3SGrid& vecGrid, int const iterations) {
             for (Coord const& offset : offsets) {
                 const Coord neighbor = ijk + offset;
                 if (oldAcc.isValueOn(neighbor)) continue;
+                if (isDeepInsideCollider(neighbor)) continue;
 
                 Vec3s sum(0.0f);
                 int count = 0;
                 for (Coord const& averageOffset : offsets) {
                     const Coord averageCoord = neighbor + averageOffset;
+                    if (isDeepInsideCollider(averageCoord)) continue;
                     if (oldAcc.isValueOn(averageCoord)) {
                         sum += oldAcc.getValue(averageCoord);
                         ++count;
