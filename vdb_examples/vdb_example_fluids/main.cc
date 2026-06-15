@@ -373,7 +373,11 @@ FlipSolver::initializeFreeFall() {
     mBBoxLS->setGridClass(GRID_LEVEL_SET);
     mBBoxLS->setName("collider");
 
-    mPoints = points::denseUniformPointScatter(*fluidLSInit, mPointsPerVoxel);
+    FloatGrid::Ptr fluidScatterMask = fluidLSInit->deepCopy();
+    fluidScatterMask->topologyDifference(*mBBoxLS);
+    openvdb::tools::pruneInactive(fluidScatterMask->tree());
+
+    mPoints = points::denseUniformPointScatter(*fluidScatterMask, mPointsPerVoxel);
     mPoints->setName("Points");
     points::appendAttribute<Vec3s>(mPoints->tree(),
                                    "velocity" /* attribute name */,
