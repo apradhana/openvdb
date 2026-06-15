@@ -473,8 +473,8 @@ FlipSolver::initializeDamBreak() {
     negativeSpace->denseFill(CoordBBox(minFICoord, maxFIIntrCoord), /*value = */ 1.0, /*active = */ true);
     negativeSpace->setTransform(mXform);
 
-    Vec3s obstacleMin = Vec3s(7.0f, minFI[1], 2.0f);
-    Vec3s obstacleMax = Vec3s(8.0f, maxIntr[1], 3.0f);
+    Vec3s obstacleMin = Vec3s(1.1f, 0.1f, 1.0f);
+    Vec3s obstacleMax = Vec3s(3.1f, 4.1f, 4.1f);
     Coord obstacleMinCoord = mXform->worldToIndexNodeCentered(obstacleMin);
     Coord obstacleMaxCoord = mXform->worldToIndexNodeCentered(obstacleMax);
     FloatGrid::Ptr obstacleMask = FloatGrid::create(/*bg = */0.f);
