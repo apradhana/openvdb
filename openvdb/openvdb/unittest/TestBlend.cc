@@ -228,6 +228,118 @@ TEST_F(TestBlend, testUnionFilletRequiresActiveInputSamples)
     EXPECT_NEAR(blendVal, 0.1f, 1.0e-6f); // should be the same as gridA
 }
 
+TEST_F(TestBlend, testUnionFilletPreservesTieActiveStateAndInputs)
+{
+    using namespace openvdb;
+
+    const Coord chooseInactiveB(0, 0, 0);
+    const Coord chooseActiveB(1, 0, 0);
+    const float background = 2.0f;
+    const float value = 0.25f;
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(1.0);
+
+    FloatGrid::Ptr gridA = FloatGrid::create(background);
+    gridA->setTransform(xform);
+    gridA->setGridClass(GRID_LEVEL_SET);
+    gridA->tree().setValueOn(chooseInactiveB, value);
+    gridA->tree().setValueOff(chooseActiveB, value);
+
+    FloatGrid::Ptr gridB = FloatGrid::create(background);
+    gridB->setTransform(xform->copy());
+    gridB->setGridClass(GRID_LEVEL_SET);
+    gridB->tree().setValueOff(chooseInactiveB, value);
+    gridB->tree().setValueOn(chooseActiveB, value);
+
+    FloatGrid::ConstPtr noMask;
+    FloatGrid::Ptr result =
+        tools::unionFillet<FloatGrid>(*gridA, *gridB, noMask, 2.0f, 1.0f, 1.0f);
+    ASSERT_TRUE(result);
+
+    // The fillet operation selects B when values are equal. This differs from
+    // the default CSG union preference for A and must survive the merge path.
+    EXPECT_FALSE(result->tree().isValueOn(chooseInactiveB));
+    EXPECT_TRUE(result->tree().isValueOn(chooseActiveB));
+    EXPECT_FLOAT_EQ(value, result->tree().getValue(chooseInactiveB));
+    EXPECT_FLOAT_EQ(value, result->tree().getValue(chooseActiveB));
+
+    // unionFillet promises immutable inputs even though merge operators mutate
+    // their destination and may steal from mutable source trees.
+    EXPECT_TRUE(gridA->tree().isValueOn(chooseInactiveB));
+    EXPECT_FALSE(gridA->tree().isValueOn(chooseActiveB));
+    EXPECT_FALSE(gridB->tree().isValueOn(chooseInactiveB));
+    EXPECT_TRUE(gridB->tree().isValueOn(chooseActiveB));
+    EXPECT_FLOAT_EQ(value, gridA->tree().getValue(chooseInactiveB));
+    EXPECT_FLOAT_EQ(value, gridB->tree().getValue(chooseActiveB));
+}
+
+TEST_F(TestBlend, testUnionFilletMaskControlsOffset)
+{
+    using namespace openvdb;
+
+    const Coord ijk(0, 0, 0);
+    const float background = 2.0f;
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(1.0);
+
+    FloatGrid::Ptr gridA = FloatGrid::create(background);
+    gridA->setTransform(xform);
+    gridA->setGridClass(GRID_LEVEL_SET);
+    gridA->tree().setValueOn(ijk, 0.5f);
+
+    FloatGrid::Ptr gridB = FloatGrid::create(background);
+    gridB->setTransform(xform->copy());
+    gridB->setGridClass(GRID_LEVEL_SET);
+    gridB->tree().setValueOn(ijk, 0.75f);
+
+    FloatGrid::Ptr zeroMask = FloatGrid::create(0.0f);
+    zeroMask->setTransform(xform->copy());
+    zeroMask->tree().setValueOn(ijk, 0.0f);
+
+    FloatGrid::Ptr fullMask = FloatGrid::create(0.0f);
+    fullMask->setTransform(xform->copy());
+    fullMask->tree().setValueOn(ijk, 1.0f);
+
+    FloatGrid::Ptr unblended =
+        tools::unionFillet<FloatGrid>(*gridA, *gridB, zeroMask, 2.0f, 1.0f, 1.0f);
+    FloatGrid::Ptr blended =
+        tools::unionFillet<FloatGrid>(*gridA, *gridB, fullMask, 2.0f, 1.0f, 1.0f);
+    ASSERT_TRUE(unblended);
+    ASSERT_TRUE(blended);
+
+    EXPECT_FLOAT_EQ(0.5f, unblended->tree().getValue(ijk));
+    EXPECT_NEAR(0.03125f, blended->tree().getValue(ijk), 1.0e-6f);
+}
+
+TEST_F(TestBlend, testUnionFilletPreservesDisjointBranches)
+{
+    using namespace openvdb;
+
+    const Coord aCoord(0, 0, 0);
+    const Coord bCoord(4096, 0, 0);
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(1.0);
+
+    FloatGrid::Ptr gridA = FloatGrid::create(2.0f);
+    gridA->setTransform(xform);
+    gridA->setGridClass(GRID_LEVEL_SET);
+    gridA->tree().setValueOn(aCoord, 0.1f);
+
+    FloatGrid::Ptr gridB = FloatGrid::create(2.0f);
+    gridB->setTransform(xform->copy());
+    gridB->setGridClass(GRID_LEVEL_SET);
+    gridB->tree().setValueOn(bCoord, 0.2f);
+
+    FloatGrid::ConstPtr noMask;
+    FloatGrid::Ptr result =
+        tools::unionFillet<FloatGrid>(*gridA, *gridB, noMask, 2.0f, 1.0f, 1.0f);
+    ASSERT_TRUE(result);
+
+    EXPECT_TRUE(result->tree().isValueOn(aCoord));
+    EXPECT_TRUE(result->tree().isValueOn(bCoord));
+    EXPECT_FLOAT_EQ(0.1f, result->tree().getValue(aCoord));
+    EXPECT_FLOAT_EQ(0.2f, result->tree().getValue(bCoord));
+    EXPECT_EQ(Index64(1), gridA->activeVoxelCount());
+    EXPECT_EQ(Index64(1), gridB->activeVoxelCount());
+}
+
 TEST_F(TestBlend, testUnionFilletZeroSupportDilationPreservesDefault)
 {
     using namespace openvdb;
@@ -373,5 +485,26 @@ TEST_F(TestBlend, testUnionFilletMismatchedTransformsThrow)
     FloatGrid::ConstPtr noMask;
     EXPECT_THROW(
         tools::unionFillet<FloatGrid>(*gridA, *gridB, noMask, 3.0f, 2.0f, 1.0f),
+        std::runtime_error);
+}
+
+TEST_F(TestBlend, testUnionFilletMismatchedMaskTransformThrows)
+{
+    using namespace openvdb;
+
+    math::Transform::Ptr xform = math::Transform::createLinearTransform(0.1);
+    FloatGrid::Ptr gridA = FloatGrid::create(3.0f);
+    gridA->setTransform(xform);
+    gridA->setGridClass(GRID_LEVEL_SET);
+
+    FloatGrid::Ptr gridB = FloatGrid::create(3.0f);
+    gridB->setTransform(xform->copy());
+    gridB->setGridClass(GRID_LEVEL_SET);
+
+    FloatGrid::Ptr mask = FloatGrid::create(0.0f);
+    mask->setTransform(math::Transform::createLinearTransform(0.2));
+
+    EXPECT_THROW(
+        tools::unionFillet<FloatGrid>(*gridA, *gridB, mask, 3.0f, 2.0f, 1.0f),
         std::runtime_error);
 }

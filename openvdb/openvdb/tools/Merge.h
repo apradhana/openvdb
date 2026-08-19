@@ -183,13 +183,31 @@ private:
 ////////////////////////////////////////
 
 
+/// @brief Default leaf operation for a CSG union or intersection merge.
+/// @details Custom CSG-style operations can replace this policy while reusing
+/// the root and internal-node topology handling in
+/// CsgUnionOrIntersectionOp.
+template<typename TreeT, bool Union>
+struct CsgUnionOrIntersectionDefaultLeafOp
+{
+    using ValueT = typename TreeT::ValueType;
+    using LeafT = typename TreeT::LeafNodeType;
+
+    void operator()(LeafT& leaf, const LeafT& mergeLeaf,
+        bool pruneCancelledTiles, const ValueT& background) const;
+};
+
+
 /// @brief DynamicNodeManager operator to merge trees using a CSG union or intersection.
 /// @note This class modifies the topology of the tree so is designed to be used
 /// from DynamicNodeManager::foreachTopDown().
 /// @details A union and an intersection are opposite operations to each other so
 /// implemented in a combined class. Use the CsgUnionOp and CsgIntersectionOp aliases
 /// for convenience.
-template<typename TreeT, bool Union>
+/// @tparam LeafOpT Policy used to combine overlapping leaf nodes. The default
+/// preserves the standard CSG union or intersection behavior.
+template<typename TreeT, bool Union,
+    typename LeafOpT = CsgUnionOrIntersectionDefaultLeafOp<TreeT, Union>>
 struct CsgUnionOrIntersectionOp
 {
     using ValueT = typename TreeT::ValueType;
@@ -200,19 +218,29 @@ struct CsgUnionOrIntersectionOp
     /// non-const tree with another. This constructor takes a Steal or DeepCopy
     /// tag dispatch class.
     template <typename TagT>
-    CsgUnionOrIntersectionOp(TreeT& tree, TagT tag) { mTreesToMerge.emplace_back(tree, tag); }
+    CsgUnionOrIntersectionOp(TreeT& tree, TagT tag, const LeafOpT& leafOp = LeafOpT())
+        : mLeafOp(leafOp)
+    {
+        mTreesToMerge.emplace_back(tree, tag);
+    }
 
     /// @brief Convenience constructor to CSG union or intersect a single
     /// const tree with another. This constructor requires a DeepCopy tag
     /// dispatch class.
-    CsgUnionOrIntersectionOp(const TreeT& tree, DeepCopy tag) { mTreesToMerge.emplace_back(tree, tag); }
+    CsgUnionOrIntersectionOp(
+        const TreeT& tree, DeepCopy tag, const LeafOpT& leafOp = LeafOpT())
+        : mLeafOp(leafOp)
+    {
+        mTreesToMerge.emplace_back(tree, tag);
+    }
 
     /// @brief Constructor to CSG union or intersect a container of multiple
     /// const or non-const tree pointers. A Steal tag requires a container of
     /// non-const trees, a DeepCopy tag will accept either const or non-const
     /// trees.
     template <typename TreesT, typename TagT>
-    CsgUnionOrIntersectionOp(TreesT& trees, TagT tag)
+    CsgUnionOrIntersectionOp(TreesT& trees, TagT tag, const LeafOpT& leafOp = LeafOpT())
+        : mLeafOp(leafOp)
     {
         for (auto* tree : trees) {
             if (tree) {
@@ -224,14 +252,22 @@ struct CsgUnionOrIntersectionOp
     /// @brief Constructor to accept a vector of TreeToMerge objects, primarily
     /// used when mixing const/non-const trees.
     /// @note Union/intersection order is preserved.
-    explicit CsgUnionOrIntersectionOp(const std::vector<TreeToMerge<TreeT>>& trees)
-        : mTreesToMerge(trees) { }
+    explicit CsgUnionOrIntersectionOp(const std::vector<TreeToMerge<TreeT>>& trees,
+        const LeafOpT& leafOp = LeafOpT())
+        : mTreesToMerge(trees)
+        , mLeafOp(leafOp)
+    {
+    }
 
     /// @brief Constructor to accept a deque of TreeToMerge objects, primarily
     /// used when mixing const/non-const trees.
     /// @note Union/intersection order is preserved.
-    explicit CsgUnionOrIntersectionOp(const std::deque<TreeToMerge<TreeT>>& trees)
-        : mTreesToMerge(trees.cbegin(), trees.cend()) { }
+    explicit CsgUnionOrIntersectionOp(const std::deque<TreeToMerge<TreeT>>& trees,
+        const LeafOpT& leafOp = LeafOpT())
+        : mTreesToMerge(trees.cbegin(), trees.cend())
+        , mLeafOp(leafOp)
+    {
+    }
 
     /// @brief Return true if no trees being merged
     bool empty() const { return mTreesToMerge.empty(); }
@@ -259,15 +295,18 @@ private:
 
     mutable std::vector<TreeToMerge<TreeT>> mTreesToMerge;
     mutable const ValueT* mBackground = nullptr;
+    LeafOpT mLeafOp;
     bool mPruneCancelledTiles = false;
 }; // struct CsgUnionOrIntersectionOp
 
 
-template <typename TreeT>
-using CsgUnionOp = CsgUnionOrIntersectionOp<TreeT, /*Union=*/true>;
+template <typename TreeT,
+    typename LeafOpT = CsgUnionOrIntersectionDefaultLeafOp<TreeT, /*Union=*/true>>
+using CsgUnionOp = CsgUnionOrIntersectionOp<TreeT, /*Union=*/true, LeafOpT>;
 
-template <typename TreeT>
-using CsgIntersectionOp = CsgUnionOrIntersectionOp<TreeT, /*Union=*/false>;
+template <typename TreeT,
+    typename LeafOpT = CsgUnionOrIntersectionDefaultLeafOp<TreeT, /*Union=*/false>>
+using CsgIntersectionOp = CsgUnionOrIntersectionOp<TreeT, /*Union=*/false, LeafOpT>;
 
 
 /// @brief DynamicNodeManager operator to merge two trees using a CSG difference.
@@ -711,8 +750,8 @@ private:
 ////////////////////////////////////////
 
 
-template <typename TreeT, bool Union>
-bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(RootT& root, size_t) const
+template <typename TreeT, bool Union, typename LeafOpT>
+bool CsgUnionOrIntersectionOp<TreeT, Union, LeafOpT>::operator()(RootT& root, size_t) const
 {
     const bool Intersect = !Union;
 
@@ -893,9 +932,9 @@ bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(RootT& root, size_t) con
     return continueRecurse;
 }
 
-template<typename TreeT, bool Union>
+template<typename TreeT, bool Union, typename LeafOpT>
 template<typename NodeT>
-bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(NodeT& node, size_t) const
+bool CsgUnionOrIntersectionOp<TreeT, Union, LeafOpT>::operator()(NodeT& node, size_t) const
 {
     using NonConstNodeT = typename std::remove_const<NodeT>::type;
 
@@ -976,7 +1015,42 @@ bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(NodeT& node, size_t) con
 }
 
 template <typename TreeT, bool Union>
-bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(LeafT& leaf, size_t) const
+void
+CsgUnionOrIntersectionDefaultLeafOp<TreeT, Union>::operator()(LeafT& leaf,
+    const LeafT& mergeLeaf, bool pruneCancelledTiles, const ValueT& background) const
+{
+    if (pruneCancelledTiles) {
+        bool allnegequal = true;
+        for (Index i = 0; i < LeafT::SIZE; ++i) {
+            const ValueT& newValue = mergeLeaf.getValue(i);
+            const ValueT& oldValue = leaf.getValue(i);
+            allnegequal &= oldValue == math::negative(newValue);
+            const bool doMerge = Union ? newValue < oldValue : newValue > oldValue;
+            if (doMerge) {
+                leaf.setValueOnly(i, newValue);
+                leaf.setActiveState(i, mergeLeaf.isValueOn(i));
+            }
+        }
+        if (allnegequal) {
+            // Opposite values with matching distance and gradient cancel out.
+            if (Union) leaf.fill(math::negative(background), false);
+            else leaf.fill(background, false);
+        }
+    } else {
+        for (Index i = 0; i < LeafT::SIZE; ++i) {
+            const ValueT& newValue = mergeLeaf.getValue(i);
+            const ValueT& oldValue = leaf.getValue(i);
+            const bool doMerge = Union ? newValue < oldValue : newValue > oldValue;
+            if (doMerge) {
+                leaf.setValueOnly(i, newValue);
+                leaf.setActiveState(i, mergeLeaf.isValueOn(i));
+            }
+        }
+    }
+}
+
+template <typename TreeT, bool Union, typename LeafOpT>
+bool CsgUnionOrIntersectionOp<TreeT, Union, LeafOpT>::operator()(LeafT& leaf, size_t) const
 {
     using LeafT = typename TreeT::LeafNodeType;
     using ValueT = typename LeafT::ValueType;
@@ -1002,45 +1076,15 @@ bool CsgUnionOrIntersectionOp<TreeT, Union>::operator()(LeafT& leaf, size_t) con
             continue;
         }
 
-        if (mPruneCancelledTiles) {
-            bool allnegequal = true;
-            for (Index i = 0 ; i < LeafT::SIZE; i++) {
-                const ValueT& newValue = mergeLeaf->getValue(i);
-                const ValueT& oldValue = leaf.getValue(i);
-                allnegequal &= oldValue == math::negative(newValue);
-                const bool doMerge = Union ? newValue < oldValue : newValue > oldValue;
-                if (doMerge) {
-                    leaf.setValueOnly(i, newValue);
-                    leaf.setActiveState(i, mergeLeaf->isValueOn(i));
-                }
-            }
-            if (allnegequal) {
-                // If two diffed tiles have the same values of opposite signs,
-                // we know they have both the same distances and gradients.
-                // Thus they will cancel out.
-                if (Union) { leaf.fill(math::negative(this->background()), false); }
-                else { leaf.fill(this->background(), false); }
-            }
-
-        } else {
-            for (Index i = 0 ; i < LeafT::SIZE; i++) {
-                const ValueT& newValue = mergeLeaf->getValue(i);
-                const ValueT& oldValue = leaf.getValue(i);
-                const bool doMerge = Union ? newValue < oldValue : newValue > oldValue;
-                if (doMerge) {
-                    leaf.setValueOnly(i, newValue);
-                    leaf.setActiveState(i, mergeLeaf->isValueOn(i));
-                }
-            }
-        }
+        mLeafOp(leaf, *mergeLeaf, mPruneCancelledTiles, this->background());
     }
 
     return false;
 }
 
-template <typename TreeT, bool Union>
-const typename CsgUnionOrIntersectionOp<TreeT, Union>::ValueT&
-CsgUnionOrIntersectionOp<TreeT, Union>::background() const
+template <typename TreeT, bool Union, typename LeafOpT>
+const typename CsgUnionOrIntersectionOp<TreeT, Union, LeafOpT>::ValueT&
+CsgUnionOrIntersectionOp<TreeT, Union, LeafOpT>::background() const
 {
     // this operator is only intended to be used with foreachTopDown()
     OPENVDB_ASSERT(mBackground);
